@@ -745,15 +745,7 @@ func (app *Application) Routes() http.Handler {
 		// User Profile
 		v1.Route("/user-profile", func(up chi.Router) {
 			up.Use(app.AuthMiddleware)
-/*
-			// POST: Create a new user profile (invoked post-registration, not meant for UI trigger)
-			up.With(app.RequirePermission("create_user_profile")).
-				Post("/", app.CreateUserProfileHandler)
 
-			// POST: Trigger auto flag profiles
-			up.With(app.RequirePermission("trigger_auto_flag_profiles")).
-				Post("/trigger-auto-flag", app.TriggerAutoFlagUserProfilesHandler)
-*/
 			// GET /user-profile/self
 			up.With(app.RequireAuthenticatedUser).
 				Get("/self", app.GetOwnUserProfileHandler)
@@ -761,11 +753,7 @@ func (app *Application) Routes() http.Handler {
 			// PATCH: Update own profile
 			up.With(app.RequireAuthenticatedUser).
 				Patch("/self", app.UpdateOwnUserProfileHandler)
-/*
-			// PATCH /api/v1/user-profile/self/visibility
-			up.With(app.RequireAuthenticatedUser).
-				Patch("/self/visibility", app.UpdateUserProfileVisibilityHandler)
-*/
+
 			// PATCH: Admin or Operator updates another user's profile
 			up.With(app.RequirePermission("update_user_profile")).
 				Patch("/", app.UpdateUserProfileHandler)

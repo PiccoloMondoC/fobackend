@@ -1,9 +1,43 @@
+// Package main provides HTTP handlers for the SagrentiDeals API.
+//
 // sdworkspace/sdbackend/internal/server/cmd/api/user_profiles.go
+//
+// GTM:
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User profile HTTP handlers are release-critical identity and account
+//	  lifecycle infrastructure. They provide authenticated self-service profile
+//	  access, controlled internal profile administration, canonical user-handle
+//	  validation, normalized related-data reads, profile moderation, reserved-
+//	  handle governance, and soft-delete lifecycle operations required by the
+//	  initial SagrentiDeals release spine.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve authenticated self-profile access boundaries.
+//	Preserve separation between self-service and internal profile operations.
+//	Preserve canonical user-handle validation and normalization.
+//	Preserve normalized social-link and notification-preference ownership;
+//	do not persist those relations through the canonical user_profiles row.
+//	Preserve profile moderation and moderation-log behavior.
+//	Preserve sensitive-field redaction for non-privileged viewers.
+//	Preserve database-owned lifecycle timestamps.
+//	Do not introduce handler-local service registries or unsupported workflow
+//	dependencies.
+//	Do not expose batch moderation automation until its canonical service
+//	contract, transaction boundary, policy, observability, and application
+//	wiring exist.
+//	Block deployment if this file breaks build, profile access control,
+//	profile persistence, handle integrity, moderation integrity,
+//	sensitive-data redaction, or identity/account lifecycle behavior.
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,7 +45,6 @@ import (
 	"time"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils/timeutil"
 
 	"github.com/google/uuid"
 )
@@ -64,13 +97,12 @@ func (app *Application) createUserProfileAfterRegistration(
 	}
 
 	// ---------- Build & insert profile ----------
-	now := timeutil.Now()
+	// Persisted lifecycle timestamps remain database-owned and are populated by
+	// UserProfileModel.Insert through the INSERT ... RETURNING contract.
 	profile := &data.UserProfile{
 		UserID:           userID,
 		UserHandle:       normalisedHandle,
-		PreferredContact: "email", // safe default; user may change later
-		CreatedAt:        now,
-		UpdatedAt:        now,
+		PreferredContact: profilePrefContactFallback,
 	}
 
 	if err := app.Models.UserProfile.Insert(ctx, profile); err != nil {
@@ -107,10 +139,9 @@ func (app *Application) createUserProfileAfterRegistration(
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       &userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -190,10 +221,9 @@ func (app *Application) GetOwnUserProfileHandler(w http.ResponseWriter, r *http.
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    time.Now().UTC(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -217,156 +247,250 @@ func (app *Application) GetOwnUserProfileHandler(w http.ResponseWriter, r *http.
 }
 
 
-// UpdateOwnUserProfileHandler lets an authenticated user update *only* their profile.
+// UpdateOwnUserProfileHandler updates the authenticated user's canonical
+// user_profiles row.
 //
-// Behaviour
-// ----------
-//   • Only operates on the caller’s profile (admins must use a separate handler).  
-//   • Accepts a *partial* JSON payload – fields omitted remain unchanged.  
-//   • Validates / normalises user_handle server‑side.  
-//   • Writes an audit record (action: update_user_profile, entity: user_profile).  
-//   • 200 on success, 400 on bad input, 500 on internal error.
+// Omitted fields retain their existing persisted values. Social links and
+// notification preferences are normalized relations owned by their respective
+// persistence paths and are intentionally not accepted here.
 //
-func (app *Application) UpdateOwnUserProfileHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("UpdateOwnUserProfileHandler")
+// Persisted lifecycle timestamps remain database-owned.
+func (app *Application) UpdateOwnUserProfileHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	logger := app.Logger.
+		GetLoggerWithContext(r).
+		WithFunctionName("UpdateOwnUserProfileHandler")
 
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
 
-	// -------------------------------------------------------------------------
-	// 1. Get authenticated user ID from trusted context (set by middleware).
-	// -------------------------------------------------------------------------
 	userIDPtr := app.getUserIDFromContext(ctx)
 	if userIDPtr == nil || *userIDPtr == uuid.Nil {
-		app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+		app.respondWithError(
+			w,
+			errors.New("unauthorized: login required"),
+			http.StatusUnauthorized,
+		)
 		return
 	}
 	userID := *userIDPtr
 
-	// -------------------------------------------------------------------------
-	// 2. Decode request JSON into a lightweight DTO.
-	//    (Avoid blindly binding into the full data.UserProfile struct.)
-	// -------------------------------------------------------------------------
 	var input struct {
-		FirstName               *string          `json:"first_name,omitempty"`
-		LastName                *string          `json:"last_name,omitempty"`
-		UserHandle              *string          `json:"user_handle,omitempty"`
-		Phone                   *string          `json:"phone,omitempty"`
-		AvatarURL               *string          `json:"avatar_url,omitempty"`
-		Bio                     *string          `json:"bio,omitempty"`
-		Location                *string          `json:"location,omitempty"`
-		Website                 *string          `json:"website,omitempty"`
-		Company                 *string          `json:"company,omitempty"`
-		PreferredContact        *string          `json:"preferred_contact,omitempty"`
-		SocialLinks             json.RawMessage `json:"social_links,omitempty"`
-		NotificationPreferences json.RawMessage `json:"notification_preferences,omitempty"`
+		FirstName        *string `json:"first_name,omitempty"`
+		LastName         *string `json:"last_name,omitempty"`
+		UserHandle       *string `json:"user_handle,omitempty"`
+		Phone            *string `json:"phone,omitempty"`
+		AvatarURL        *string `json:"avatar_url,omitempty"`
+		Bio              *string `json:"bio,omitempty"`
+		Location         *string `json:"location,omitempty"`
+		Website          *string `json:"website,omitempty"`
+		Company          *string `json:"company,omitempty"`
+		PreferredContact *string `json:"preferred_contact,omitempty"`
 	}
+
 	if err := app.readJSON(w, r, &input); err != nil {
 		app.respondWithError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	// -------------------------------------------------------------------------
-	// 3. Validate & normalise user_handle if present (model‑layer validation).
-	// -------------------------------------------------------------------------
+	existing, err := app.Models.UserProfile.GetByUserID(ctx, userID)
+	if err != nil {
+		logger.Error(
+			"Load existing user profile failed",
+			"user_id", userID,
+			"error", err,
+		)
+		app.respondWithError(
+			w,
+			errors.New("failed to load user profile"),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	if existing == nil {
+		app.respondWithError(
+			w,
+			errors.New("user profile not found"),
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	profile := data.UserProfile{
+		UserID:           existing.UserID,
+		FirstName:        existing.FirstName,
+		LastName:         existing.LastName,
+		UserHandle:       existing.UserHandle,
+		Phone:            existing.Phone,
+		AvatarURL:        existing.AvatarURL,
+		Bio:              existing.Bio,
+		Location:         existing.Location,
+		Website:          existing.Website,
+		Company:          existing.Company,
+		PreferredContact: existing.PreferredContact,
+		IsFlagged:        existing.IsFlagged,
+		ModerationNotes:  existing.ModerationNotes,
+	}
+
+	if input.FirstName != nil {
+		profile.FirstName = input.FirstName
+	}
+
+	if input.LastName != nil {
+		profile.LastName = input.LastName
+	}
+
 	if input.UserHandle != nil {
 		handle := strings.ToLower(strings.TrimSpace(*input.UserHandle))
 		if err := app.Models.UserProfile.ValidateUserHandle(ctx, handle); err != nil {
 			app.respondWithError(w, err, http.StatusBadRequest)
 			return
 		}
-		input.UserHandle = &handle
+		profile.UserHandle = &handle
 	}
 
-	// -------------------------------------------------------------------------
-	// 4. Build the profile struct for update (only allowed fields).
-	// -------------------------------------------------------------------------
-	profile := data.UserProfile{
-		UserID:                  userID,
-		FirstName:               input.FirstName,
-		LastName:                input.LastName,
-		UserHandle:              input.UserHandle,
-		Phone:                   input.Phone,
-		AvatarURL:               input.AvatarURL,
-		Bio:                     input.Bio,
-		Location:                input.Location,
-		Website:                 input.Website,
-		Company:                 input.Company,
-		PreferredContact:        derefOr(profilePrefContactFallback, input.PreferredContact),
-		SocialLinks:             input.SocialLinks,
-		NotificationPreferences: input.NotificationPreferences,
-		UpdatedAt:               timeutil.Now(),
+	if input.Phone != nil {
+		profile.Phone = input.Phone
 	}
 
-	// -------------------------------------------------------------------------
-	// 5. Persist the changes.
-	// -------------------------------------------------------------------------
+	if input.AvatarURL != nil {
+		profile.AvatarURL = input.AvatarURL
+	}
+
+	if input.Bio != nil {
+		profile.Bio = input.Bio
+	}
+
+	if input.Location != nil {
+		profile.Location = input.Location
+	}
+
+	if input.Website != nil {
+		profile.Website = input.Website
+	}
+
+	if input.Company != nil {
+		profile.Company = input.Company
+	}
+
+	if input.PreferredContact != nil {
+		profile.PreferredContact = strings.ToLower(
+			strings.TrimSpace(*input.PreferredContact),
+		)
+	}
+
 	if err := app.Models.UserProfile.Update(ctx, &profile); err != nil {
-		logger.Error("update failed", "err", err)
-		app.respondWithError(w, errors.New("profile update failed"), http.StatusInternalServerError)
+		logger.Error(
+			"Update user profile failed",
+			"user_id", userID,
+			"error", err,
+		)
+		app.respondWithError(
+			w,
+			errors.New("profile update failed"),
+			http.StatusInternalServerError,
+		)
 		return
 	}
 
-	//--------------------------------------------------------------------
-	// 6. **Inline audit logging** (dynamic resolution, fail‑gracefully)
-	//--------------------------------------------------------------------
+	const actionName = "update_user_profile"
+	const entityTypeName = "user_profile"
 
-	// Resolve Audit Action
-	action, err := app.Models.Action.GetByName(ctx, "update_user_profile")
+	action, err := app.Models.Action.GetByName(ctx, actionName)
 	if err != nil || action == nil {
-		logger.Warn("Audit action 'update_user_profile' not found, attempting to create...", "error", err)
-		actionID, createErr := app.Models.Action.CreateIfNotExists(ctx, "update_user_profile", "Update own user profile")
+		logger.Warn(
+			"Audit action missing; attempting creation",
+			"action", actionName,
+			"error", err,
+		)
+
+		actionID, createErr := app.Models.Action.CreateIfNotExists(
+			ctx,
+			actionName,
+			"Update own user profile",
+		)
 		if createErr != nil {
-			logger.Error("Failed to create missing audit action", "error", createErr)
-			// allow main op to succeed
+			logger.Error(
+				"Create audit action failed",
+				"action", actionName,
+				"error", createErr,
+			)
 		} else {
-			action = &data.Action{ID: actionID}
+			action = &data.Action{
+				ID: actionID,
+			}
 		}
 	}
 
-	// Resolve Audit Entity Type
-	entityType, err := app.Models.EntityType.GetByName(ctx, "user_profile")
+	entityType, err := app.Models.EntityType.GetByName(
+		ctx,
+		entityTypeName,
+	)
 	if err != nil || entityType == nil {
-		logger.Warn("Audit entity type 'user_profile' not found, attempting to create...", "error", err)
-		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(ctx, "user_profile", "User profile entity")
+		logger.Warn(
+			"Audit entity type missing; attempting creation",
+			"entity_type", entityTypeName,
+			"error", err,
+		)
+
+		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(
+			ctx,
+			entityTypeName,
+			"User profile entity",
+		)
 		if createErr != nil {
-			logger.Error("Failed to create missing entity type", "error", createErr)
-			// allow main op to succeed
+			logger.Error(
+				"Create audit entity type failed",
+				"entity_type", entityTypeName,
+				"error", createErr,
+			)
 		} else {
-			entityType = &data.EntityType{ID: entityTypeID}
+			entityType = &data.EntityType{
+				ID: entityTypeID,
+			}
 		}
 	}
 
-	// Insert Audit Log (fail‑soft)
-	if action != nil && entityType != nil {
-		audit := data.AuditLog{
+	if action != nil &&
+		action.ID != uuid.Nil &&
+		entityType != nil &&
+		entityType.ID != uuid.Nil {
+		auditLog := &data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       &userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    timeutil.Now(),
 		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Warn("Audit logging failed", "user_id", userID, "error", err)
+
+		if err := app.Models.AuditLog.Insert(ctx, auditLog); err != nil {
+			logger.Warn(
+				"User profile updated but audit logging failed",
+				"user_id", userID,
+				"error", err,
+			)
+
 			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
 				Error:   false,
 				Message: "Profile updated, but audit logging failed",
-				Data:    userID,
+				Data:    &profile,
 			})
 			return
 		}
 	}
 
-	//--------------------------------------------------------------------
-	// 7. Success response
-	//--------------------------------------------------------------------
-	logger.Info("User profile updated", "user_id", userID)
+	logger.Info(
+		"User profile updated",
+		"user_id", userID,
+	)
+
 	app.respondWithJSON(w, http.StatusOK, jsonResponse{
 		Error:   false,
 		Message: "Profile updated successfully",
-		Data:    userID,
+		Data:    &profile,
 	})
 }
 
@@ -570,10 +694,9 @@ func (app *Application) GetUserProfileByUserIDHandler(w http.ResponseWriter, r *
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       requesterID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     targetID.String(),
-			Timestamp:    time.Now().UTC(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -687,10 +810,9 @@ func (app *Application) ListUserProfilesHandler(w http.ResponseWriter, r *http.R
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       requesterID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     "batch_list",
-			Timestamp:    time.Now().UTC(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -784,10 +906,9 @@ func (app *Application) SearchUserProfilesHandler(w http.ResponseWriter, r *http
 		audit := data.AuditLog{	
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     "search",
-			Timestamp:    time.Now().UTC(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -911,10 +1032,9 @@ func (app *Application) UpdateUserProfileHandler(w http.ResponseWriter, r *http.
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       requesterID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     targetID.String(),
-			Timestamp:    time.Now().UTC(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -1006,10 +1126,9 @@ func (app *Application) ModerateUserProfileHandler(w http.ResponseWriter, r *htt
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       requesterID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     targetID.String(),
-			Timestamp:    time.Now().UTC(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -1032,85 +1151,6 @@ func (app *Application) ModerateUserProfileHandler(w http.ResponseWriter, r *htt
 	})
 }
 
-/* Should this even exist as a handler. Seems more suited for automation
-
-// TriggerAutoFlagUserProfilesHandler allows privileged internal users to manually trigger
-// batch auto-flagging of user profiles for policy violations.
-//
-// - Only internal admins and operators may invoke this endpoint.
-// - Requires `trigger_auto_flag_profiles` permission.
-// - Executes the AutoFlagUserProfiles batch moderation function.
-// - Uses structured logging, audit logging, and safe error reporting.
-func (app *Application) TriggerAutoFlagUserProfilesHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("TriggerAutoFlagUserProfilesHandler")
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	// --- Extract Requester ID from Trusted Context ---
-	requesterID := app.getUserIDFromContext(ctx)
-	if requesterID == nil {
-		logger.Warn("Missing requester ID in context")
-		app.respondWithError(w, errors.New("unauthorized: requester ID missing"), http.StatusUnauthorized)
-		return
-	}
-
-	// --- Execute Batch Auto Moderation ---
-	if err := app.Services.UserProfiles.AutoFlagUserProfiles(ctx); err != nil {
-		logger.Error("Batch auto moderation failed", "requester_id", requesterID, "error", err)
-		app.respondWithError(w, fmt.Errorf("auto-flag operation failed: %w", err), http.StatusInternalServerError)
-		return
-	}
-
-	// --- Audit Metadata ---
-	const actionName = "trigger_auto_flag_profiles"
-	const entityTypeName = "user_profile"
-
-	// Resolve or create audit action
-	action, err := app.Models.Action.GetByName(ctx, actionName)
-	if err != nil || action == nil {
-		logger.Warn("Audit action missing, creating", "action", actionName, "error", err)
-		id, createErr := app.Models.Action.CreateIfNotExists(ctx, actionName, "Triggered batch auto-flagging of user profiles")
-		if createErr == nil {
-			action = &data.Action{ID: id}
-		} else {
-			logger.Error("Failed to create audit action", "error", createErr)
-		}
-	}
-
-	// Resolve or create entity type
-	entityType, err := app.Models.EntityType.GetByName(ctx, entityTypeName)
-	if err != nil || entityType == nil {
-		logger.Warn("Entity type missing, creating", "entity_type", entityTypeName, "error", err)
-		id, createErr := app.Models.EntityType.CreateIfNotExists(ctx, entityTypeName, "User profile entity")
-		if createErr == nil {
-			entityType = &data.EntityType{ID: id}
-		} else {
-			logger.Error("Failed to create entity type", "error", createErr)
-		}
-	}
-
-	// Insert audit log (non-blocking on failure)
-	if action != nil && entityType != nil {
-		audit := data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       requesterID,
-			ActionID:     &action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     "batch", // Not tied to a specific user, mark as "batch"
-			Timestamp:    time.Now().UTC(),
-		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			logger.Warn("Audit log insertion failed", "requester_id", requesterID, "error", err)
-		}
-	}
-
-	// --- Success Response ---
-	logger.Info("Batch auto moderation completed successfully", "triggered_by", requesterID)
-	app.respondWithJSON(w, http.StatusOK, map[string]any{
-		"message": "Auto-flag user profiles batch completed successfully",
-	})
-}
-*/
 
 // GetReservedHandlesHandler returns all reserved or claimed user handles for validation UI.
 //
@@ -1183,10 +1223,9 @@ func (app *Application) GetReservedHandlesHandler(w http.ResponseWriter, r *http
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       requesterID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     "system", // No specific profile acted upon
-			Timestamp:    time.Now().UTC(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
