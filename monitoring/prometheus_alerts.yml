@@ -1,0 +1,11 @@
+groups:
+- name: failed-activations
+  rules:
+  - alert: TooManyFailedActivations
+    expr: failed_activation_attempts_total > 10
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Too many failed activation attempts"
+      description: "User {{ $labels.identifier }} has more than 10 failed activation attempts in 5 minutes."

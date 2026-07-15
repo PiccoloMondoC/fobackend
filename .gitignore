@@ -1,0 +1,8 @@
+.env
+*.env
+bin/
+vendor/
+.DS_Store
+*.log
+node_modules/
+*.exe
