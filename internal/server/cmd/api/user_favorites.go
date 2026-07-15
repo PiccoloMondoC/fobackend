@@ -1,5 +1,37 @@
+// Package main provides HTTP handlers for the SagrentiDeals API.
+//
 // sdworkspace/sdbackend/internal/server/cmd/api/user_favorites.go
-//   Release Class: DEFERRED
+//
+// GTM:
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User favorites, My Stash behavior, merchant follows, favorite-derived
+//	  recommendations, personalized retrieval, sharing, migration, alerts,
+//	  and favorite analytics are valid future consumer capabilities, but they
+//	  are not required for the initial SagrentiDeals release spine. The initial
+//	  release prioritizes canonical offers, publication governance, commerce
+//	  routing, attribution, merchant foundations, and the Future Offering
+//	  Platform supported by its Monetization Layer.
+//
+// DEFERRED Rule:
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve existing handler names while dependent package code is retired
+//	or migrated.
+//	Preserve authenticated user ownership for consumer favorite mutations.
+//	Preserve trusted-context identifier extraction.
+//	Preserve centralized data-layer lifecycle and sentinel-error contracts.
+//	Do not recreate handler-local persistence contracts.
+//	Do not add new favorite, My Stash, merchant-follow, recommendation,
+//	sharing, alert, migration, or favorite-analytics workflows.
+//	Do not expose deferred user-favorite workflows in the v1 router.
+//	Return explicit deferred responses where legacy handlers must temporarily
+//	remain registered.
+//	Do not block deployment on this file unless it breaks compilation or
+//	compromises a SPINE-dependent package.
 package main
 
 import (
@@ -480,66 +512,118 @@ func (app *Application) SaveUserFavoriteHandler(w http.ResponseWriter, r *http.R
 }
 */
 
-// UnsaveUserFavoriteHandler handles the removal (soft-delete) of a user's favorite offer.
-// It enforces permissions, extracts trusted identifiers from context, executes the unsave,
-// and performs audit logging. This is strictly a user-facing operation.
-func (app *Application) UnsaveUserFavoriteHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("UnsaveUserFavoriteHandler")
+// UnsaveUserFavoriteHandler soft-deletes the authenticated user's active
+// favorite mapping for the trusted offer.
+//
+// This handler remains compile-safe while user-favorite workflows are deferred
+// and must not be registered in the v1 router.
+func (app *Application) UnsaveUserFavoriteHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	logger := app.Logger.
+		GetLoggerWithContext(r).
+		WithFunctionName("UnsaveUserFavoriteHandler")
+
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
 
-	// --- Extract User ID from context (injected by JWT middleware) ---
 	userID := app.getUserIDFromContext(ctx)
-	if userID == nil {
-		app.respondWithError(w, errors.New("unauthorized: login required"), http.StatusUnauthorized)
+	if userID == nil || *userID == uuid.Nil {
+		app.respondWithError(
+			w,
+			errors.New("unauthorized: login required"),
+			http.StatusUnauthorized,
+		)
 		return
 	}
 
-	// --- Extract Offer ID from context (must be injected by route param middleware) ---
 	offerID := app.getOfferIDFromContext(ctx)
-	if offerID == nil {
-		app.respondWithError(w, errors.New("bad request: missing offer ID in context"), http.StatusBadRequest)
+	if offerID == nil || *offerID == uuid.Nil {
+		app.respondWithError(
+			w,
+			errors.New("bad request: missing offer ID in context"),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
-	// --- Perform soft-unsave in database ---
-	err := app.Models.UserFavorite.UnsaveFavorite(ctx, *userID, *offerID)
-	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			app.respondWithError(w, fmt.Errorf("favorite not found"), http.StatusNotFound)
-		} else {
-			logger.Error("Failed to unsave user favorite", "ctxUserID", userID, "ctxOfferID", offerID, "error", err)
-			app.respondWithError(w, fmt.Errorf("failed to unsave favorite: %w", err), http.StatusInternalServerError)
+	if err := app.Models.UserFavorite.UnsaveFavorite(
+		ctx,
+		*userID,
+		*offerID,
+	); err != nil {
+		if errors.Is(err, data.ErrUserFavoriteNotFound) {
+			app.respondWithError(
+				w,
+				errors.New("favorite not found"),
+				http.StatusNotFound,
+			)
+			return
 		}
+
+		logger.Error(
+			"Failed to unsave user favorite",
+			"error", err,
+		"user_id", *userID,
+		"offer_id", *offerID,
+		)
+
+		app.respondWithError(
+			w,
+			fmt.Errorf("failed to unsave favorite: %w", err),
+			http.StatusInternalServerError,
+		)
 		return
 	}
 
-	// --- Resolve Audit Action ---
 	action, err := app.Models.Action.GetByName(ctx, "unsave_user_favorite")
 	if err != nil || action == nil {
-		logger.Warn("Audit action 'unsave_user_favorite' not found, attempting to create...", "error", err)
-		actionID, createErr := app.Models.Action.CreateIfNotExists(ctx, "unsave_user_favorite", "Remove a user favorite offer")
+		logger.Warn(
+			"Audit action not found; attempting creation",
+			"action", "unsave_user_favorite",
+			"error", err,
+		)
+
+		actionID, createErr := app.Models.Action.CreateIfNotExists(
+			ctx,
+			"unsave_user_favorite",
+			"Remove a user favorite offer",
+		)
 		if createErr != nil {
-			logger.Error("Failed to create audit action", "error", createErr)
+			logger.Error(
+				"Failed to create audit action",
+				"error", createErr,
+			)
 		} else {
 			action = &data.Action{ID: actionID}
 		}
 	}
 
-	// --- Resolve Audit Entity Type ---
 	entityType, err := app.Models.EntityType.GetByName(ctx, "user_favorite")
 	if err != nil || entityType == nil {
-		logger.Warn("Audit entity type 'user_favorite' not found, attempting to create...", "error", err)
-		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(ctx, "user_favorite", "User's favorite offer")
+		logger.Warn(
+			"Audit entity type not found; attempting creation",
+			"entity_type", "user_favorite",
+			"error", err,
+		)
+
+		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(
+			ctx,
+			"user_favorite",
+			"User favorite offer",
+		)
 		if createErr != nil {
-			logger.Error("Failed to create audit entity type", "error", createErr)
+			logger.Error(
+				"Failed to create audit entity type",
+				"error", createErr,
+			)
 		} else {
 			entityType = &data.EntityType{ID: entityTypeID}
 		}
 	}
 
-	// --- Insert audit log (fail gracefully if needed) ---
-	if userID != nil && offerID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
@@ -547,35 +631,32 @@ func (app *Application) UnsaveUserFavoriteHandler(w http.ResponseWriter, r *http
 			EntityTypeID: entityType.ID,
 			EntityID:     offerID.String(),
 		}
+
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Warn("Audit logging failed", "ctxUserID", userID, "ctxOfferID", offerID, "error", err)
-			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
-				Error:   false,
-				Message: "Favorite unsaved, but audit logging failed",
-				Data: struct {
-					CtxOfferID *uuid.UUID `json:"ctxOfferID"`
-					Status    string     `json:"status"`
-				}{
-					CtxOfferID: offerID,
-					Status:    "unsaved",
-				},
-			})
-			return
+			logger.Warn(
+				"Audit logging failed after user favorite unsave",
+				"error", err,
+				"user_id", *userID,
+				"offer_id", *offerID,
+			)
 		}
 	}
 
-	// --- Respond success ---
-	logger.Info("User favorite unsaved successfully", "ctxUserID", userID, "ctxOfferID", offerID)
+	logger.Info(
+		"User favorite unsaved successfully",
+		"user_id", *userID,
+		"offer_id", *offerID,
+	)
+
 	app.respondWithJSON(w, http.StatusOK, jsonResponse{
 		Error:   false,
 		Message: "User favorite unsaved successfully",
 		Data: struct {
-			CtxOfferID *uuid.UUID `json:"ctxOfferID"`
-			Status    string     `json:"status"`
+			OfferID uuid.UUID `json:"offer_id"`
+			Status  string    `json:"status"`
 		}{
-			CtxOfferID: offerID,
-			Status:    "unsaved",
+			OfferID: *offerID,
+			Status:  "unsaved",
 		},
 	})
 }

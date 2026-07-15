@@ -1,28 +1,35 @@
-// Package data provides models and database access methods for user favorites and merchant follows.
+// Package data provides models and database access methods for user favorites
+// and merchant follows.
 //
-// File: sdworkspace/sdbackend/internal/data/user_favorites.go
+// sdworkspace/sdbackend/internal/data/user_favorites.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User favorites and merchant follows are release-critical consumer
-//     engagement infrastructure. They support My Stash behavior, saved-offer
-//     intent, return visits, personalized offer retrieval, merchant-follow
-//     discovery, and public-safe followed-merchant offer feeds needed by the
-//     initial SagrentiDeals release spine.
 //
-// SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve one-active-favorite-per-user-per-offer semantics.
-//   Preserve soft-delete and restore behavior for favorites.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Preserve purge behavior for deleted favorites.
-//   Preserve merchant-follow offer discovery with public-safe offer filtering.
-//   Block deployment if this file breaks build, My Stash behavior,
-//   favorite persistence, merchant follows, personalized offer retrieval,
-//   or consumer engagement integrity.
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User favorites, My Stash behavior, merchant follows, favorite-derived
+//	  recommendations, personalized retrieval, and favorite analytics are
+//	  valid future consumer-engagement capabilities, but they are not required
+//	  for the initial SagrentiDeals release spine. The initial release
+//	  prioritizes canonical offers, publication governance, commerce routing,
+//	  attribution, merchant foundations, and the Future Offering Platform
+//	  supported by its Monetization Layer.
+//
+// DEFERRED Rule:
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve one-active-favorite-per-user-per-offer semantics.
+//	Preserve soft-delete and restore behavior.
+//	Preserve database-owned lifecycle timestamps.
+//	Preserve true hard-delete and retention-based purge as distinct operations.
+//	Preserve merchant-follow persistence and public-safe offer filtering.
+//	Do not introduce new favorite, My Stash, merchant-follow, recommendation,
+//	or favorite-analytics API capabilities for the initial release.
+//	Do not expose deferred workflows in the v1 router.
+//	Do not block deployment on this domain unless it breaks compilation or
+//	compromises a SPINE-dependent package.
 package data
 
 import (
@@ -339,6 +346,82 @@ func (m *UserFavoriteModel) SoftDelete(ctx context.Context, id uuid.UUID) error 
 	logger.Info("Soft delete user favorite successful", "favorite_id", favoriteID)
 	return nil
 }
+
+
+// UnsaveFavorite soft-deletes the active favorite identified by its natural
+// user/offer key.
+//
+// This operation is distinct from SoftDelete, which is keyed by the favorite
+// row ID. Consumer-facing request paths possess the authenticated user ID and
+// trusted offer ID, so the natural key is the correct persistence contract.
+//
+// Persisted lifecycle timestamps remain database-owned.
+func (m *UserFavoriteModel) UnsaveFavorite(
+	ctx context.Context,
+	userID uuid.UUID,
+	offerID uuid.UUID,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("UnsaveFavorite")
+
+	if userID == uuid.Nil {
+		err := errors.New("user ID is required")
+		logger.Error("Validation failed", err)
+		return err
+	}
+
+	if offerID == uuid.Nil {
+		err := errors.New("offer ID is required")
+		logger.Error("Validation failed", err)
+		return err
+	}
+
+	query := `
+		UPDATE user_favorites
+		SET deleted_at = NOW(),
+			updated_at = NOW()
+		WHERE user_id = $1
+		  AND offer_id = $2
+		  AND deleted_at IS NULL
+		RETURNING id;
+	`
+
+	var favoriteID uuid.UUID
+
+	err := m.DB.QueryRow(ctx, query, userID, offerID).Scan(&favoriteID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			logger.Warn(
+				"Active user favorite not found for unsave",
+				"user_id", userID,
+				"offer_id", offerID,
+			)
+			return ErrUserFavoriteNotFound
+		}
+
+		logger.Error(
+			"Unsave user favorite failed",
+			err,
+			"user_id", userID,
+			"offer_id", offerID,
+		)
+		return err
+	}
+
+	logger.Info(
+		"Unsave user favorite successful",
+		"favorite_id", favoriteID,
+		"user_id", userID,
+		"offer_id", offerID,
+	)
+
+	return nil
+}
+
 
 // Delete permanently removes a user favorite from the database.
 func (m *UserFavoriteModel) Delete(ctx context.Context, id uuid.UUID) error {
