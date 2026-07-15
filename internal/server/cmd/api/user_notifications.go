@@ -79,10 +79,9 @@ func (app *Application) GetUserNotificationByIDHandler(w http.ResponseWriter, r 
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       notification.UserID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     notification.ID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "notificationID", notification.ID, "error", err)
@@ -161,10 +160,9 @@ func (app *Application) GetUserNotificationByUserIDHandler(w http.ResponseWriter
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -252,10 +250,9 @@ func (app *Application) GetUserNotificationByOfferIDHandler(w http.ResponseWrite
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       app.getUserIDFromContext(ctx),
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     offerID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "offerID", offerID, "error", err)
@@ -340,10 +337,9 @@ func (app *Application) GetUserNotificationByTypeHandler(w http.ResponseWriter, 
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     notificationTypeID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "notificationTypeID", notificationTypeID, "error", err)
@@ -429,10 +425,9 @@ func (app *Application) UpdateUserNotificationHandler(w http.ResponseWriter, r *
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       app.getUserIDFromContext(ctx),
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     notificationID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "notificationID", notificationID, "error", err)

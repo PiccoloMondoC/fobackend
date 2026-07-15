@@ -92,10 +92,9 @@ func (app *Application) CreateUserFavoriteHandler(w http.ResponseWriter, r *http
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userFavorite.ID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -182,10 +181,9 @@ func (app *Application) GetUserFavoriteByIDHandler(w http.ResponseWriter, r *htt
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userFavorite.ID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -269,10 +267,9 @@ func (app *Application) GetUserFavoriteByUserIDHandler(w http.ResponseWriter, r 
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(), // EntityID here is the UserID we retrieved favorites for
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -393,10 +390,9 @@ func (app *Application) GetActiveUserFavoritesByUserIDHandler(w http.ResponseWri
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     input.UserID.String(), // Track whose favorites were read
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxUserID", userID, "error", err)
@@ -547,10 +543,9 @@ func (app *Application) UnsaveUserFavoriteHandler(w http.ResponseWriter, r *http
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     offerID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -665,10 +660,9 @@ func (app *Application) ShareOfferHandler(w http.ResponseWriter, r *http.Request
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     share.ID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxOfferShareID", share.ID, "error", err)
@@ -759,10 +753,9 @@ func (app *Application) SetOfferAlertHandler(w http.ResponseWriter, r *http.Requ
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     offerID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxOfferID", offerID, "error", err)
@@ -848,10 +841,9 @@ func (app *Application) RequestRestockNotificationHandler(w http.ResponseWriter,
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     productID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxProductID", productID, "error", err)
@@ -932,10 +924,9 @@ func (app *Application) GetUserOfferPurchaseHistoryHandler(w http.ResponseWriter
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(), // Logs against the user whose history was fetched
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxUserID", userID, "error", err)
@@ -1006,10 +997,9 @@ func (app *Application) GetMostFavoritedOffersHandler(w http.ResponseWriter, r *
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     "most_favorited_offers", // Static ID for this operation
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "error", err)
@@ -1089,10 +1079,9 @@ func (app *Application) GetRecentlyFavoritedOfferByUserHandler(w http.ResponseWr
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     offer.ID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxOfferID", offer.ID, "error", err)
@@ -1169,10 +1158,9 @@ func (app *Application) GetUsersWhoFavoritedOfferHandler(w http.ResponseWriter, 
         audit := data.AuditLog{
             ID:           uuid.New(),
             UserID:       userID,
-            ActionID:     &action.ID,
+            ActionID:     action.ID,
             EntityTypeID: entityType.ID,
             EntityID:     offerID.String(),
-            Timestamp:    timeutil.Now(),
         }
         if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
             logger.Warn("Audit logging failed", "ctxOfferID", offerID, "error", err)
@@ -1250,10 +1238,9 @@ func (app *Application) GetUserFavoritesCountByOfferHandler(w http.ResponseWrite
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     offerID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxOfferID", offerID, "error", err)
@@ -1330,10 +1317,9 @@ func (app *Application) GetUserFavoritesCountByUserHandler(w http.ResponseWriter
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxUserID", userID, "error", err)
@@ -1418,10 +1404,9 @@ func (app *Application) GetTrendingOffersForUserHandler(w http.ResponseWriter, r
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     "trending_offers_for_user",
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxUserID", userID, "error", err)
@@ -1502,10 +1487,9 @@ func (app *Application) ShareFavoriteListHandler(w http.ResponseWriter, r *http.
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     shareID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "share_id", shareID, "error", err)
@@ -1593,10 +1577,9 @@ func (app *Application) MigrateFavoritesToNewUserHandler(w http.ResponseWriter, 
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       targetUserID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     sourceUserID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxSourceUserID", sourceUserID, "ctxTargetUserID", targetUserID, "error", err)
@@ -1680,10 +1663,9 @@ func (app *Application) FollowMerchantHandler(w http.ResponseWriter, r *http.Req
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     merchantID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxMerchantID", merchantID, "error", err)
@@ -1768,10 +1750,9 @@ func (app *Application) UnfollowMerchantHandler(w http.ResponseWriter, r *http.R
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     merchantID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxMerchantID", merchantID, "error", err)
@@ -1852,10 +1833,9 @@ func (app *Application) GetFollowedMerchantsOffersHandler(w http.ResponseWriter,
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     "followed_merchants_offers", // Placeholder for entity ID
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			logger.Warn("Audit logging failed", "ctxUserID", userID, "error", err)

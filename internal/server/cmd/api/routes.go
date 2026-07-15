@@ -672,22 +672,6 @@ func (app *Application) Routes() http.Handler {
 			ud.With(app.RequirePermission("create_user_dashboard")).
 				Post("/", app.CreateUserDashboardHandler)
 
-			// POST: Assign a dashboard template to a user
-			ud.With(app.RequirePermission("assign_dashboard_template")).
-				Post("/assign-to-user", app.AssignDashboardTemplateToUserHandler)
-
-			// POST: Audit user dashboard activity
-			ud.With(app.RequirePermission("audit_user_dashboard_activity")).
-				Post("/audit", app.AuditUserDashboardActivityHandler)
-/*
-			// POST: Clone an existing dashboard
-			ud.With(app.RequirePermission("clone_dashboard")).
-				Post("/clone", app.CloneDashboardHandler)
-
-			// POST: Save user dashboard preferences
-			ud.With(app.RequirePermission("save_user_dashboard_preferences")).
-				Post("/preferences", app.SaveUserDashboardPreferencesHandler)
-*/
 			// PATCH: Update an existing user dashboard
 			ud.With(app.RequirePermission("update_user_dashboard")).
 				Patch("/", app.UpdateUserDashboardHandler)
@@ -703,26 +687,6 @@ func (app *Application) Routes() http.Handler {
 			// GET: Retrieve admin dashboard statistics
 			ud.With(app.RequirePermission("view_admin_dashboard_stats")).
 				Get("/dashboard-stats", app.AdminDashboardStatsHandler)
-/*
-			// GET: Export user dashboard
-			ud.With(app.RequirePermission("export_user_dashboard")).
-				Get("/export", app.ExportUserDashboardHandler)
-*/
-			// GET: Generate curation reports for a specific offer
-			ud.With(app.RequirePermission("generate_curation_reports")).
-				Get("/generate", app.GenerateCurationReportsHandler)
-/*
-			// GET: Retrieve user dashboard widgets
-			ud.With(app.RequirePermission("read_user_dashboard_widgets")).
-				Get("/widgets", app.GetUserDashboardWidgetsHandler)
-
-			// GET: Retrieve all user dashboards
-			ud.With(app.RequirePermission("read_user_dashboards")).
-				Get("/all", app.ListAllUserDashboardsHandler)
-*/
-			// GET: Retrieve user dashboard reports
-			ud.With(app.RequirePermission("read_dashboard_reports")).
-				Get("/", app.ListDashboardReportsHandler)
 		})
 
 		// User Favorites
