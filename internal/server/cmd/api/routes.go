@@ -277,6 +277,39 @@ func (app *Application) Routes() http.Handler {
 		})
 
 
+		// Platform Setting History
+		v1.Route("/platform-setting-history", func(psh chi.Router) {
+			psh.Use(app.AuthMiddleware)
+
+			psh.With(
+				app.RequirePermission(
+					"list_platform_setting_history",
+				),
+			).Post(
+				"/by-key",
+				app.ListPlatformSettingHistoryBySettingKeyHandler,
+			)
+
+			psh.With(
+				app.RequirePermission(
+					"list_platform_setting_history",
+				),
+			).Get(
+				"/platform-setting/{platformSettingID}",
+				app.ListPlatformSettingHistoryByPlatformSettingIDHandler,
+			)
+
+			psh.With(
+				app.RequirePermission(
+					"read_platform_setting_history",
+				),
+			).Get(
+				"/{platformSettingHistoryID}",
+				app.GetPlatformSettingHistoryByIDHandler,
+			)
+		})
+
+
 		// Merchants
 		v1.Route("/merchants", func(ar chi.Router) {
 			ar.Use(app.AuthMiddleware)
