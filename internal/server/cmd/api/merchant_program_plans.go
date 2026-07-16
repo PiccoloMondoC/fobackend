@@ -34,7 +34,6 @@ import (
 	"strings"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils/timeutil"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
