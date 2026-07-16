@@ -1,4 +1,37 @@
+// Package main provides HTTP routing for the SagrentiDeals API.
+//
 // sdworkspace/sdbackend/internal/server/cmd/api/routes.go
+//
+// GTM:
+//
+//	Layer: 2.1 API / Routing Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Canonical HTTP route registration is release-critical platform
+//	  infrastructure. This file defines the public, authenticated, privileged,
+//	  administrative, health, observability, and development-only entry points
+//	  for the SagrentiDeals API. It establishes the middleware boundaries,
+//	  authentication requirements, permission enforcement, public-route
+//	  registry, route ordering, and versioned API surface required by every
+//	  release-critical domain.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve canonical route ownership.
+//	Preserve public versus authenticated route separation.
+//	Preserve authentication and permission enforcement.
+//	Preserve static routes before conflicting parameterized routes.
+//	Preserve development-only middleware and diagnostics boundaries.
+//	Preserve public-route registry synchronization.
+//	Preserve health, readiness, and metrics endpoints.
+//	Preserve JSON not-found behavior.
+//	Do not register DEFERRED domains.
+//	Do not retain duplicate, conflicting, stale, or commented-out routes.
+//	Do not introduce generic route namespaces without a canonical domain owner.
+//	Do not weaken middleware, actor, role, or permission boundaries.
+//	Do not block release-critical SPINE domains through unrelated deferred work.
 package main
 
 import (
@@ -58,7 +91,12 @@ func (app *Application) Routes() http.Handler {
 	r.Route("/api/v1", func(v1 chi.Router) {
 		// Inject trusted IDs into context for all v1 endpoints
 		v1.Use(app.InjectApplicationContextMiddleware)
-		v1.Use(app.DevFallbackContextMiddleware)
+
+		// Development-only fallback context.
+		// Never install synthetic trusted identifiers in production.
+		if strings.EqualFold(app.Config.Bootstrap.Env, "development") {
+			v1.Use(app.DevFallbackContextMiddleware)
+		}
 
 		// ---- PUBLIC API ROUTES (no auth required) ----
 		
@@ -86,7 +124,7 @@ func (app *Application) Routes() http.Handler {
 			app.registerPublic("GET", "/api/v1/offers/{id}")
 		})
 
-		// ---- AUTHENTICATED API ROUTES ----
+		// ---- PUBLIC IDENTITY AND AUTHENTICATION ROUTES ----
 
 		// User Activation Routes
 		v1.With(app.RateLimitMiddleware).Post("/user/activation", app.CreateActivationTokenHandler)
@@ -97,7 +135,12 @@ func (app *Application) Routes() http.Handler {
 		v1.Post("/user/register", app.RegisterUserHandler)
 		v1.Post("/user/login", app.LoginHandler)
 		v1.Post("/user/token/refresh", app.RefreshTokenHandler)
-		v1.Post("/user/logout", app.LogoutHandler)
+
+		// Logout revokes an authenticated session.
+		v1.With(app.AuthMiddleware).
+			Post("/user/logout", app.LogoutHandler)
+
+		// ---- AUTHENTICATED AND PRIVILEGED API ROUTES ----
 
 		// Role & Permission Routes
 		v1.Route("/roles", func(rr chi.Router) {
@@ -233,75 +276,6 @@ func (app *Application) Routes() http.Handler {
 				Delete("/{platformSettingID}", app.HardDeletePlatformSettingHandler)
 		})
 
-
-		// Merchant Applications
-		v1.Route("/merchant-applications", func(aa chi.Router) {
-			aa.Use(app.AuthMiddleware)
-
-			// POST: Create a new merchant application (requires permission)
-			aa.With(app.RequirePermission("create_merchant_application")).
-				Post("/", app.CreateMerchantApplicationHandler)
-
-			// PATCH: Update an merchant application (context-driven, partial update)
-			aa.With(app.RequirePermission("update_merchant_application")).
-				Patch("/", app.UpdateMerchantApplicationHandler)
-
-			// DELETE: Soft-delete an merchant application (context-driven, updates status_id)
-			aa.With(app.RequirePermission("soft_delete_merchant_application")).
-				Delete("/soft-delete", app.SoftDeleteMerchantApplicationHandler)
-
-			// GET: Retrieve a single application by ID (from context)
-			aa.With(app.RequirePermission("read_merchant_application")).
-				Get("/", app.GetMerchantApplicationByIDHandler)
-
-			// GET: Retrieve all applications for an merchant (context-based merchant ID)
-			aa.With(app.RequirePermission("read_merchant_application")).
-				Get("/by-merchant", app.GetMerchantApplicationByMerchantIDHandler)
-
-			// GET: Retrieve all applications for an affiliate program (context-based)
-			aa.With(app.RequirePermission("list_merchant_applications")).
-				Get("/by-affiliate-program", app.GetMerchantApplicationsByAffiliateProgramIDHandler)
-
-			// GET: Retrieve all applications filtered by status_id (from context), paginated
-			aa.With(app.PaginationAndFilterMiddleware).
-				With(app.RequirePermission("list_merchant_applications")).
-				Get("/by-status", app.GetMerchantApplicationsByStatusIDHandler)
-
-			// GET: Retrieve all applications (filtered by affiliate program, paginated)
-			aa.With(app.PaginationAndFilterMiddleware).
-				With(app.RequirePermission("list_merchant_applications")).
-				Get("/all", app.GetAllMerchantApplicationsHandler)
-		})
-
-		// Merchant Application Statuses
-		v1.Route("/merchant-application-statuses", func(s chi.Router) {
-			s.Use(app.AuthMiddleware)
-
-			// POST: Create a new application status
-			s.With(app.RequirePermission("create_merchant_application_status")).
-				Post("/", app.CreateApplicationStatusHandler)
-
-			// POST: Retrieve a status by name (JSON body input, not path param)
-			s.With(app.RequirePermission("read_merchant_application_status")).
-				Post("/by-name", app.GetApplicationStatusByNameHandler)
-
-			// PATCH: Update an application status by ID (context-based only)
-			s.With(app.RequirePermission("update_merchant_application_status")).
-				Patch("/", app.UpdateApplicationStatusHandler)
-
-			// DELETE: Soft-delete a status by ID (context-based)
-			s.With(app.RequirePermission("soft_delete_merchant_application_status")).
-				Delete("/soft-delete", app.SoftDeleteApplicationStatusHandler)
-
-			// GET: Retrieve a single application status by ID (from context only)
-			s.With(app.RequirePermission("read_merchant_application_status")).
-				Get("/", app.GetApplicationStatusByIDHandler)
-
-			// GET: Retrieve all application statuses (supports pagination + name filter)
-			s.With(app.PaginationAndFilterMiddleware).
-				With(app.RequirePermission("list_merchant_application_statuses")).
-				Get("/all", app.GetAllApplicationStatusHandler)
-		})
 
 		// Merchants
 		v1.Route("/merchants", func(ar chi.Router) {
@@ -482,104 +456,6 @@ func (app *Application) Routes() http.Handler {
 		})
 
 
-		// Merchant Type
-		v1.Route("/merchant-type", func(at chi.Router) {
-			at.Use(app.AuthMiddleware)
-
-			// POST: Create a new merchant type (context-free, JSON input)
-			at.With(app.RequirePermission("create_merchant_type")).
-				Post("/", app.CreateMerchantTypeHandler)
-
-			// POST: Retrieve merchant type by name (JSON input)
-			at.With(app.RequirePermission("read_merchant_type")).
-				Post("/by-name", app.GetMerchantTypeByNameHandler)
-
-			// PATCH: Partially update an merchant type by ID (context-based only)
-			at.With(app.RequirePermission("update_merchant_type")).
-				Patch("/", app.UpdateMerchantTypeHandler)
-
-			// DELETE: Soft delete an merchant type (context-based only)
-			at.With(app.RequirePermission("soft_delete_merchant_type")).
-				Delete("/soft-delete", app.DeleteMerchantTypeHandler)
-
-			// GET: Retrieve a single merchant type by ID (from context only)
-			at.With(app.RequirePermission("read_merchant_type")).
-				Get("/", app.GetMerchantTypeByIDHandler)
-
-			// GET: Retrieve all merchant types (with optional filters from context)
-			at.With(app.PaginationAndFilterMiddleware).
-				With(app.RequirePermission("list_merchant_types")).
-				Get("/all", app.GetAllMerchantTypesHandler)
-		})
-
-		// Merchant Affiliate Program
-		v1.Route("/merchant-affiliate-programs", func(ap chi.Router) {
-			ap.Use(app.AuthMiddleware)
-
-			// POST: Create merchant-affiliate program association (context-based only)
-			ap.With(app.RequirePermission("create_merchant_affiliate_program")).
-				Post("/affiliate-program-association", app.CreateMerchantAffiliateProgramHandler)
-
-			// DELETE: Soft-delete merchant-affiliate program association (context-based only)
-			ap.With(app.RequirePermission("soft_delete_merchant_affiliate_program")).
-				Delete("/soft-delete", app.DeleteMerchantAffiliateProgramHandler)
-
-			// DELETE: Soft-delete all affiliate program associations for a given merchant (context-based)
-			ap.With(app.RequirePermission("soft_delete_merchant_affiliate_program")).
-				Delete("/soft-delete/by-merchant", app.DeleteMerchantAffiliateProgramByMerchantIDHandler)
-
-			// DELETE: Soft-delete all merchant associations for a given affiliate program (context-based)
-			ap.With(app.RequirePermission("soft_delete_merchant_affiliate_program")).
-				Delete("/soft-delete/by-affiliate-program", app.DeleteMerchantAffiliateProgramByAffiliateProgramIDHandler)
-
-			// GET: Retrieve association by merchant ID and affiliate program ID from context
-			ap.With(app.RequirePermission("read_merchant_affiliate_program")).
-				Get("/association", app.GetMerchantAffiliateProgramByIDsHandler)
-
-			// GET: Retrieve all affiliate programs linked to an merchant (context-based only)
-			ap.With(app.PaginationAndFilterMiddleware).
-				With(app.RequirePermission("read_merchant_affiliate_programs")).
-				Get("/by-merchant", app.GetMerchantAffiliateProgramByMerchantIDHandler)
-
-			// GET: Retrieve all merchants associated with an affiliate program (context-based only)
-			ap.With(app.RequirePermission("read_merchant_affiliate_programs")).
-				Get("/by-affiliate-program", app.GetMerchantAffiliateProgramByAffiliateProgramIDHandler)
-
-			// GET: Retrieve all merchant-affiliate program associations (filtered + audited)
-			ap.With(app.RequirePermission("list_merchant_affiliate_programs")).
-				Get("/all", app.GetAllMerchantAffiliateProgramsHandler)
-		})
-
-		// Platform
-		v1.Route("/platforms", func(p chi.Router) {
-			p.Use(app.AuthMiddleware)
-
-			// POST: Create a new platform (requires create_platform permission)
-			p.With(app.RequirePermission("create_platform")).
-				Post("/", app.CreatePlatformHandler)
-
-			// POST: Retrieve platform by name (JSON input, context-only)
-			p.With(app.RequirePermission("read_platform")).
-				Post("/by-name", app.GetPlatformByNameHandler)
-
-			// PATCH: Partially update a platform (context-based only)
-			p.With(app.RequirePermission("update_platform")).
-				Patch("/", app.UpdatePlatformHandler)
-
-			// DELETE: Soft-delete a platform (context-based only)
-			p.With(app.RequirePermission("soft_delete_platform")).
-				Delete("/soft-delete", app.SoftDeletePlatformHandler)
-
-			// GET: Retrieve a platform by ID (context-only)
-			p.With(app.RequirePermission("read_platform")).
-				Get("/", app.GetPlatformByIDHandler)
-
-			// GET: Retrieve all non-deleted platforms
-			p.With(app.RequirePermission("list_platforms")).
-				Get("/all", app.GetAllPlatformsHandler)
-		})
-
-
 		// Categories
 		v1.Route("/categories", func(cat chi.Router) {
 			cat.Use(app.AuthMiddleware)
@@ -605,35 +481,6 @@ func (app *Application) Routes() http.Handler {
 				Get("/by-id", app.GetCategoryByIDHandler)
 		})
 
-
-		// Offer Status
-		v1.Route("/offer-statuses", func(dst chi.Router) {
-			dst.Use(app.AuthMiddleware)
-
-			// POST: Create a new offer status
-			dst.With(app.RequirePermission("create_offer_status")).
-				Post("/", app.CreateOfferStatusHandler)
-
-			// POST: Submit a offer status for review
-			dst.With(app.RequirePermission("submit_offer_status_for_review")).
-				Post("/submit-for-review", app.SubmitOfferStatusForReviewHandler)
-
-			// PATCH: Update the status of a offer
-			dst.With(app.RequirePermission("update_offer_status")).
-				Patch("/status", app.UpdateOfferStatusHandler)
-
-			// DELETE: Delete a offer status (requires permission)
-			dst.With(app.RequirePermission("delete_offer_status")).
-				Delete("/", app.DeleteOfferStatusHandler)
-
-			// GET: Retrieve a offer status by ID
-			dst.With(app.RequirePermission("read_offer_status")).
-				Get("/by-id", app.GetOfferStatusByIDHandler)
-
-			// GET: Retrieve all offer statuses
-			dst.With(app.RequirePermission("read_offer_statuses")).
-				Get("/all", app.GetAllOfferStatusesHandler)
-		})
 
 		// Offers
 		// Auth-protected offer routes.
@@ -665,7 +512,7 @@ func (app *Application) Routes() http.Handler {
 		})
 
 		// User Dashboards
-		v1.Route("/admin", func(ud chi.Router) {
+		v1.Route("/user-dashboards", func(ud chi.Router) {
 			ud.Use(app.AuthMiddleware)
 
 			// POST: Create a new user dashboard
@@ -690,56 +537,15 @@ func (app *Application) Routes() http.Handler {
 		})
 
 
-		// Merchant Follow/Unfollow
-		v1.Route("/merchant-follows", func(mf chi.Router) {
-			mf.Use(app.AuthMiddleware)
-/*
-			// POST: Follow a merchant lets a user follow a merchant to get notified of offers from that merchant
-			mf.With(app.RequireAuthenticatedUser).
-				Post("/", app.FollowMerchantHandler)
-
-			// DELETE: Unfollow a merchant to stop reciving notifications of offers from that merchant
-			mf.With(app.RequireAuthenticatedUser).
-				Delete("/", app.UnfollowMerchantHandler)
-
-			// GET: Offers from followed merchants
-			mf.With(app.RequirePermission("read_followed_merchants_offers")).
-				Get("/offers", app.GetFollowedMerchantsOffersHandler)*/
-		})
-
 		// User Notifications (system-managed)
 		v1.Route("/user-notifications", func(un chi.Router) {
 			un.Use(app.AuthMiddleware) // Require authentication
-/*
-			// PATCH: Update a user notification (internal diagnostics only)
-			un.With(
-				app.RequireInternalRole, // admin or internal_operator
-				app.RequirePermission("update_user_notification"),
-			).Patch("/{notificationID}", app.UpdateUserNotificationHandler)
 
-			// GET: Retrieve a specific user notification by ID
-			un.With(
-				app.RequireInternalRole,
-				app.RequirePermission("read_user_notification"),
-			).Get("/{id}", app.GetUserNotificationByIDHandler)
-*/
 			// GET: Retrieve user notifications by user ID (admin/internal only)
 			un.With(
 				app.RequireInternalRole, // admin or internal_operator
 				app.RequirePermission("read_user_notifications"),
 			).Get("/by-user", app.GetUserNotificationByUserIDHandler)
-/*
-			// GET: Retrieve user notifications by associated offer ID
-			un.With(
-				app.RequireInternalRole,
-				app.RequirePermission("read_user_notifications"),
-			).Get("/by-offer", app.GetUserNotificationByOfferIDHandler)
-
-			// GET: Retrieve user notifications by type
-			un.With(
-				app.RequireInternalRole,
-				app.RequirePermission("read_user_notification_by_type"),
-			).Get("/by-type", app.GetUserNotificationByTypeHandler)*/
 		})
 
 		// User Profile
@@ -762,12 +568,14 @@ func (app *Application) Routes() http.Handler {
 			up.With(app.RequirePermission("moderate_user_profile")).
 				Patch("/moderate", app.ModerateUserProfileHandler)
 
-			// GET: Public access to a user profile by ID (enforces visibility internally)
-			up.Get("/", app.GetUserProfileByUserIDHandler)
+			// GET: Authenticated access to a user profile by user ID
+			// (visibility remains enforced inside the handler).
+			up.With(app.RequireAuthenticatedUser).
+				Get("/by-user", app.GetUserProfileByUserIDHandler)
 
 			// GET: List user profiles
 			up.With(app.RequirePermission("read_user_profiles")).
-				Get("/", app.ListUserProfilesHandler)
+				Get("/all", app.ListUserProfilesHandler)
 
 			// GET: Search user profiles
 			up.With(app.RequirePermission("read_user_profiles")).
@@ -817,42 +625,8 @@ func (app *Application) Routes() http.Handler {
 				Delete("/admin/users/{userID}", app.AdminDeleteUserHandler)
 		})
 
-		// User Wallets
-		v1.Route("/user-wallets", func(uw chi.Router) {
-			uw.Use(app.AuthMiddleware)
-		/*
-			// POST: Create a new user wallet
-			uw.With(app.RequirePermission("create_user_wallet")).
-				Post("/", app.CreateUserWalletHandler)
-			*/
-
-			// GET: Retrieve a user wallet by user ID
-			uw.With(app.RequirePermission("read_user_wallet")).
-				Get("/me", app.GetUserWalletByUserIDHandler)
-
-			// GET: Retrieve a user wallet by ID
-			uw.With(app.RequirePermission("read_user_wallet")).
-				Get("/by-id", app.GetUserWalletByIDHandler)
-
-			// GET: Retrieve all user wallets (paginated)
-			uw.With(app.PaginationAndFilterMiddleware).
-				With(app.RequirePermission("read_user_wallets")).
-				Get("/all", app.ListUserWalletsHandler)
-		})
 	})
 
-/*
-    // Health endpoints for probes/monitors
-    r.Get("/healthz", app.LivenessHandler)
-    r.Get("/readyz", app.ReadinessHandler)
-
-	// Prometheus Metrics (not versioned)
-	r.Handle("/metrics", promhttp.Handler())
-
-	// Development only
-	if strings.ToLower(app.Config.Bootstrap.Env) == "development" {
-		r.Get("/debug/context", app.DebugContextHandler)
-	}*/
 
 	// JSON 404 for everything else
     r.NotFound(app.NotFoundHandler)
