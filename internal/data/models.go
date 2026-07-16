@@ -70,7 +70,8 @@ type Models struct {
 	AuditLog           AuditLogModel           // SPINE: minimal foundation — audit trail foundation
 	EntityType         EntityTypeModel         // SPINE: minimal foundation — audit/entity lookup governance
 	Action             ActionModel             // SPINE: minimal foundation — audit/action lookup governance
-	PlatformSetting    PlatformSettingModel    // SPINE: minimal foundation — system configuration infrastructure
+	PlatformSetting        PlatformSettingModel        // SPINE: minimal foundation — system configuration infrastructure
+	PlatformSettingHistory PlatformSettingHistoryModel // SPINE: minimal foundation — immutable platform-setting value history
 
 	// Layer 2.2 — Identity / Auth Domain
 	User            UserModel            // SPINE: minimal foundation — user account identity
@@ -168,6 +169,10 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		EntityType:         EntityTypeModel{DB: dbPool, Logger: logger},         // SPINE: minimal foundation
 		Action:             ActionModel{DB: dbPool, Logger: logger},             // SPINE: minimal foundation
 		PlatformSetting:    PlatformSettingModel{DB: dbPool, Logger: logger},    // SPINE: minimal foundation
+		PlatformSettingHistory: PlatformSettingHistoryModel{
+			DB:     dbPool,
+			Logger: logger,
+		}, // SPINE: minimal foundation — immutable platform-setting value history
 
 		// Layer 2.2 — Identity / Auth Domain
 		User:            UserModel{DB: dbPool, Logger: logger},            // SPINE: minimal foundation

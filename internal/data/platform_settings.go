@@ -38,6 +38,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"regexp"
 	"time"
@@ -176,11 +177,26 @@ func decodePlatformSettingJSON(value json.RawMessage) (interface{}, error) {
 
 	var decoded interface{}
 	if err := decoder.Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("platform setting value is not valid JSON: %w", err)
+		return nil, fmt.Errorf(
+			"platform setting value is not valid JSON: %w",
+			err,
+		)
 	}
-	if decoder.More() {
-		return nil, errors.New("platform setting value must contain exactly one JSON value")
+
+	var trailing interface{}
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, errors.New(
+				"platform setting value must contain exactly one JSON value",
+			)
+		}
+
+		return nil, fmt.Errorf(
+			"platform setting value contains invalid trailing content: %w",
+			err,
+		)
 	}
+
 	return decoded, nil
 }
 

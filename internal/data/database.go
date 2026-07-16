@@ -679,7 +679,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE TABLE IF NOT EXISTS platform_setting_history (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		platform_setting_id UUID NOT NULL REFERENCES platform_settings(id) ON DELETE CASCADE,
+		platform_setting_id UUID NOT NULL REFERENCES platform_settings(id) ON DELETE RESTRICT,
 		setting_key TEXT NOT NULL,
 
 		previous_value JSONB,
@@ -1278,7 +1278,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	BEFORE INSERT OR UPDATE OF offer_key ON public.offers
 	FOR EACH ROW EXECUTE FUNCTION public.normalize_offer_key();
 
-	
+
 	CREATE TABLE IF NOT EXISTS value_tags (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		slug CITEXT NOT NULL UNIQUE,
