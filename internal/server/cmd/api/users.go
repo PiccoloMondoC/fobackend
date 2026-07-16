@@ -46,7 +46,6 @@ import (
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/security" 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils/timeutil"
 
 	"github.com/google/uuid"
 )
