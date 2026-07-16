@@ -1,4 +1,37 @@
+// Package main provides HTTP handlers for the SagrentiDeals API.
+//
 // sdworkspace/sdbackend/internal/server/cmd/api/user_settings.go
+//
+// GTM:
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User settings handlers are release-critical account-preference
+//	  infrastructure. They provide authenticated access to user-owned
+//	  notification preferences, privacy data-sharing controls, preferred
+//	  notification-channel selection, and structured account preferences
+//	  required by the initial SagrentiDeals release spine.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve authenticated user ownership boundaries.
+//	Preserve explicit permission requirements for internal/admin access.
+//	Preserve separation between authorization policy and persistence.
+//	Preserve alignment with the canonical UserSettingsModel contract.
+//	Preserve notification, privacy, preferred-channel, and structured
+//	preference semantics.
+//	Preserve database-owned lifecycle timestamps.
+//	Preserve audit attribution for settings reads and mutations.
+//	Do not recreate obsolete GetByID aliases or authorization parameters in
+//	the data layer.
+//	Do not claim partial-update behavior unless a canonical partial-update
+//	contract is deliberately introduced.
+//	Block deployment if this file breaks build, user-owned settings access,
+//	permission enforcement, settings persistence, or account-preference
+//	integrity.
 package main
 
 import (
@@ -8,11 +41,8 @@ import (
 	"net/http"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils/timeutil"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	//"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Principles:
@@ -92,10 +122,9 @@ func (app *Application) SaveUserSettingsHandler(w http.ResponseWriter, r *http.R
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     settings.UserID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -140,14 +169,29 @@ func (app *Application) GetUserSettingsByIDHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	// Retrieve UserSettings from the database
-	settings, err := app.Models.UserSettings.GetByID(ctx, *userID)
+	// Retrieve active settings through the canonical user-owned lookup.
+	settings, err := app.Models.UserSettings.GetByUserID(ctx, *userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			app.respondWithError(w, fmt.Errorf("user settings not found for user_id: %s", userID), http.StatusNotFound)
+		if errors.Is(err, data.ErrUserSettingsNotFound) {
+			app.respondWithError(
+				w,
+				fmt.Errorf(
+					"user settings not found for user_id: %s",
+					*userID,
+				),
+				http.StatusNotFound,
+			)
 		} else {
-			logger.Error("Failed to retrieve user settings", "error", err)
-			app.respondWithError(w, fmt.Errorf("failed to retrieve user settings: %w", err), http.StatusInternalServerError)
+			logger.Error(
+				"Failed to retrieve user settings",
+				"user_id", *userID,
+				"error", err,
+			)
+			app.respondWithError(
+				w,
+				fmt.Errorf("failed to retrieve user settings: %w", err),
+				http.StatusInternalServerError,
+			)
 		}
 		return
 	}
@@ -181,10 +225,9 @@ func (app *Application) GetUserSettingsByIDHandler(w http.ResponseWriter, r *htt
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     settings.UserID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -228,14 +271,29 @@ func (app *Application) GetUserSettingsByUserIDHandler(w http.ResponseWriter, r 
 		return
 	}
 
-	// Retrieve user settings from the database
-	settings, err := app.Models.UserSettings.GetByID(ctx, *userID)
+	// Retrieve active settings through the canonical user-owned lookup.
+	settings, err := app.Models.UserSettings.GetByUserID(ctx, *userID)
 	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			app.respondWithError(w, fmt.Errorf("user settings not found for user_id: %s", *userID), http.StatusNotFound)
+		if errors.Is(err, data.ErrUserSettingsNotFound) {
+			app.respondWithError(
+				w,
+				fmt.Errorf(
+					"user settings not found for user_id: %s",
+					*userID,
+				),
+				http.StatusNotFound,
+			)
 		} else {
-			logger.Error("Failed to retrieve user settings", "error", err)
-			app.respondWithError(w, fmt.Errorf("failed to retrieve user settings: %w", err), http.StatusInternalServerError)
+			logger.Error(
+				"Failed to retrieve user settings",
+				"user_id", *userID,
+				"error", err,
+			)
+			app.respondWithError(
+				w,
+				fmt.Errorf("failed to retrieve user settings: %w", err),
+				http.StatusInternalServerError,
+			)
 		}
 		return
 	}
@@ -269,10 +327,9 @@ func (app *Application) GetUserSettingsByUserIDHandler(w http.ResponseWriter, r 
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     settings.UserID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -376,10 +433,9 @@ func (app *Application) GetAllUserSettingsHandler(w http.ResponseWriter, r *http
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     "all_user_settings",
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -409,16 +465,15 @@ func (app *Application) GetAllUserSettingsHandler(w http.ResponseWriter, r *http
 }
 
 
-// UpdateUserSettingsHandler handles partial updates to a user’s settings.
+// UpdateUserSettingsHandler updates an active user's settings.
 //
-// Behaviour
-// ----------
-//   • Allows users to update **their own** settings; admins / internal operators may update any.  
-//   • Accepts a _partial_ JSON payload (omitted fields remain unchanged).  
-//   • Enforces role / permission checks using HasRole / HasPermission helpers.  
-//   • Persists the change via UserSettingsModel.Update, with field‑level restrictions for self‑updates.  
-//   • Resolves audit‑action & entity‑type dynamically (creating them if missing) and writes an audit log.  
-//   • 200 on success, 400 on bad input, 403 on auth failure, 500 on internal error.
+// Authenticated users may update their own settings. Internal/admin actors may
+// update another user's settings only when they hold the
+// "update_user_settings" permission.
+//
+// The handler accepts the canonical UserSettings payload and delegates the
+// complete row update to UserSettingsModel.Update. It does not implement
+// partial-update or field-merging semantics.
 func (app *Application) UpdateUserSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("UpdateUserSettingsHandler")
 
@@ -467,9 +522,31 @@ func (app *Application) UpdateUserSettingsHandler(w http.ResponseWriter, r *http
 		input.UserID = *userID // integrity guard
 	}
 
-	// Persist change
-	if err := app.Models.UserSettings.Update(ctx, &input, isAdmin); err != nil {
-		app.respondWithError(w, err, http.StatusInternalServerError)
+	// Authorization has already been enforced at the handler boundary.
+	// Persistence receives only the canonical settings row.
+	if err := app.Models.UserSettings.Update(ctx, &input); err != nil {
+		if errors.Is(err, data.ErrUserSettingsNotFound) {
+			app.respondWithError(
+				w,
+				fmt.Errorf(
+					"user settings not found for user_id: %s",
+					input.UserID,
+				),
+				http.StatusNotFound,
+			)
+		} else {
+			logger.Error(
+				"Failed to update user settings",
+				"actor_user_id", *userID,
+				"target_user_id", input.UserID,
+				"error", err,
+			)
+			app.respondWithError(
+				w,
+				fmt.Errorf("failed to update user settings: %w", err),
+				http.StatusInternalServerError,
+			)
+		}
 		return
 	}
 
@@ -502,10 +579,9 @@ func (app *Application) UpdateUserSettingsHandler(w http.ResponseWriter, r *http
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     input.UserID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
