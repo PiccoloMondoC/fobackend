@@ -1,4 +1,39 @@
+// Package main provides HTTP handlers for user registration, authentication,
+// external identity-provider login, OAuth account linking, password management,
+// refresh-token rotation, logout, and account lifecycle operations.
+//
 // sdworkspace/sdbackend/internal/server/cmd/api/users.go
+//
+// GTM:
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User authentication handlers are release-critical identity and session
+//	  lifecycle infrastructure. They provide the HTTP boundary for account
+//	  registration, email/password authentication, verified Google and Facebook
+//	  login, OAuth account linking, password management, access-token issuance,
+//	  refresh-token rotation, logout, and controlled account deletion required
+//	  by the initial SagrentiDeals release spine.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve controlled registration and role-assignment boundaries.
+//	Preserve email/password authentication through the canonical user model.
+//	Preserve Google and Facebook token verification through TokenService.
+//	Preserve access-token issuance through the canonical EdDSA token service.
+//	Preserve protected refresh-token persistence and lookup.
+//	Preserve mandatory refresh-token rotation before issuing replacement tokens.
+//	Preserve authenticated OAuth account-linking ownership boundaries.
+//	Preserve password hashing through the shared security package.
+//	Preserve account soft-delete semantics.
+//	Do not persist, log, audit, or return protected token hashes or password
+//	material.
+//	Block deployment if this file breaks registration, login, external identity
+//	verification, token issuance, refresh-token rotation, logout, password
+//	management, OAuth linking, account deletion, or authentication integrity.
 package main
 
 import (
@@ -9,7 +44,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/auth"
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/security" 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils/timeutil"
@@ -125,10 +159,9 @@ func (app *Application) RegisterUserHandler(w http.ResponseWriter, r *http.Reque
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       &userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		ctxAudit, cancelAudit := context.WithTimeout(context.Background(), cfgTimeout)
 		defer cancelAudit()
@@ -190,47 +223,115 @@ func (app *Application) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
 
-	// Provider‑specific verification
+	// Provider-specific authentication.
 	var (
 		user *data.User
 		err  error
 	)
-	switch in.Provider {
+
+	switch strings.ToLower(strings.TrimSpace(in.Provider)) {
 	case "email":
+		in.Email = strings.TrimSpace(in.Email)
+
 		if in.Email == "" || in.Password == "" {
-			app.respondWithError(w, errors.New("email & password required"), http.StatusBadRequest)
+			app.respondWithError(
+				w,
+				errors.New("email and password are required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
-		user, err = app.Models.User.Authenticate(ctx, in.Email, in.Password, "", "")
+
+		user, err = app.Models.User.Authenticate(
+			ctx,
+			in.Email,
+			in.Password,
+			"",
+			"",
+		)
+
 	case "google":
+		in.IDToken = strings.TrimSpace(in.IDToken)
+
 		if in.IDToken == "" {
-			app.respondWithError(w, errors.New("id_token required"), http.StatusBadRequest)
+			app.respondWithError(
+				w,
+				errors.New("id_token is required"),
+				http.StatusBadRequest,
+			)
 			return
 		}
-		email, vErr := auth.VerifyGoogleToken(ctx, in.IDToken, app.Config.OAuth.GoogleClientID)
-		if vErr != nil {
-			logger.Warn("google token verify failed", "err", vErr)
-			app.respondWithError(w, errors.New("invalid google token"), http.StatusUnauthorized)
+
+		email, verifyErr := app.TokenService.VerifyGoogleToken(
+			ctx,
+			in.IDToken,
+			app.Config.OAuth.GoogleClientID,
+		)
+		if verifyErr != nil {
+			logger.Warn(
+				"google token verification failed",
+				"error",
+				verifyErr,
+			)
+			app.respondWithError(
+				w,
+				errors.New("invalid google token"),
+				http.StatusUnauthorized,
+			)
 			return
 		}
-		// NOTE: Authenticate() expects googleID, but Google tokeninfo gives us
-		// the verified email only. We therefore resolve by email → safer +
-		// keeps one authoritative lookup path.
+
 		user, err = app.Models.User.GetByEmail(ctx, email)
+
 	case "facebook":
+		in.AccessToken = strings.TrimSpace(in.AccessToken)
+		in.FacebookAppTok = strings.TrimSpace(in.FacebookAppTok)
+
 		if in.AccessToken == "" || in.FacebookAppTok == "" {
-			app.respondWithError(w, errors.New("access_token & facebook_app_token required"), http.StatusBadRequest)
+			app.respondWithError(
+				w,
+				errors.New(
+					"access_token and facebook_app_token are required",
+				),
+				http.StatusBadRequest,
+			)
 			return
 		}
-		fbUID, vErr := auth.VerifyFacebookToken(ctx, in.AccessToken, in.FacebookAppTok, app.Config.OAuth.FacebookAppID)
-		if vErr != nil {
-			logger.Warn("facebook token verify failed", "err", vErr)
-			app.respondWithError(w, errors.New("invalid facebook token"), http.StatusUnauthorized)
+
+		facebookUserID, verifyErr := app.TokenService.VerifyFacebookToken(
+			ctx,
+			in.AccessToken,
+			in.FacebookAppTok,
+			app.Config.OAuth.FacebookAppID,
+		)
+		if verifyErr != nil {
+			logger.Warn(
+				"facebook token verification failed",
+				"error",
+				verifyErr,
+			)
+			app.respondWithError(
+				w,
+				errors.New("invalid facebook token"),
+				http.StatusUnauthorized,
+			)
 			return
 		}
-		user, err = app.Models.User.Authenticate(ctx, "", "", "", fbUID) // facebook login path
+
+		user, err = app.Models.User.Authenticate(
+			ctx,
+			"",
+			"",
+			"",
+			facebookUserID,
+		)
+
 	default:
-		app.respondWithError(w, errors.New("unsupported provider"), http.StatusBadRequest)
+		app.respondWithError(
+			w,
+			errors.New("unsupported authentication provider"),
+			http.StatusBadRequest,
+		)
 		return
 	}
 
@@ -273,10 +374,9 @@ func (app *Application) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       &user.ID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     user.ID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		ctxAudit, cancelAudit := context.WithTimeout(context.Background(), cfgTimeout)
 		defer cancelAudit()
@@ -398,10 +498,9 @@ func (app *Application) LinkOAuthAccountHandler(w http.ResponseWriter, r *http.R
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(), // the user being modified
-			Timestamp:    timeutil.Now(),
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
@@ -510,10 +609,9 @@ func (app *Application) SetPasswordHandler(w http.ResponseWriter, r *http.Reques
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		if insertErr := app.Models.AuditLog.Insert(ctx, &audit); insertErr != nil {
 			// Audit logging failed (partial success)
@@ -581,15 +679,50 @@ func (app *Application) RefreshTokenHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	// ────────────────────────────── 3. Rotate token ──────────────────────────────
-	if err := app.Models.Token.RevokeRefreshToken(ctx, dbTok.Token); err != nil {
-		// Log but continue – rotation failure shouldn’t block auth.
-		logger.Error("failed to revoke old refresh token", "err", err)
+	//
+	// Rotation is mandatory. Replacement tokens must not be issued while the
+	// presented refresh token remains valid, because that would permit parallel
+	// refresh-token reuse and weaken replay containment.
+	if err := app.Models.Token.RevokeRefreshToken(
+		ctx,
+		input.RefreshToken,
+	); err != nil {
+		logger.Error(
+			"failed to revoke presented refresh token",
+			"token_id",
+			dbTok.ID,
+			"user_id",
+			dbTok.UserID,
+			"error",
+			err,
+		)
+		app.respondWithError(
+			w,
+			errors.New("could not rotate refresh token"),
+			http.StatusInternalServerError,
+		)
+		return
 	}
 
-	accessTok, newRefreshTok, err := app.TokenService.GenerateTokensPair(ctx, dbTok.UserID)
+	accessTok, newRefreshTok, err := app.TokenService.GenerateTokensPair(
+		ctx,
+		dbTok.UserID,
+	)
 	if err != nil {
-		logger.Error("token generation failed", "err", err)
-		app.respondWithError(w, errors.New("could not generate tokens"), http.StatusInternalServerError)
+		logger.Error(
+			"replacement token generation failed",
+			"user_id",
+			dbTok.UserID,
+			"revoked_token_id",
+			dbTok.ID,
+			"error",
+			err,
+		)
+		app.respondWithError(
+			w,
+			errors.New("could not generate replacement tokens"),
+			http.StatusInternalServerError,
+		)
 		return
 	}
 
@@ -622,10 +755,9 @@ func (app *Application) RefreshTokenHandler(w http.ResponseWriter, r *http.Reque
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       &dbTok.UserID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     dbTok.ID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		ctxAudit, cancelAudit := context.WithTimeout(context.Background(), cfgTimeout)
 		defer cancelAudit()
@@ -725,10 +857,9 @@ func (app *Application) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       &tokenDetails.UserID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     tokenDetails.UserID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 
 		ctxAudit, cancelAudit := context.WithTimeout(context.Background(), cfgTimeout)
@@ -820,10 +951,9 @@ func (app *Application) DeleteMeHandler(w http.ResponseWriter, r *http.Request) 
 		audit := &data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     userID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 		auditCtx, auditCancel := context.WithTimeout(context.Background(), cfgTimeout)
 		defer auditCancel()
@@ -920,10 +1050,9 @@ func (app *Application) AdminDeleteUserHandler(w http.ResponseWriter, r *http.Re
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       actorID,
-			ActionID:     &action.ID,
+			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
 			EntityID:     targetUserID.String(),
-			Timestamp:    timeutil.Now(),
 		}
 
 		ctxAudit, cancelAudit := context.WithTimeout(context.Background(), cfgTimeout)
