@@ -371,6 +371,130 @@ func (app *Application) Routes() http.Handler {
 		})
 
 
+		// Merchant Accounts
+		v1.Route("/merchant-accounts", func(ma chi.Router) {
+			ma.Use(app.AuthMiddleware)
+
+			ma.With(
+				app.RequirePermission(
+					"create_merchant_account",
+				),
+			).Post(
+				"/",
+				app.CreateMerchantAccountHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"read_merchant_account_by_merchant",
+				),
+			).Post(
+				"/by-merchant",
+				app.GetMerchantAccountByMerchantIDHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"read_deleted_merchant_account_by_merchant",
+				),
+			).Post(
+				"/admin/by-merchant",
+				app.GetMerchantAccountByMerchantIDIncludingDeletedHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"read_merchant_account_by_merchant",
+				),
+			).Post(
+				"/exists/by-merchant",
+				app.ExistsMerchantAccountByMerchantIDHandler,
+			)
+
+			// Permission is resolved inside the handler according to
+			// include_deleted:
+			// list_merchant_accounts or list_deleted_merchant_accounts.
+			ma.With(
+				app.PaginationAndFilterMiddleware,
+			).Get(
+				"/all",
+				app.GetAllMerchantAccountsHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"read_deleted_merchant_account",
+				),
+			).Get(
+				"/admin/{merchantAccountID}",
+				app.GetMerchantAccountByIDIncludingDeletedHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"read_merchant_account",
+				),
+			).Get(
+				"/{merchantAccountID}",
+				app.GetMerchantAccountByIDHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"activate_merchant_account",
+				),
+			).Patch(
+				"/{merchantAccountID}/activate",
+				app.ActivateMerchantAccountHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"suspend_merchant_account",
+				),
+			).Patch(
+				"/{merchantAccountID}/suspend",
+				app.SuspendMerchantAccountHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"close_merchant_account",
+				),
+			).Patch(
+				"/{merchantAccountID}/close",
+				app.CloseMerchantAccountHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"soft_delete_merchant_account",
+				),
+			).Delete(
+				"/{merchantAccountID}/soft-delete",
+				app.SoftDeleteMerchantAccountHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"restore_merchant_account",
+				),
+			).Patch(
+				"/{merchantAccountID}/restore",
+				app.RestoreMerchantAccountHandler,
+			)
+
+			ma.With(
+				app.RequirePermission(
+					"hard_delete_merchant_account",
+				),
+			).Delete(
+				"/{merchantAccountID}",
+				app.HardDeleteMerchantAccountHandler,
+			)
+		})
+
+
 		// Merchant Program Entitlements
 		v1.Route("/merchant-program-entitlements", func(mpe chi.Router) {
 			mpe.Use(app.AuthMiddleware)
