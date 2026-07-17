@@ -110,6 +110,7 @@ type Models struct {
 
 	// Layer 2.4 — Merchant / Future Offering Domain
 	Merchant            MerchantModel            // SPINE: Future Offering v1 — merchant identity
+	MerchantAccount     MerchantAccountModel     // SPINE: merchant platform-account lifecycle
 	MerchantType        MerchantTypeModel        // SPINE: minimal foundation — merchant classification lookup
 	MerchantProgramPlan MerchantProgramPlanModel // SPINE: Future Offering v1 — merchant program plan reference table
 	MerchantProgramEntitlement  MerchantProgramEntitlementModel // SPINE: Future Offering v1 — merchant program entitlement/capability gate
@@ -211,6 +212,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 
 		// Layer 2.4 — Merchant / Future Offering Domain
 		Merchant:              MerchantModel{DB: dbPool, Logger: logger},              // SPINE: Future Offering v1
+		MerchantAccount:       MerchantAccountModel{DB: dbPool, Logger: logger},
 		MerchantType:          MerchantTypeModel{DB: dbPool, Logger: logger},          // SPINE: minimal foundation
 		MerchantProgramPlan:   MerchantProgramPlanModel{DB: dbPool, Logger: logger},   // SPINE: Future Offering v1
 		MerchantProgramEntitlement:  MerchantProgramEntitlementModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
