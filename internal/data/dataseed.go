@@ -4,27 +4,29 @@
 // sdworkspace/sdbackend/internal/data/dataseed.go
 //
 // GTM:
-//   Layer: 2.1 Database / Governance Foundation
-//   Release Class: SPINE
-//   Reason:
-//     Dataseeding is release-critical foundation infrastructure. This file
-//     establishes required seed/reference data for roles, permissions, role
-//     mappings, audit metadata, statuses, lookup vocabularies, affiliate
-//     programs, merchant/catalog foundations, and initial offer data needed for
-//     the application to operate correctly.
+//
+//	Layer: 2.1 Database / Governance Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Dataseeding is release-critical foundation infrastructure. This file
+//	  establishes required seed/reference data for roles, permissions, role
+//	  mappings, audit metadata, statuses, lookup vocabularies, affiliate
+//	  programs, merchant/catalog foundations, and initial offer data needed for
+//	  the application to operate correctly.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve idempotent seed behavior.
-//   Preserve role/permission governance.
-//   Preserve audit action/entity metadata.
-//   Preserve required lookup/reference data.
-//   Preserve seed ordering dependencies.
-//   Block deployment if this file breaks build, authorization setup,
-//   audit metadata resolution, catalog bootstrap, or foundational seed integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve idempotent seed behavior.
+//	Preserve role/permission governance.
+//	Preserve audit action/entity metadata.
+//	Preserve required lookup/reference data.
+//	Preserve seed ordering dependencies.
+//	Block deployment if this file breaks build, authorization setup,
+//	audit metadata resolution, catalog bootstrap, or foundational seed integrity.
 package data
- 
+
 import (
 	"context"
 	"errors"
@@ -43,7 +45,7 @@ type OAuthClientSeedSecrets struct {
 	WebClientSecret    string
 	MobileClientSecret string
 }
- 
+
 const (
 	// ---------------------------------------------------------------
 	// role_permissions
@@ -243,7 +245,7 @@ const (
 	
 	ON CONFLICT (role_id, permission_id) DO NOTHING;
 	`
- 
+
 	// ---------------------------------------------------------------
 	// oauth_clients
 	//
@@ -279,7 +281,7 @@ const (
 		)
 	ON CONFLICT (client_id) DO NOTHING;
 	`
- 
+
 	insertMarketSegmentQuery = `
 	INSERT INTO market_segments (name, description) VALUES
 		('Mass Market',       'Broadly available products targeting the general consumer population.'),
@@ -291,7 +293,7 @@ const (
 		('Eco & Sustainable', 'Products positioned on environmental responsibility or sustainable sourcing.')
 	ON CONFLICT (name) DO NOTHING;
 	`
- 
+
 	insertAffiliateProgramQuery = `
 	INSERT INTO affiliate_programs (name, website, api_auth_method) VALUES
 		('Amazon Associates',   'https://affiliate-program.amazon.com', 'None'),
@@ -304,7 +306,7 @@ const (
 		('Walmart Affiliates',  'https://affiliates.walmart.com',       'None')
 	ON CONFLICT (name) DO NOTHING;
 	`
- 
+
 	// Amounts are in USD — adjust before launch per your pricing model.
 	insertSponsorshipBidMinimumsQuery = `
 	INSERT INTO sponsorship_bid_minimums (bid_type_id, min_bid_amount, min_max_budget)
@@ -317,7 +319,7 @@ const (
 	JOIN sponsorship_bid_types sbt ON sbt.code = v.code
 	ON CONFLICT (bid_type_id) DO NOTHING;
 	`
- 
+
 	insertValueTagQuery = `
 	INSERT INTO value_tags (slug, name, description) VALUES
 		('best-seller',      'Best Seller',      'One of the top-selling items in its category.'),
@@ -335,7 +337,7 @@ const (
 		('member-exclusive', 'Member Exclusive', 'Accessible only to signed-in or loyalty members.')
 	ON CONFLICT (slug) DO NOTHING;
 	`
- 
+
 	insertAudienceQuery = `
 	INSERT INTO audiences (slug, name, description) VALUES
 		('general',              'General',              'No specific audience restriction — suitable for all shoppers.'),
@@ -355,8 +357,8 @@ const (
 		('tech-savvy-homeowners','Tech Savvy Homeowners','Homeowners comfortable with digital tools and smart technology, often interested in connected devices, home improvement, and efficiency-focused products.')
 	ON CONFLICT (slug) DO NOTHING;
 	`
- 
-		insertSeasonalRelevanceQuery = `
+
+	insertSeasonalRelevanceQuery = `
 	INSERT INTO seasonal_relevances (slug, name, description)
 	VALUES
 		('spring', 'Spring', 'Relevant to the spring season.'),
@@ -389,7 +391,7 @@ const (
 		('eBay',       'Global online marketplace for new and used goods.',                    'https://www.ebay.com')
 	ON CONFLICT (name) DO NOTHING;
 	`
- 
+
 	insertBrandQuery = `
 	INSERT INTO brands (name) VALUES
 		('Apple'),('Samsung'),('Sony'),('LG'),('Microsoft'),
@@ -399,7 +401,7 @@ const (
 		('Nintendo'),('Instant Pot'),('KitchenAid'),('Dyson'),('Philips')
 	ON CONFLICT (name) DO NOTHING;
 	`
- 
+
 	insertSocialPlatformQuery = `
 	INSERT INTO social_platforms (name, base_url, description) VALUES
 		('Instagram', 'https://www.instagram.com/',  'Photo and video sharing social network.'),
@@ -414,7 +416,7 @@ const (
 		('Reddit',    'https://www.reddit.com/user/','Community-driven discussion and content aggregation platform.')
 	ON CONFLICT (name) DO NOTHING;
 	`
- 
+
 	insertDashboardTemplateQuery = `
 	INSERT INTO dashboard_templates (name, description, layout, widgets, filters) VALUES
 		(
@@ -768,7 +770,6 @@ const (
 	ON CONFLICT (plan_id, entitlement_code) DO NOTHING;
 	`
 
-
 	insertRolesQuery = `
 	INSERT INTO roles (name, description, hierarchy_level, is_internal, assignable_at_signup, approval_required) VALUES
 		('admin', 'Role for managing users, products, merchants, and more.', 3, TRUE, FALSE, FALSE),
@@ -783,6 +784,11 @@ const (
 		`
 	insertPermissionsQuery = `
 	INSERT INTO permissions (name, description) VALUES
+		-- Admin Console
+		(
+			'read_admin_console',
+			'Allows privileged access to the Admin Console control-plane overview'
+		),
 		-- Affiliate Performance
 		('create_affiliate_performance', 'Allows creating affiliate performance'),
 		('delete_affiliate_performance', 'Allows deleting an affiliate performance record'),
@@ -1103,6 +1109,10 @@ const (
 	INSERT INTO entity_types (name, description) VALUES
 		('action', 'Action entity for audit trail and metadata retrieval'),
 		('admin_dashboard', 'Admin dashboard entity'),
+		(
+			'admin_console',
+			'Privileged Admin Console control-plane access surface'
+		),
 		('affiliate_performance', 'Affiliate Performance entity'),
 		('affiliate_program', 'Affiliate program entity'),
 		('audit_log', 'Audit log entity used to track system and user actions'),
@@ -1166,6 +1176,11 @@ const (
 	INSERT INTO actions (name, description) VALUES
 		-- Activation Codes
 		('create_activation_token', ''),
+		-- Admin Console
+		(
+			'read_admin_console',
+			'Read the Admin Console control-plane overview'
+		),
 		-- Affiliate Performance
 		('create_affiliate_performance', 'Create a new affiliate performance record'),
 		('delete_affiliate_performance', 'Delete an existing affiliate performance record'),
@@ -1887,7 +1902,7 @@ const (
 	ON CONFLICT (code) DO NOTHING;
 	`
 )
- 
+
 // seedSpec pairs a human-readable seed name with its SQL and optional bind
 // arguments for ordered atomic seeding.
 type seedSpec struct {

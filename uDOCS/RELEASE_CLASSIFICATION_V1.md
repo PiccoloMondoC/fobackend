@@ -27,8 +27,8 @@ Engineering builds capabilities; operations exercises them through configuration
 
 ## SPINE (v1 build)
 
-### Phase 1 — Admin Console (SPINE)
-- [ ] `admin_console.go`
+### Phase 1 — Admin Control Plane Foundation
+- [ ] `admin_console.go` — console boundary, authorization, capability registry, and completed-domain overview
 
 ### Phase 2 — Platform Architecture
 - [x] `platform_settings.go` — Done
@@ -36,7 +36,7 @@ Engineering builds capabilities; operations exercises them through configuration
 
 ### Phase 3 — Merchant Foundation
 A merchant must exist before anything else.
-- [ ] `merchant_accounts.go`
+- [x ] `merchant_accounts.go` — Done
 
 ### Phase 4 — Commercial Foundation
 Everything needed to let the platform commercially operate, even if all fees are currently waived. Notice that billing ledger comes last — everything else generates financial activity; the ledger records it.

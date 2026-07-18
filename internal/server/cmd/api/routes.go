@@ -35,12 +35,12 @@
 package main
 
 import (
-	"net/http"
-	"strings"
-	"github.com/go-chi/cors"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"net/http"
+	"strings"
 )
 
 func (app *Application) Routes() http.Handler {
@@ -99,7 +99,7 @@ func (app *Application) Routes() http.Handler {
 		}
 
 		// ---- PUBLIC API ROUTES (no auth required) ----
-		
+
 		// Public offers routes — registered first for public accessibility.
 		v1.Group(func(publicOffers chi.Router) {
 			// GET /api/v1/offers — public live offers
@@ -153,8 +153,8 @@ func (app *Application) Routes() http.Handler {
 			rr.With(app.RequirePermission("role:assign")).Post("/assign", app.AssignRoleToUserHandler)
 			rr.With(app.RequirePermission("role:revoke")).Post("/revoke", app.RevokeRoleFromUserHandler)
 			rr.With(app.RequirePermission("role:view_roles")).Get("/user/{userID}", app.GetRolesForUserHandler)
-		//	rr.With(app.RequirePermission("role:permissions:list")).Get("/{roleID}/permissions", app.GetRolePermissionsHandler)
-		//	rr.With(app.RequirePermission("role:permissions:update")).Patch("/{roleID}/permissions", app.UpdateRolePermissionsHandler)
+			//	rr.With(app.RequirePermission("role:permissions:list")).Get("/{roleID}/permissions", app.GetRolePermissionsHandler)
+			//	rr.With(app.RequirePermission("role:permissions:update")).Patch("/{roleID}/permissions", app.UpdateRolePermissionsHandler)
 		})
 
 		// Permissions
@@ -164,7 +164,6 @@ func (app *Application) Routes() http.Handler {
 			pr.With(app.RequirePermission("permission:check")).Get("/check/{userID}/{permission}", app.CheckUserPermissionHandler)
 		})
 
-		
 		// Audit Logs
 		v1.Route("/audit-logs", func(al chi.Router) {
 			al.Use(app.AuthMiddleware)
@@ -224,6 +223,19 @@ func (app *Application) Routes() http.Handler {
 				Get("/all", app.GetAllActionsHandler)
 		})
 
+		// Admin Console
+		v1.Route("/admin-console", func(ac chi.Router) {
+			ac.Use(app.AuthMiddleware)
+
+			ac.With(
+				app.RequirePermission(
+					permissionReadAdminConsole,
+				),
+			).Get(
+				"/",
+				app.GetAdminConsoleOverviewHandler,
+			)
+		})
 
 		// Platform Settings
 		v1.Route("/platform-settings", func(ps chi.Router) {
@@ -276,7 +288,6 @@ func (app *Application) Routes() http.Handler {
 				Delete("/{platformSettingID}", app.HardDeletePlatformSettingHandler)
 		})
 
-
 		// Platform Setting History
 		v1.Route("/platform-setting-history", func(psh chi.Router) {
 			psh.Use(app.AuthMiddleware)
@@ -309,7 +320,6 @@ func (app *Application) Routes() http.Handler {
 			)
 		})
 
-
 		// Merchants
 		v1.Route("/merchants", func(ar chi.Router) {
 			ar.Use(app.AuthMiddleware)
@@ -317,7 +327,7 @@ func (app *Application) Routes() http.Handler {
 			// POST: Create a new merchant (context-free, JSON input)
 			ar.With(app.RequirePermission("create_merchant")).
 				Post("/", app.CreateMerchantHandler)
-			
+
 			// POST: Retrieve merchant by name (JSON input)
 			ar.With(app.RequirePermission("read_merchant")).
 				Post("/by-name", app.GetMerchantByNameHandler)
@@ -364,12 +374,11 @@ func (app *Application) Routes() http.Handler {
 			ar.With(app.PaginationAndFilterMiddleware).
 				With(app.RequirePermission("list_merchants")).
 				Get("/all", app.GetAllMerchantsHandler)
-				
+
 			// GET: Count all non-deleted merchants
 			ar.With(app.RequirePermission("list_merchants")).
 				Get("/count", app.CountMerchantsHandler)
 		})
-
 
 		// Merchant Accounts
 		v1.Route("/merchant-accounts", func(ma chi.Router) {
@@ -494,7 +503,6 @@ func (app *Application) Routes() http.Handler {
 			)
 		})
 
-
 		// Merchant Program Entitlements
 		v1.Route("/merchant-program-entitlements", func(mpe chi.Router) {
 			mpe.Use(app.AuthMiddleware)
@@ -523,7 +531,6 @@ func (app *Application) Routes() http.Handler {
 			mpe.With(app.RequirePermission("delete_merchant_program_entitlement")).
 				Delete("/{merchantProgramEntitlementID}", app.DeleteMerchantProgramEntitlementHandler)
 		})
-
 
 		// Merchant Program Plans
 		v1.Route("/merchant-program-plans", func(mpp chi.Router) {
@@ -563,7 +570,6 @@ func (app *Application) Routes() http.Handler {
 			mpp.With(app.RequirePermission("restore_merchant_program_plan")).
 				Patch("/{merchantProgramPlanID}/restore", app.RestoreMerchantProgramPlanHandler)
 		})
-
 
 		// Merchant Program Subscriptions
 		v1.Route("/merchant-program-subscriptions", func(mps chi.Router) {
@@ -612,7 +618,6 @@ func (app *Application) Routes() http.Handler {
 				Patch("/{merchantProgramSubscriptionID}/restore", app.RestoreMerchantProgramSubscriptionHandler)
 		})
 
-
 		// Categories
 		v1.Route("/categories", func(cat chi.Router) {
 			cat.Use(app.AuthMiddleware)
@@ -637,7 +642,6 @@ func (app *Application) Routes() http.Handler {
 			cat.With(app.RequirePermission("read_category")).
 				Get("/by-id", app.GetCategoryByIDHandler)
 		})
-
 
 		// Offers
 		// Auth-protected offer routes.
@@ -692,7 +696,6 @@ func (app *Application) Routes() http.Handler {
 			ud.With(app.RequirePermission("view_admin_dashboard_stats")).
 				Get("/dashboard-stats", app.AdminDashboardStatsHandler)
 		})
-
 
 		// User Notifications (system-managed)
 		v1.Route("/user-notifications", func(un chi.Router) {
@@ -784,15 +787,13 @@ func (app *Application) Routes() http.Handler {
 
 	})
 
-
 	// JSON 404 for everything else
-    r.NotFound(app.NotFoundHandler)
+	r.NotFound(app.NotFoundHandler)
 
 	app.Router = r
 	return r
 }
 
-
 func (app *Application) registerPublic(method, path string) {
-    app.publicRoutes.add(method, path)
+	app.publicRoutes.add(method, path)
 }
