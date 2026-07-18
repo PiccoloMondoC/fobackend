@@ -210,7 +210,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 	CREATE EXTENSION IF NOT EXISTS "citext";
 	CREATE EXTENSION IF NOT EXISTS "pgcrypto";
-
+	CREATE EXTENSION IF NOT EXISTS btree_gist;
 
 	-- ===============================================================
 	-- Shared trigger to keep updated_at current
@@ -3220,97 +3220,219 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	-- ===============================================================
 
 	CREATE TABLE IF NOT EXISTS merchant_program_fee_schedules (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		fee_scope TEXT NOT NULL DEFAULT 'plan'
-			CHECK (fee_scope IN ('global', 'plan')),
+	fee_scope TEXT NOT NULL DEFAULT 'plan'
+		CHECK (fee_scope IN ('global', 'plan')),
 
-		plan_id UUID REFERENCES merchant_program_plans(id) ON DELETE RESTRICT,
+	plan_id UUID REFERENCES merchant_program_plans(id) ON DELETE RESTRICT,
 
-		fee_type TEXT NOT NULL CHECK (fee_type IN (
-			'merchant_setup_fee',
-			'subscription_fee',
-			'campaign_performance_fee',
-			'future_offering_fee',
-			'adjustment_fee',
-			'refund',
-			'reversal'
-		)),
+	fee_type TEXT NOT NULL CHECK (fee_type IN (
+		'merchant_setup_fee',
+		'subscription_fee',
+		'campaign_performance_fee',
+		'future_offering_fee',
+		'adjustment_fee',
+		'refund',
+		'reversal'
+	)),
 
-		billing_interval TEXT NOT NULL CHECK (billing_interval IN (
-			'one_time',
-			'monthly',
-			'annual',
-			'event'
-		)),
+	billing_interval TEXT NOT NULL CHECK (billing_interval IN (
+		'one_time',
+		'monthly',
+		'annual',
+		'event'
+	)),
 
-		calculation_method TEXT NOT NULL CHECK (calculation_method IN (
-			'flat',
-			'percentage',
-			'hybrid',
-			'negotiated'
-		)),
+	calculation_method TEXT NOT NULL CHECK (calculation_method IN (
+		'flat',
+		'percentage',
+		'hybrid',
+		'negotiated'
+	)),
 
-		flat_amount NUMERIC(19,4) CHECK (flat_amount IS NULL OR flat_amount >= 0),
-		percentage_rate NUMERIC(9,6) CHECK (percentage_rate IS NULL OR percentage_rate >= 0),
+	flat_amount NUMERIC(19,4)
+		CHECK (
+			flat_amount IS NULL
+			OR flat_amount >= 0
+		),
 
-		minimum_fee NUMERIC(19,4) CHECK (minimum_fee IS NULL OR minimum_fee >= 0),
-		maximum_fee NUMERIC(19,4) CHECK (maximum_fee IS NULL OR maximum_fee >= 0),
+	percentage_rate NUMERIC(9,6)
+		CHECK (
+			percentage_rate IS NULL
+			OR percentage_rate >= 0
+		),
 
-		included_seats INTEGER NOT NULL DEFAULT 1 CHECK (included_seats >= 1),
-		extra_seat_fee NUMERIC(19,4) CHECK (extra_seat_fee IS NULL OR extra_seat_fee >= 0),
+	minimum_fee NUMERIC(19,4)
+		CHECK (
+			minimum_fee IS NULL
+			OR minimum_fee >= 0
+		),
 
-		currency CHAR(3) NOT NULL DEFAULT 'USD' CHECK (currency ~ '^[A-Z]{3}$'),
+	maximum_fee NUMERIC(19,4)
+		CHECK (
+			maximum_fee IS NULL
+			OR maximum_fee >= 0
+		),
 
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		effective_to TIMESTAMPTZ,
+	included_seats INTEGER NOT NULL DEFAULT 1
+		CHECK (included_seats >= 1),
 
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
+	extra_seat_fee NUMERIC(19,4)
+		CHECK (
+			extra_seat_fee IS NULL
+			OR extra_seat_fee >= 0
+		),
 
-		CONSTRAINT chk_fee_schedule_scope_plan
-			CHECK (
-				(fee_scope = 'global' AND plan_id IS NULL)
-				OR
-				(fee_scope = 'plan' AND plan_id IS NOT NULL)
-			),
+	currency CHAR(3) NOT NULL DEFAULT 'USD'
+		CHECK (currency ~ '^[A-Z]{3}$'),
 
-		CONSTRAINT chk_fee_schedule_effective_window
-			CHECK (effective_to IS NULL OR effective_to > effective_from),
+	is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
-		CONSTRAINT chk_fee_schedule_min_max
-			CHECK (maximum_fee IS NULL OR minimum_fee IS NULL OR maximum_fee >= minimum_fee),
+	effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	effective_to TIMESTAMPTZ,
 
-		CONSTRAINT chk_fee_schedule_flat_requires_amount
-			CHECK (calculation_method <> 'flat' OR flat_amount IS NOT NULL),
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	deleted_at TIMESTAMPTZ,
 
-		CONSTRAINT chk_fee_schedule_percentage_requires_rate
-			CHECK (calculation_method <> 'percentage' OR percentage_rate IS NOT NULL),
+	CONSTRAINT chk_fee_schedule_scope_plan
+		CHECK (
+			(
+				fee_scope = 'global'
+				AND plan_id IS NULL
+			)
+			OR
+			(
+				fee_scope = 'plan'
+				AND plan_id IS NOT NULL
+			)
+		),
 
-		CONSTRAINT chk_fee_schedule_hybrid_requires_both
-			CHECK (
-				calculation_method <> 'hybrid'
-				OR
-				(flat_amount IS NOT NULL AND percentage_rate IS NOT NULL)
-			),
+	CONSTRAINT chk_fee_schedule_effective_window
+		CHECK (
+			effective_to IS NULL
+			OR effective_to > effective_from
+		),
 
-		CONSTRAINT chk_fee_schedule_type_interval
-			CHECK (
-				(fee_type = 'merchant_setup_fee' AND billing_interval = 'one_time')
-				OR
-				(fee_type = 'subscription_fee' AND billing_interval IN ('monthly', 'annual'))
-				OR
-				(fee_type IN (
+	CONSTRAINT chk_fee_schedule_min_max
+		CHECK (
+			maximum_fee IS NULL
+			OR minimum_fee IS NULL
+			OR maximum_fee >= minimum_fee
+		),
+
+	CONSTRAINT chk_fee_schedule_flat_requires_amount
+		CHECK (
+			calculation_method <> 'flat'
+			OR flat_amount IS NOT NULL
+		),
+
+	CONSTRAINT chk_fee_schedule_percentage_requires_rate
+		CHECK (
+			calculation_method <> 'percentage'
+			OR percentage_rate IS NOT NULL
+		),
+
+	CONSTRAINT chk_fee_schedule_hybrid_requires_both
+		CHECK (
+			calculation_method <> 'hybrid'
+			OR (
+				flat_amount IS NOT NULL
+				AND percentage_rate IS NOT NULL
+			)
+		),
+
+	CONSTRAINT chk_fee_schedule_type_interval
+		CHECK (
+			(
+				fee_type = 'merchant_setup_fee'
+				AND billing_interval = 'one_time'
+			)
+			OR
+			(
+				fee_type = 'subscription_fee'
+				AND billing_interval IN ('monthly', 'annual')
+			)
+			OR
+			(
+				fee_type IN (
 					'campaign_performance_fee',
 					'future_offering_fee',
 					'adjustment_fee',
 					'refund',
 					'reversal'
-				) AND billing_interval = 'event')
+				)
+				AND billing_interval = 'event'
 			)
+		),
+
+	CONSTRAINT excl_merchant_program_fee_schedules_active_window
+		EXCLUDE USING gist (
+			fee_scope WITH =,
+
+			(
+				COALESCE(
+					plan_id,
+					'00000000-0000-0000-0000-000000000000'::uuid
+				)
+			) WITH =,
+
+			fee_type WITH =,
+
+			billing_interval WITH =,
+
+			(
+				tstzrange(
+					effective_from,
+					effective_to,
+					'[)'
+				)
+			) WITH &&
+		)
+		WHERE (
+			is_active = TRUE
+			AND deleted_at IS NULL
+		)
+);
+
+CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_plan
+	ON merchant_program_fee_schedules (
+		plan_id,
+		fee_type,
+		billing_interval,
+		effective_from DESC
+	)
+	WHERE (
+		fee_scope = 'plan'
+		AND deleted_at IS NULL
 	);
+
+CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_global
+	ON merchant_program_fee_schedules (
+		fee_type,
+		billing_interval,
+		effective_from DESC
+	)
+	WHERE (
+		fee_scope = 'global'
+		AND plan_id IS NULL
+		AND deleted_at IS NULL
+	);
+
+CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
+	ON merchant_program_fee_schedules (
+		fee_scope,
+		fee_type,
+		billing_interval,
+		effective_from,
+		effective_to
+	)
+	WHERE (
+		is_active = TRUE
+		AND deleted_at IS NULL
+	);
+
 
 	-- ===============================================================
 	-- Merchant Billing Account / Prepaid Balance

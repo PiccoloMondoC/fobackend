@@ -28,7 +28,7 @@ Engineering builds capabilities; operations exercises them through configuration
 ## SPINE (v1 build)
 
 ### Phase 1 — Admin Control Plane Foundation
-- [ ] `admin_console.go` — console boundary, authorization, capability registry, and completed-domain overview
+- [x ] `admin_console.go` — console boundary, authorization, capability registry, and completed-domain overview — Done
 
 ### Phase 2 — Platform Architecture
 - [x] `platform_settings.go` — Done
