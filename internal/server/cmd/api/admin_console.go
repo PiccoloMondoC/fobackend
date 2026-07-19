@@ -94,6 +94,7 @@ type adminConsoleDomains struct {
 	MerchantAccounts             bool `json:"merchant_accounts"`
 	MerchantProgramPlans         bool `json:"merchant_program_plans"`
 	MerchantProgramEntitlements  bool `json:"merchant_program_entitlements"`
+	MerchantProgramFeeSchedules  bool `json:"merchant_program_fee_schedules"`
 	MerchantProgramSubscriptions bool `json:"merchant_program_subscriptions"`
 }
 
@@ -288,6 +289,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			MerchantAccounts:             true,
 			MerchantProgramPlans:         true,
 			MerchantProgramEntitlements:  true,
+			MerchantProgramFeeSchedules:  true,
 			MerchantProgramSubscriptions: true,
 		},
 	}

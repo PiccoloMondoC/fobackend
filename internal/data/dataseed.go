@@ -942,6 +942,18 @@ const (
 		('read_merchant_program_entitlement', 'Allows reading merchant program entitlement records'),
 		('list_merchant_program_entitlements', 'Allows listing merchant program entitlements by plan'),
 		('delete_merchant_program_entitlement', 'Allows hard-deleting merchant program entitlement records'),
+		-- Merchant Program Fee Schedules
+		('create_merchant_program_fee_schedule', 'Allows creating a merchant program fee schedule'),
+		('read_merchant_program_fee_schedule', 'Allows reading a merchant program fee schedule'),
+		('list_merchant_program_fee_schedules', 'Allows listing merchant program fee schedules'),
+		('resolve_merchant_program_fee_schedule', 'Allows resolving effective merchant program fee policy'),
+		('activate_merchant_program_fee_schedule', 'Allows activating a merchant program fee schedule'),
+		('deactivate_merchant_program_fee_schedule', 'Allows deactivating a merchant program fee schedule'),
+		('retire_merchant_program_fee_schedule', 'Allows retiring a merchant program fee schedule'),
+		('replace_merchant_program_fee_schedule', 'Allows atomically replacing a merchant program fee schedule'),
+		('soft_delete_merchant_program_fee_schedule', 'Allows soft-deleting a merchant program fee schedule'),
+		('restore_merchant_program_fee_schedule', 'Allows restoring a merchant program fee schedule'),
+		('hard_delete_merchant_program_fee_schedule', 'Allows permanently deleting a merchant program fee schedule'),
 		-- Merchant Program Plans
 		('create_merchant_program_plan', 'Allows creating merchant program plan records'),
 		('read_merchant_program_plan', 'Allows reading merchant program plan records'),
@@ -1138,6 +1150,10 @@ const (
 		('merchant', 'Merchant entity'),
 		('merchant_account', 'Canonical merchant platform-account lifecycle entity'),
 		('merchant_program_entitlement', 'Merchant program entitlement capability-gate entity'),
+		(
+			'merchant_program_fee_schedule',
+			'Merchant program fee schedule effective-dated commercial policy entity'
+		),
 		('merchant_program_plan', 'Merchant program plan entity'),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
 		('merchants', 'Tracks merchant-related actions.'),
@@ -1377,6 +1393,18 @@ const (
 		('check_merchant_program_entitlement', 'Check whether a merchant program plan has an entitlement'),
 		('delete_merchant_program_entitlement', 'Delete a merchant program entitlement'),
 		('delete_merchant_program_entitlement_by_plan_and_code', 'Delete a merchant program entitlement by plan and code'),
+		-- Merchant Program Fee Schedules
+		('create_merchant_program_fee_schedule', 'Create a merchant program fee schedule'),
+		('read_merchant_program_fee_schedule', 'Read a merchant program fee schedule'),
+		('list_merchant_program_fee_schedules', 'List merchant program fee schedules'),
+		('resolve_merchant_program_fee_schedule', 'Resolve effective merchant program fee policy'),
+		('activate_merchant_program_fee_schedule', 'Activate a merchant program fee schedule'),
+		('deactivate_merchant_program_fee_schedule', 'Deactivate a merchant program fee schedule'),
+		('retire_merchant_program_fee_schedule', 'Retire a merchant program fee schedule'),
+		('replace_merchant_program_fee_schedule', 'Atomically replace a merchant program fee schedule'),
+		('soft_delete_merchant_program_fee_schedule', 'Soft-delete a merchant program fee schedule'),
+		('restore_merchant_program_fee_schedule', 'Restore a merchant program fee schedule'),
+		('hard_delete_merchant_program_fee_schedule', 'Permanently delete a merchant program fee schedule'),
 		-- Merchant Program Plans
 		('create_merchant_program_plan', 'Create a merchant program plan'),
 		('read_merchant_program_plan', 'Read a merchant program plan by ID'),
