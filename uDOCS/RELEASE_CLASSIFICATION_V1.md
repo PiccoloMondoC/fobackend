@@ -42,7 +42,7 @@ A merchant must exist before anything else.
 Everything needed to let the platform commercially operate, even if all fees are currently waived. Notice that billing ledger comes last — everything else generates financial activity; the ledger records it.
 - [x] `merchant_program_plans.go` — Done
 - [x] `merchant_program_entitlements.go` — Done
-- [ ] `merchant_program_fee_schedules.go`
+- [x ] `merchant_program_fee_schedules.go` — Done
 - [x] `merchant_program_subscriptions.go` — Done
 - [ ] `merchant_program_subscription_events.go`
 - [ ] `merchant_payment_methods.go`
