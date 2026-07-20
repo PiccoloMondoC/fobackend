@@ -1752,22 +1752,52 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 	CREATE TABLE IF NOT EXISTS merchant_program_subscription_events (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		subscription_id UUID NOT NULL REFERENCES merchant_program_subscriptions(id) ON DELETE CASCADE,
-		event_type TEXT NOT NULL CHECK (event_type IN (
-			'created',
-			'activated',
-			'plan_changed',
-			'paused',
-			'resumed',
-			'cancelled',
-			'expired',
-			'suspended'
-		)),
+
+		subscription_id UUID NOT NULL
+			REFERENCES merchant_program_subscriptions(id)
+			ON DELETE RESTRICT,
+
+		event_type TEXT NOT NULL
+			CHECK (
+				event_type IN (
+					'created',
+					'activated',
+					'plan_changed',
+					'paused',
+					'resumed',
+					'cancelled',
+					'expired',
+					'suspended'
+				)
+			),
+
 		note TEXT,
-		performed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+
+		performed_by UUID
+			REFERENCES users(id)
+			ON DELETE SET NULL,
+
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_program_subscription_events_subscription_timeline
+	ON merchant_program_subscription_events (
+		subscription_id,
+		created_at,
+		id
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_program_subscription_events_subscription_type_timeline
+	ON merchant_program_subscription_events (
+		subscription_id,
+		event_type,
+		created_at,
+		id
+	);
+
+	
 	-- ===============================================================
 	-- DEFERRED: Merchant Platform Credits / Merchant Platform Credit Eligible Fee Types
 	-- Non-v1 merchant credit account and eligibility infrastructure.

@@ -16,13 +16,23 @@
 //
 //	  Future Offering is Sagrenti's core business object. Merchant program
 //	  subscriptions are the durable merchant-plan lifecycle records that later
-//	  services will use to resolve merchant program access, Future Offering
-//	  readiness, entitlement eligibility, and Merchant Center plan state.
+//	  services use to resolve merchant program access, Future Offering
+//	  readiness, entitlement eligibility, Merchant Center plan state, and
+//	  subscription lifecycle administration.
 //
-//	  This file is not billing ledger logic, payment processing, checkout,
-//	  invoice handling, fee calculation, or merchant-of-record logic. Those
-//	  concerns belong to later billing/settlement files and to merchant-owned
-//	  commerce workflows.
+//	  Canonical current subscription state remains in
+//	  merchant_program_subscriptions. Commercially meaningful lifecycle
+//	  history is recorded separately in
+//	  merchant_program_subscription_events.
+//
+//	  Transaction-compatible mutations allow a coordinating service to change
+//	  canonical subscription state and record its corresponding lifecycle event
+//	  atomically through one caller-owned transaction.
+//
+//	  This file is not billing-ledger logic, payment processing, checkout,
+//	  invoice handling, fee calculation, merchant-of-record logic,
+//	  subscription-event persistence, or transaction orchestration. Those
+//	  concerns belong to their respective data and service boundaries.
 //
 // SPINE Rule:
 //
@@ -34,9 +44,11 @@
 //	Preserve merchant and plan foreign-key readiness.
 //	Preserve soft-delete lifecycle semantics.
 //	Preserve DB-owned lifecycle timestamps.
+//	Preserve transaction-compatible lifecycle mutation.
+//	Do not give this model transaction ownership.
 //	Block deployment if this file breaks build, merchant program subscription
 //	persistence, current subscription resolution, Future Offering access
-//	readiness, or merchant billing plan integrity.
+//	readiness, merchant billing plan integrity, or atomic lifecycle recording.
 package data
 
 import (
@@ -121,8 +133,8 @@ type MerchantProgramSubscription struct {
 	ID            uuid.UUID                                `json:"id" db:"id"`
 	MerchantID    uuid.UUID                                `json:"merchant_id" db:"merchant_id"`
 	PlanID        uuid.UUID                                `json:"plan_id" db:"plan_id"`
-	Status        MerchantProgramSubscriptionStatus         `json:"status" db:"status"`
-	BillingPeriod MerchantProgramSubscriptionBillingPeriod  `json:"billing_period" db:"billing_period"`
+	Status        MerchantProgramSubscriptionStatus        `json:"status" db:"status"`
+	BillingPeriod MerchantProgramSubscriptionBillingPeriod `json:"billing_period" db:"billing_period"`
 	StartedAt     *time.Time                               `json:"started_at,omitempty" db:"started_at"`
 	ExpiresAt     *time.Time                               `json:"expires_at,omitempty" db:"expires_at"`
 	CancelledAt   *time.Time                               `json:"cancelled_at,omitempty" db:"cancelled_at"`
@@ -138,22 +150,51 @@ type MerchantProgramSubscriptionModel struct {
 	Logger *logging.Logger
 }
 
+// merchantProgramSubscriptionQueryer is the minimal database execution
+// contract required by transaction-compatible subscription mutations.
+//
+// Both *pgxpool.Pool and pgx.Tx satisfy this contract. It allows the same
+// authoritative mutation implementation to execute through the model's pool
+// or through a transaction owned by a coordinating service.
+type merchantProgramSubscriptionQueryer interface {
+	QueryRow(
+		ctx context.Context,
+		sql string,
+		args ...any,
+	) pgx.Row
+}
 
 func (m *MerchantProgramSubscriptionModel) validate() error {
 	if m == nil {
 		return errors.New("merchant program subscription model is required")
 	}
 	if m.DB == nil {
-		return errors.New("merchant program subscription model database pool is required")
+		return errors.New(
+			"merchant program subscription model database pool is required",
+		)
 	}
 	if m.Logger == nil {
-		return errors.New("merchant program subscription model logger is required")
+		return errors.New(
+			"merchant program subscription model logger is required",
+		)
 	}
 	return nil
 }
 
+func validateMerchantProgramSubscriptionTx(tx pgx.Tx) error {
+	if tx == nil {
+		return errors.New(
+			"merchant program subscription transaction is required",
+		)
+	}
 
-func scanMerchantProgramSubscription(row pgx.Row, subscription *MerchantProgramSubscription) error {
+	return nil
+}
+
+func scanMerchantProgramSubscription(
+	row pgx.Row,
+	subscription *MerchantProgramSubscription,
+) error {
 	return row.Scan(
 		&subscription.ID,
 		&subscription.MerchantID,
@@ -169,7 +210,10 @@ func scanMerchantProgramSubscription(row pgx.Row, subscription *MerchantProgramS
 	)
 }
 
-func scanMerchantProgramSubscriptionFromRows(rows pgx.Rows, subscription *MerchantProgramSubscription) error {
+func scanMerchantProgramSubscriptionFromRows(
+	rows pgx.Rows,
+	subscription *MerchantProgramSubscription,
+) error {
 	return rows.Scan(
 		&subscription.ID,
 		&subscription.MerchantID,
@@ -187,13 +231,19 @@ func scanMerchantProgramSubscriptionFromRows(rows pgx.Rows, subscription *Mercha
 
 // NormalizeMerchantProgramSubscriptionStatus trims and canonicalizes a merchant
 // program subscription status.
-func NormalizeMerchantProgramSubscriptionStatus(status MerchantProgramSubscriptionStatus) MerchantProgramSubscriptionStatus {
-	return MerchantProgramSubscriptionStatus(strings.ToLower(strings.TrimSpace(string(status))))
+func NormalizeMerchantProgramSubscriptionStatus(
+	status MerchantProgramSubscriptionStatus,
+) MerchantProgramSubscriptionStatus {
+	return MerchantProgramSubscriptionStatus(
+		strings.ToLower(strings.TrimSpace(string(status))),
+	)
 }
 
 // IsValidMerchantProgramSubscriptionStatus reports whether status is allowed by
 // the merchant_program_subscriptions status CHECK constraint.
-func IsValidMerchantProgramSubscriptionStatus(status MerchantProgramSubscriptionStatus) bool {
+func IsValidMerchantProgramSubscriptionStatus(
+	status MerchantProgramSubscriptionStatus,
+) bool {
 	switch NormalizeMerchantProgramSubscriptionStatus(status) {
 	case SubscriptionStatusPending,
 		SubscriptionStatusActive,
@@ -209,42 +259,71 @@ func IsValidMerchantProgramSubscriptionStatus(status MerchantProgramSubscription
 
 // NormalizeMerchantProgramSubscriptionBillingPeriod trims and canonicalizes a
 // merchant program subscription billing period.
-func NormalizeMerchantProgramSubscriptionBillingPeriod(period MerchantProgramSubscriptionBillingPeriod) MerchantProgramSubscriptionBillingPeriod {
-	return MerchantProgramSubscriptionBillingPeriod(strings.ToLower(strings.TrimSpace(string(period))))
+func NormalizeMerchantProgramSubscriptionBillingPeriod(
+	period MerchantProgramSubscriptionBillingPeriod,
+) MerchantProgramSubscriptionBillingPeriod {
+	return MerchantProgramSubscriptionBillingPeriod(
+		strings.ToLower(strings.TrimSpace(string(period))),
+	)
 }
 
 // IsValidMerchantProgramSubscriptionBillingPeriod reports whether period is
-// allowed by the merchant_program_subscriptions billing_period CHECK constraint.
-func IsValidMerchantProgramSubscriptionBillingPeriod(period MerchantProgramSubscriptionBillingPeriod) bool {
+// allowed by the merchant_program_subscriptions billing_period CHECK
+// constraint.
+func IsValidMerchantProgramSubscriptionBillingPeriod(
+	period MerchantProgramSubscriptionBillingPeriod,
+) bool {
 	switch NormalizeMerchantProgramSubscriptionBillingPeriod(period) {
-	case BillingPeriodMonthly, BillingPeriodAnnual, BillingPeriodCustom:
+	case BillingPeriodMonthly,
+		BillingPeriodAnnual,
+		BillingPeriodCustom:
 		return true
 	default:
 		return false
 	}
 }
 
-func normalizeMerchantProgramSubscription(subscription *MerchantProgramSubscription) {
-	subscription.Status = NormalizeMerchantProgramSubscriptionStatus(subscription.Status)
-	subscription.BillingPeriod = NormalizeMerchantProgramSubscriptionBillingPeriod(subscription.BillingPeriod)
+func normalizeMerchantProgramSubscription(
+	subscription *MerchantProgramSubscription,
+) {
+	subscription.Status = NormalizeMerchantProgramSubscriptionStatus(
+		subscription.Status,
+	)
+	subscription.BillingPeriod = NormalizeMerchantProgramSubscriptionBillingPeriod(
+		subscription.BillingPeriod,
+	)
 }
 
-func validateMerchantProgramSubscriptionDateOrder(startedAt, expiresAt *time.Time) error {
-	if startedAt != nil && expiresAt != nil && !expiresAt.After(*startedAt) {
-		return errors.New("merchant program subscription expires_at must be after started_at")
+func validateMerchantProgramSubscriptionDateOrder(
+	startedAt *time.Time,
+	expiresAt *time.Time,
+) error {
+	if startedAt != nil &&
+		expiresAt != nil &&
+		!expiresAt.After(*startedAt) {
+		return errors.New(
+			"merchant program subscription expires_at must be after started_at",
+		)
 	}
+
 	return nil
 }
 
-func validateMerchantProgramSubscriptionForInsert(subscription *MerchantProgramSubscription) error {
+func validateMerchantProgramSubscriptionForInsert(
+	subscription *MerchantProgramSubscription,
+) error {
 	if subscription == nil {
 		return errors.New("merchant program subscription is required")
 	}
 	if subscription.MerchantID == uuid.Nil {
-		return errors.New("merchant program subscription merchant ID is required")
+		return errors.New(
+			"merchant program subscription merchant ID is required",
+		)
 	}
 	if subscription.PlanID == uuid.Nil {
-		return errors.New("merchant program subscription plan ID is required")
+		return errors.New(
+			"merchant program subscription plan ID is required",
+		)
 	}
 
 	normalizeMerchantProgramSubscription(subscription)
@@ -253,45 +332,71 @@ func validateMerchantProgramSubscriptionForInsert(subscription *MerchantProgramS
 		subscription.Status = SubscriptionStatusPending
 	}
 	if !IsValidMerchantProgramSubscriptionStatus(subscription.Status) {
-		return fmt.Errorf("invalid merchant program subscription status: %s", subscription.Status)
+		return fmt.Errorf(
+			"invalid merchant program subscription status: %s",
+			subscription.Status,
+		)
 	}
 
 	if subscription.BillingPeriod == "" {
 		subscription.BillingPeriod = BillingPeriodMonthly
 	}
-	if !IsValidMerchantProgramSubscriptionBillingPeriod(subscription.BillingPeriod) {
-		return fmt.Errorf("invalid merchant program subscription billing period: %s", subscription.BillingPeriod)
+	if !IsValidMerchantProgramSubscriptionBillingPeriod(
+		subscription.BillingPeriod,
+	) {
+		return fmt.Errorf(
+			"invalid merchant program subscription billing period: %s",
+			subscription.BillingPeriod,
+		)
 	}
 
-	return validateMerchantProgramSubscriptionDateOrder(subscription.StartedAt, subscription.ExpiresAt)
+	return validateMerchantProgramSubscriptionDateOrder(
+		subscription.StartedAt,
+		subscription.ExpiresAt,
+	)
 }
 
 func validateMerchantProgramSubscriptionID(id uuid.UUID) error {
 	if id == uuid.Nil {
 		return errors.New("merchant program subscription ID is required")
 	}
+
 	return nil
 }
 
-func validateMerchantProgramSubscriptionPagination(limit, offset int) error {
+func validateMerchantProgramSubscriptionPagination(
+	limit int,
+	offset int,
+) error {
 	if limit <= 0 || limit > 100 {
 		return errors.New("limit must be between 1 and 100")
 	}
 	if offset < 0 {
 		return errors.New("offset must be non-negative")
 	}
+
 	return nil
 }
 
-func validateMerchantProgramSubscriptionStatus(status MerchantProgramSubscriptionStatus) (MerchantProgramSubscriptionStatus, error) {
+func validateMerchantProgramSubscriptionStatus(
+	status MerchantProgramSubscriptionStatus,
+) (MerchantProgramSubscriptionStatus, error) {
 	status = NormalizeMerchantProgramSubscriptionStatus(status)
 	if !IsValidMerchantProgramSubscriptionStatus(status) {
-		return "", fmt.Errorf("invalid merchant program subscription status: %s", status)
+		return "", fmt.Errorf(
+			"invalid merchant program subscription status: %s",
+			status,
+		)
 	}
+
 	return status, nil
 }
 
-func translateMerchantProgramSubscriptionWriteError(err error, merchantID, planID uuid.UUID) error {
+func translateMerchantProgramSubscriptionWriteError(
+	err error,
+	merchantID uuid.UUID,
+	planID uuid.UUID,
+) error {
 	var pgErr *pgconn.PgError
 	if !errors.As(err, &pgErr) {
 		return err
@@ -299,27 +404,49 @@ func translateMerchantProgramSubscriptionWriteError(err error, merchantID, planI
 
 	switch pgErr.Code {
 	case "23505":
-		if pgErr.ConstraintName == "ux_merchant_program_subscriptions_one_active" {
+		if pgErr.ConstraintName ==
+			"ux_merchant_program_subscriptions_one_active" {
 			return fmt.Errorf(
 				"merchant %s already has a current merchant program subscription",
 				merchantID,
 			)
 		}
+
 		return errors.New("merchant program subscription already exists")
+
 	case "23503":
 		switch {
 		case strings.Contains(pgErr.ConstraintName, "merchant_id"):
-			return fmt.Errorf("merchant program subscription references missing merchant %s", merchantID)
+			return fmt.Errorf(
+				"merchant program subscription references missing merchant %s",
+				merchantID,
+			)
+
 		case strings.Contains(pgErr.ConstraintName, "plan_id"):
-			return fmt.Errorf("merchant program subscription references missing merchant program plan %s", planID)
+			return fmt.Errorf(
+				"merchant program subscription references missing merchant program plan %s",
+				planID,
+			)
+
 		default:
-			return errors.New("merchant program subscription references a missing related record")
+			return errors.New(
+				"merchant program subscription references a missing related record",
+			)
 		}
+
 	case "23514":
-		if pgErr.ConstraintName == "chk_merchant_program_subscriptions_dates" {
-			return errors.New("merchant program subscription expires_at must be after started_at")
+		if pgErr.ConstraintName ==
+			"chk_merchant_program_subscriptions_dates" {
+			return errors.New(
+				"merchant program subscription expires_at must be after started_at",
+			)
 		}
-		return fmt.Errorf("merchant program subscription violates constraint %s", pgErr.ConstraintName)
+
+		return fmt.Errorf(
+			"merchant program subscription violates constraint %s",
+			pgErr.ConstraintName,
+		)
+
 	default:
 		return err
 	}
@@ -334,16 +461,24 @@ func translateMerchantProgramSubscriptionWriteError(err error, merchantID, planI
 // Insert does not cancel or mutate existing subscriptions. If the merchant
 // already has a non-deleted current subscription, the database partial unique
 // index rejects the write and this method returns a clear conflict error.
-func (m *MerchantProgramSubscriptionModel) Insert(ctx context.Context, subscription *MerchantProgramSubscription) error {
+func (m *MerchantProgramSubscriptionModel) Insert(
+	ctx context.Context,
+	subscription *MerchantProgramSubscription,
+) error {
 	if err := m.validate(); err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("InsertMerchantProgramSubscription")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("InsertMerchantProgramSubscription")
 
-	if err := validateMerchantProgramSubscriptionForInsert(subscription); err != nil {
+	if err := validateMerchantProgramSubscriptionForInsert(
+		subscription,
+	); err != nil {
 		logger.Error("Validation failed", err)
 		return err
 	}
@@ -367,51 +502,80 @@ func (m *MerchantProgramSubscriptionModel) Insert(ctx context.Context, subscript
 		RETURNING created_at, updated_at, deleted_at
 	`
 
-	err := m.DB.QueryRow(ctx, query,
-		subscription.ID,
-		subscription.MerchantID,
-		subscription.PlanID,
-		subscription.Status,
-		subscription.BillingPeriod,
-		subscription.StartedAt,
-		subscription.ExpiresAt,
-		subscription.CancelledAt,
-	).Scan(
-		&subscription.CreatedAt,
-		&subscription.UpdatedAt,
-		&subscription.DeletedAt,
-	)
+	err := m.DB.
+		QueryRow(
+			ctx,
+			query,
+			subscription.ID,
+			subscription.MerchantID,
+			subscription.PlanID,
+			subscription.Status,
+			subscription.BillingPeriod,
+			subscription.StartedAt,
+			subscription.ExpiresAt,
+			subscription.CancelledAt,
+		).
+		Scan(
+			&subscription.CreatedAt,
+			&subscription.UpdatedAt,
+			&subscription.DeletedAt,
+		)
 	if err != nil {
-		err = translateMerchantProgramSubscriptionWriteError(err, subscription.MerchantID, subscription.PlanID)
-		logger.Error("Insert merchant program subscription failed", err,
-			"subscription_id", subscription.ID,
-			"merchant_id", subscription.MerchantID,
-			"plan_id", subscription.PlanID,
-			"status", subscription.Status,
-			"billing_period", subscription.BillingPeriod,
+		err = translateMerchantProgramSubscriptionWriteError(
+			err,
+			subscription.MerchantID,
+			subscription.PlanID,
+		)
+
+		logger.Error(
+			"Insert merchant program subscription failed",
+			err,
+			"subscription_id",
+			subscription.ID,
+			"merchant_id",
+			subscription.MerchantID,
+			"plan_id",
+			subscription.PlanID,
+			"status",
+			subscription.Status,
+			"billing_period",
+			subscription.BillingPeriod,
 		)
 		return err
 	}
 
-	logger.Info("Insert merchant program subscription successful",
-		"subscription_id", subscription.ID,
-		"merchant_id", subscription.MerchantID,
-		"plan_id", subscription.PlanID,
-		"status", subscription.Status,
-		"billing_period", subscription.BillingPeriod,
+	logger.Info(
+		"Insert merchant program subscription successful",
+		"subscription_id",
+		subscription.ID,
+		"merchant_id",
+		subscription.MerchantID,
+		"plan_id",
+		subscription.PlanID,
+		"status",
+		subscription.Status,
+		"billing_period",
+		subscription.BillingPeriod,
 	)
+
 	return nil
 }
 
 // GetByID retrieves a non-deleted merchant program subscription by ID.
-func (m *MerchantProgramSubscriptionModel) GetByID(ctx context.Context, id uuid.UUID) (*MerchantProgramSubscription, error) {
+func (m *MerchantProgramSubscriptionModel) GetByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (*MerchantProgramSubscription, error) {
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("GetMerchantProgramSubscriptionByID")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("GetMerchantProgramSubscriptionByID")
 
 	if err := validateMerchantProgramSubscriptionID(id); err != nil {
 		logger.Error("Validation failed", err)
@@ -426,38 +590,67 @@ func (m *MerchantProgramSubscriptionModel) GetByID(ctx context.Context, id uuid.
 	`
 
 	var subscription MerchantProgramSubscription
-	err := scanMerchantProgramSubscription(m.DB.QueryRow(ctx, query, id), &subscription)
+	err := scanMerchantProgramSubscription(
+		m.DB.QueryRow(ctx, query, id),
+		&subscription,
+	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.Warn("Merchant program subscription not found", "subscription_id", id)
+			logger.Warn(
+				"Merchant program subscription not found",
+				"subscription_id",
+				id,
+			)
 			return nil, nil
 		}
-		logger.Error("Get merchant program subscription by ID failed", err, "subscription_id", id)
+
+		logger.Error(
+			"Get merchant program subscription by ID failed",
+			err,
+			"subscription_id",
+			id,
+		)
 		return nil, err
 	}
 
-	logger.Info("Get merchant program subscription by ID successful",
-		"subscription_id", subscription.ID,
-		"merchant_id", subscription.MerchantID,
-		"plan_id", subscription.PlanID,
-		"status", subscription.Status,
+	logger.Info(
+		"Get merchant program subscription by ID successful",
+		"subscription_id",
+		subscription.ID,
+		"merchant_id",
+		subscription.MerchantID,
+		"plan_id",
+		subscription.PlanID,
+		"status",
+		subscription.Status,
 	)
+
 	return &subscription, nil
 }
 
 // GetActiveByMerchantID retrieves a merchant's active, non-deleted merchant
 // program subscription.
-func (m *MerchantProgramSubscriptionModel) GetActiveByMerchantID(ctx context.Context, merchantID uuid.UUID) (*MerchantProgramSubscription, error) {
+func (m *MerchantProgramSubscriptionModel) GetActiveByMerchantID(
+	ctx context.Context,
+	merchantID uuid.UUID,
+) (*MerchantProgramSubscription, error) {
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("GetActiveMerchantProgramSubscriptionByMerchantID")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(
+			"GetActiveMerchantProgramSubscriptionByMerchantID",
+		)
 
 	if merchantID == uuid.Nil {
-		err := errors.New("merchant program subscription merchant ID is required")
+		err := errors.New(
+			"merchant program subscription merchant ID is required",
+		)
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
@@ -472,21 +665,44 @@ func (m *MerchantProgramSubscriptionModel) GetActiveByMerchantID(ctx context.Con
 	`
 
 	var subscription MerchantProgramSubscription
-	err := scanMerchantProgramSubscription(m.DB.QueryRow(ctx, query, merchantID, SubscriptionStatusActive), &subscription)
+	err := scanMerchantProgramSubscription(
+		m.DB.QueryRow(
+			ctx,
+			query,
+			merchantID,
+			SubscriptionStatusActive,
+		),
+		&subscription,
+	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.Warn("Active merchant program subscription not found", "merchant_id", merchantID)
+			logger.Warn(
+				"Active merchant program subscription not found",
+				"merchant_id",
+				merchantID,
+			)
 			return nil, nil
 		}
-		logger.Error("Get active merchant program subscription by merchant ID failed", err, "merchant_id", merchantID)
+
+		logger.Error(
+			"Get active merchant program subscription by merchant ID failed",
+			err,
+			"merchant_id",
+			merchantID,
+		)
 		return nil, err
 	}
 
-	logger.Info("Get active merchant program subscription by merchant ID successful",
-		"subscription_id", subscription.ID,
-		"merchant_id", subscription.MerchantID,
-		"plan_id", subscription.PlanID,
+	logger.Info(
+		"Get active merchant program subscription by merchant ID successful",
+		"subscription_id",
+		subscription.ID,
+		"merchant_id",
+		subscription.MerchantID,
+		"plan_id",
+		subscription.PlanID,
 	)
+
 	return &subscription, nil
 }
 
@@ -496,17 +712,27 @@ func (m *MerchantProgramSubscriptionModel) GetActiveByMerchantID(ctx context.Con
 // Current means status is pending, active, paused, or suspended. This matches
 // the partial unique index ux_merchant_program_subscriptions_one_active.
 // If that index predicate changes, this query must be updated in sync.
-func (m *MerchantProgramSubscriptionModel) GetCurrentByMerchantID(ctx context.Context, merchantID uuid.UUID) (*MerchantProgramSubscription, error) {
+func (m *MerchantProgramSubscriptionModel) GetCurrentByMerchantID(
+	ctx context.Context,
+	merchantID uuid.UUID,
+) (*MerchantProgramSubscription, error) {
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("GetCurrentMerchantProgramSubscriptionByMerchantID")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(
+			"GetCurrentMerchantProgramSubscriptionByMerchantID",
+		)
 
 	if merchantID == uuid.Nil {
-		err := errors.New("merchant program subscription merchant ID is required")
+		err := errors.New(
+			"merchant program subscription merchant ID is required",
+		)
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
@@ -521,22 +747,41 @@ func (m *MerchantProgramSubscriptionModel) GetCurrentByMerchantID(ctx context.Co
 	`
 
 	var subscription MerchantProgramSubscription
-	err := scanMerchantProgramSubscription(m.DB.QueryRow(ctx, query, merchantID), &subscription)
+	err := scanMerchantProgramSubscription(
+		m.DB.QueryRow(ctx, query, merchantID),
+		&subscription,
+	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			logger.Warn("Current merchant program subscription not found", "merchant_id", merchantID)
+			logger.Warn(
+				"Current merchant program subscription not found",
+				"merchant_id",
+				merchantID,
+			)
 			return nil, nil
 		}
-		logger.Error("Get current merchant program subscription by merchant ID failed", err, "merchant_id", merchantID)
+
+		logger.Error(
+			"Get current merchant program subscription by merchant ID failed",
+			err,
+			"merchant_id",
+			merchantID,
+		)
 		return nil, err
 	}
 
-	logger.Info("Get current merchant program subscription by merchant ID successful",
-		"subscription_id", subscription.ID,
-		"merchant_id", subscription.MerchantID,
-		"plan_id", subscription.PlanID,
-		"status", subscription.Status,
+	logger.Info(
+		"Get current merchant program subscription by merchant ID successful",
+		"subscription_id",
+		subscription.ID,
+		"merchant_id",
+		subscription.MerchantID,
+		"plan_id",
+		subscription.PlanID,
+		"status",
+		subscription.Status,
 	)
+
 	return &subscription, nil
 }
 
@@ -551,17 +796,28 @@ func (m *MerchantProgramSubscriptionModel) ListByMerchantID(
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("ListMerchantProgramSubscriptionsByMerchantID")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(
+			"ListMerchantProgramSubscriptionsByMerchantID",
+		)
 
 	if merchantID == uuid.Nil {
-		err := errors.New("merchant program subscription merchant ID is required")
+		err := errors.New(
+			"merchant program subscription merchant ID is required",
+		)
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
-	if err := validateMerchantProgramSubscriptionPagination(limit, offset); err != nil {
+
+	if err := validateMerchantProgramSubscriptionPagination(
+		limit,
+		offset,
+	); err != nil {
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
@@ -571,17 +827,30 @@ func (m *MerchantProgramSubscriptionModel) ListByMerchantID(
 		FROM merchant_program_subscriptions
 		WHERE merchant_id = $1
 	`
+
 	if !includeDeleted {
 		query += ` AND deleted_at IS NULL`
 	}
+
 	query += `
 		ORDER BY created_at DESC, id DESC
 		LIMIT $2 OFFSET $3
 	`
 
-	rows, err := m.DB.Query(ctx, query, merchantID, limit, offset)
+	rows, err := m.DB.Query(
+		ctx,
+		query,
+		merchantID,
+		limit,
+		offset,
+	)
 	if err != nil {
-		logger.Error("List merchant program subscriptions by merchant ID query failed", err, "merchant_id", merchantID)
+		logger.Error(
+			"List merchant program subscriptions by merchant ID query failed",
+			err,
+			"merchant_id",
+			merchantID,
+		)
 		return nil, err
 	}
 	defer rows.Close()
@@ -589,23 +858,42 @@ func (m *MerchantProgramSubscriptionModel) ListByMerchantID(
 	var subscriptions []*MerchantProgramSubscription
 	for rows.Next() {
 		var subscription MerchantProgramSubscription
-		if err := scanMerchantProgramSubscriptionFromRows(rows, &subscription); err != nil {
-			logger.Error("Merchant program subscription row scan failed", err, "merchant_id", merchantID)
+		if err := scanMerchantProgramSubscriptionFromRows(
+			rows,
+			&subscription,
+		); err != nil {
+			logger.Error(
+				"Merchant program subscription row scan failed",
+				err,
+				"merchant_id",
+				merchantID,
+			)
 			return nil, err
 		}
+
 		subscriptions = append(subscriptions, &subscription)
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Error("Merchant program subscription row iteration failed", err, "merchant_id", merchantID)
+		logger.Error(
+			"Merchant program subscription row iteration failed",
+			err,
+			"merchant_id",
+			merchantID,
+		)
 		return nil, err
 	}
 
-	logger.Info("List merchant program subscriptions by merchant ID successful",
-		"merchant_id", merchantID,
-		"include_deleted", includeDeleted,
-		"count", len(subscriptions),
+	logger.Info(
+		"List merchant program subscriptions by merchant ID successful",
+		"merchant_id",
+		merchantID,
+		"include_deleted",
+		includeDeleted,
+		"count",
+		len(subscriptions),
 	)
+
 	return subscriptions, nil
 }
 
@@ -621,22 +909,34 @@ func (m *MerchantProgramSubscriptionModel) ListByPlanAndStatus(
 	if err := m.validate(); err != nil {
 		return nil, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("ListMerchantProgramSubscriptionsByPlanAndStatus")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(
+			"ListMerchantProgramSubscriptionsByPlanAndStatus",
+		)
 
 	if planID == uuid.Nil {
-		err := errors.New("merchant program subscription plan ID is required")
+		err := errors.New(
+			"merchant program subscription plan ID is required",
+		)
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
+
 	status, err := validateMerchantProgramSubscriptionStatus(status)
 	if err != nil {
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
-	if err := validateMerchantProgramSubscriptionPagination(limit, offset); err != nil {
+
+	if err := validateMerchantProgramSubscriptionPagination(
+		limit,
+		offset,
+	); err != nil {
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
@@ -651,11 +951,22 @@ func (m *MerchantProgramSubscriptionModel) ListByPlanAndStatus(
 		LIMIT $3 OFFSET $4
 	`
 
-	rows, err := m.DB.Query(ctx, query, planID, status, limit, offset)
+	rows, err := m.DB.Query(
+		ctx,
+		query,
+		planID,
+		status,
+		limit,
+		offset,
+	)
 	if err != nil {
-		logger.Error("List merchant program subscriptions by plan and status query failed", err,
-			"plan_id", planID,
-			"status", status,
+		logger.Error(
+			"List merchant program subscriptions by plan and status query failed",
+			err,
+			"plan_id",
+			planID,
+			"status",
+			status,
 		)
 		return nil, err
 	}
@@ -664,42 +975,65 @@ func (m *MerchantProgramSubscriptionModel) ListByPlanAndStatus(
 	var subscriptions []*MerchantProgramSubscription
 	for rows.Next() {
 		var subscription MerchantProgramSubscription
-		if err := scanMerchantProgramSubscriptionFromRows(rows, &subscription); err != nil {
-			logger.Error("Merchant program subscription row scan failed", err,
-				"plan_id", planID,
-				"status", status,
+		if err := scanMerchantProgramSubscriptionFromRows(
+			rows,
+			&subscription,
+		); err != nil {
+			logger.Error(
+				"Merchant program subscription row scan failed",
+				err,
+				"plan_id",
+				planID,
+				"status",
+				status,
 			)
 			return nil, err
 		}
+
 		subscriptions = append(subscriptions, &subscription)
 	}
 
 	if err := rows.Err(); err != nil {
-		logger.Error("Merchant program subscription row iteration failed", err,
-			"plan_id", planID,
-			"status", status,
+		logger.Error(
+			"Merchant program subscription row iteration failed",
+			err,
+			"plan_id",
+			planID,
+			"status",
+			status,
 		)
 		return nil, err
 	}
 
-	logger.Info("List merchant program subscriptions by plan and status successful",
-		"plan_id", planID,
-		"status", status,
-		"count", len(subscriptions),
+	logger.Info(
+		"List merchant program subscriptions by plan and status successful",
+		"plan_id",
+		planID,
+		"status",
+		status,
+		"count",
+		len(subscriptions),
 	)
+
 	return subscriptions, nil
 }
 
 // Exists checks whether a non-deleted merchant program subscription exists by
 // ID.
-func (m *MerchantProgramSubscriptionModel) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
+func (m *MerchantProgramSubscriptionModel) Exists(
+	ctx context.Context,
+	id uuid.UUID,
+) (bool, error) {
 	if err := m.validate(); err != nil {
 		return false, err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("ExistsMerchantProgramSubscription")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("ExistsMerchantProgramSubscription")
 
 	if err := validateMerchantProgramSubscriptionID(id); err != nil {
 		logger.Error("Validation failed", err)
@@ -718,29 +1052,45 @@ func (m *MerchantProgramSubscriptionModel) Exists(ctx context.Context, id uuid.U
 	var exists bool
 	err := m.DB.QueryRow(ctx, query, id).Scan(&exists)
 	if err != nil {
-		logger.Error("Merchant program subscription exists query failed", err, "subscription_id", id)
+		logger.Error(
+			"Merchant program subscription exists query failed",
+			err,
+			"subscription_id",
+			id,
+		)
 		return false, err
 	}
 
 	return exists, nil
 }
 
-// UpdatePlan changes the merchant program plan for a non-deleted subscription.
-func (m *MerchantProgramSubscriptionModel) UpdatePlan(ctx context.Context, id uuid.UUID, planID uuid.UUID) error {
+func (m *MerchantProgramSubscriptionModel) updatePlan(
+	ctx context.Context,
+	queryer merchantProgramSubscriptionQueryer,
+	functionName string,
+	id uuid.UUID,
+	planID uuid.UUID,
+) error {
 	if err := m.validate(); err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("UpdateMerchantProgramSubscriptionPlan")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(functionName)
 
 	if err := validateMerchantProgramSubscriptionID(id); err != nil {
 		logger.Error("Validation failed", err)
 		return err
 	}
+
 	if planID == uuid.Nil {
-		err := errors.New("merchant program subscription plan ID is required")
+		err := errors.New(
+			"merchant program subscription plan ID is required",
+		)
 		logger.Error("Validation failed", err)
 		return err
 	}
@@ -756,30 +1106,96 @@ func (m *MerchantProgramSubscriptionModel) UpdatePlan(ctx context.Context, id uu
 	`
 
 	var merchantID uuid.UUID
-	err := m.DB.QueryRow(ctx, query, planID, id).Scan(&merchantID)
+	err := queryer.
+		QueryRow(
+			ctx,
+			query,
+			planID,
+			id,
+		).
+		Scan(&merchantID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("merchant program subscription not found or already deleted: %s", id)
+			err = fmt.Errorf(
+				"merchant program subscription not found or already deleted: %s",
+				id,
+			)
 		} else {
-			err = translateMerchantProgramSubscriptionWriteError(err, uuid.Nil, planID)
+			err = translateMerchantProgramSubscriptionWriteError(
+				err,
+				uuid.Nil,
+				planID,
+			)
 		}
-		logger.Error("Update merchant program subscription plan failed", err,
-			"subscription_id", id,
-			"plan_id", planID,
+
+		logger.Error(
+			"Update merchant program subscription plan failed",
+			err,
+			"subscription_id",
+			id,
+			"plan_id",
+			planID,
 		)
 		return err
 	}
 
-	logger.Info("Update merchant program subscription plan successful",
-		"subscription_id", id,
-		"merchant_id", merchantID,
-		"plan_id", planID,
+	logger.Info(
+		"Update merchant program subscription plan successful",
+		"subscription_id",
+		id,
+		"merchant_id",
+		merchantID,
+		"plan_id",
+		planID,
 	)
+
 	return nil
+}
+
+// UpdatePlan changes the merchant program plan for a non-deleted subscription.
+func (m *MerchantProgramSubscriptionModel) UpdatePlan(
+	ctx context.Context,
+	id uuid.UUID,
+	planID uuid.UUID,
+) error {
+	return m.updatePlan(
+		ctx,
+		m.DB,
+		"UpdateMerchantProgramSubscriptionPlan",
+		id,
+		planID,
+	)
+}
+
+// UpdatePlanTx changes the merchant program plan for a non-deleted
+// subscription through tx.
+//
+// UpdatePlanTx does not begin, commit, or roll back tx. The coordinating
+// service owns transaction lifecycle and must use the same transaction for
+// the canonical subscription mutation and its corresponding lifecycle event.
+func (m *MerchantProgramSubscriptionModel) UpdatePlanTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+	planID uuid.UUID,
+) error {
+	if err := validateMerchantProgramSubscriptionTx(tx); err != nil {
+		return err
+	}
+
+	return m.updatePlan(
+		ctx,
+		tx,
+		"UpdateMerchantProgramSubscriptionPlanTx",
+		id,
+		planID,
+	)
 }
 
 func (m *MerchantProgramSubscriptionModel) transitionStatus(
 	ctx context.Context,
+	queryer merchantProgramSubscriptionQueryer,
+	functionName string,
 	id uuid.UUID,
 	status MerchantProgramSubscriptionStatus,
 ) error {
@@ -790,7 +1206,9 @@ func (m *MerchantProgramSubscriptionModel) transitionStatus(
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("TransitionMerchantProgramSubscriptionStatus")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(functionName)
 
 	if err := validateMerchantProgramSubscriptionID(id); err != nil {
 		logger.Error("Validation failed", err)
@@ -804,6 +1222,7 @@ func (m *MerchantProgramSubscriptionModel) transitionStatus(
 	}
 
 	var query string
+
 	switch status {
 	case SubscriptionStatusActive:
 		query = `
@@ -817,6 +1236,7 @@ func (m *MerchantProgramSubscriptionModel) transitionStatus(
 			  AND deleted_at IS NULL
 			RETURNING merchant_id, plan_id
 		`
+
 	case SubscriptionStatusCancelled:
 		query = `
 			UPDATE merchant_program_subscriptions
@@ -828,6 +1248,7 @@ func (m *MerchantProgramSubscriptionModel) transitionStatus(
 			  AND deleted_at IS NULL
 			RETURNING merchant_id, plan_id
 		`
+
 	case SubscriptionStatusExpired:
 		query = `
 			UPDATE merchant_program_subscriptions
@@ -839,6 +1260,7 @@ func (m *MerchantProgramSubscriptionModel) transitionStatus(
 			  AND deleted_at IS NULL
 			RETURNING merchant_id, plan_id
 		`
+
 	default:
 		query = `
 			UPDATE merchant_program_subscriptions
@@ -853,69 +1275,270 @@ func (m *MerchantProgramSubscriptionModel) transitionStatus(
 
 	var merchantID uuid.UUID
 	var planID uuid.UUID
-	err = m.DB.QueryRow(ctx, query, status, id).Scan(&merchantID, &planID)
+
+	err = queryer.
+		QueryRow(
+			ctx,
+			query,
+			status,
+			id,
+		).
+		Scan(
+			&merchantID,
+			&planID,
+		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("merchant program subscription not found or already deleted: %s", id)
+			err = fmt.Errorf(
+				"merchant program subscription not found or already deleted: %s",
+				id,
+			)
 		} else {
-			err = translateMerchantProgramSubscriptionWriteError(err, uuid.Nil, uuid.Nil)
+			err = translateMerchantProgramSubscriptionWriteError(
+				err,
+				uuid.Nil,
+				uuid.Nil,
+			)
 		}
-		logger.Error("Transition merchant program subscription status failed", err,
-			"subscription_id", id,
-			"status", status,
+
+		logger.Error(
+			"Transition merchant program subscription status failed",
+			err,
+			"subscription_id",
+			id,
+			"status",
+			status,
 		)
 		return err
 	}
 
-	logger.Info("Transition merchant program subscription status successful",
-		"subscription_id", id,
-		"merchant_id", merchantID,
-		"plan_id", planID,
-		"status", status,
+	logger.Info(
+		"Transition merchant program subscription status successful",
+		"subscription_id",
+		id,
+		"merchant_id",
+		merchantID,
+		"plan_id",
+		planID,
+		"status",
+		status,
 	)
+
 	return nil
 }
-
 
 // Activate marks a non-deleted merchant program subscription as active.
 //
 // Activation sets started_at to NOW() only if started_at is currently NULL.
-func (m *MerchantProgramSubscriptionModel) Activate(ctx context.Context, id uuid.UUID) error {
-	return m.transitionStatus(ctx, id, SubscriptionStatusActive)
+func (m *MerchantProgramSubscriptionModel) Activate(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	return m.transitionStatus(
+		ctx,
+		m.DB,
+		"ActivateMerchantProgramSubscription",
+		id,
+		SubscriptionStatusActive,
+	)
+}
+
+// ActivateTx marks a non-deleted merchant program subscription as active
+// through tx.
+//
+// ActivateTx does not begin, commit, or roll back tx. The coordinating service
+// owns transaction lifecycle and must use the same transaction for the
+// canonical subscription mutation and its corresponding lifecycle event.
+func (m *MerchantProgramSubscriptionModel) ActivateTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+) error {
+	if err := validateMerchantProgramSubscriptionTx(tx); err != nil {
+		return err
+	}
+
+	return m.transitionStatus(
+		ctx,
+		tx,
+		"ActivateMerchantProgramSubscriptionTx",
+		id,
+		SubscriptionStatusActive,
+	)
 }
 
 // Pause marks a non-deleted merchant program subscription as paused.
-func (m *MerchantProgramSubscriptionModel) Pause(ctx context.Context, id uuid.UUID) error {
-	return m.transitionStatus(ctx, id, SubscriptionStatusPaused)
+func (m *MerchantProgramSubscriptionModel) Pause(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	return m.transitionStatus(
+		ctx,
+		m.DB,
+		"PauseMerchantProgramSubscription",
+		id,
+		SubscriptionStatusPaused,
+	)
+}
+
+// PauseTx marks a non-deleted merchant program subscription as paused through
+// tx.
+//
+// PauseTx does not begin, commit, or roll back tx. The coordinating service
+// owns transaction lifecycle and must use the same transaction for the
+// canonical subscription mutation and its corresponding lifecycle event.
+func (m *MerchantProgramSubscriptionModel) PauseTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+) error {
+	if err := validateMerchantProgramSubscriptionTx(tx); err != nil {
+		return err
+	}
+
+	return m.transitionStatus(
+		ctx,
+		tx,
+		"PauseMerchantProgramSubscriptionTx",
+		id,
+		SubscriptionStatusPaused,
+	)
 }
 
 // Suspend marks a non-deleted merchant program subscription as suspended.
-func (m *MerchantProgramSubscriptionModel) Suspend(ctx context.Context, id uuid.UUID) error {
-	return m.transitionStatus(ctx, id, SubscriptionStatusSuspended)
+func (m *MerchantProgramSubscriptionModel) Suspend(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	return m.transitionStatus(
+		ctx,
+		m.DB,
+		"SuspendMerchantProgramSubscription",
+		id,
+		SubscriptionStatusSuspended,
+	)
+}
+
+// SuspendTx marks a non-deleted merchant program subscription as suspended
+// through tx.
+//
+// SuspendTx does not begin, commit, or roll back tx. The coordinating service
+// owns transaction lifecycle and must use the same transaction for the
+// canonical subscription mutation and its corresponding lifecycle event.
+func (m *MerchantProgramSubscriptionModel) SuspendTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+) error {
+	if err := validateMerchantProgramSubscriptionTx(tx); err != nil {
+		return err
+	}
+
+	return m.transitionStatus(
+		ctx,
+		tx,
+		"SuspendMerchantProgramSubscriptionTx",
+		id,
+		SubscriptionStatusSuspended,
+	)
 }
 
 // Cancel marks a non-deleted merchant program subscription as cancelled.
-func (m *MerchantProgramSubscriptionModel) Cancel(ctx context.Context, id uuid.UUID) error {
-	return m.transitionStatus(ctx, id, SubscriptionStatusCancelled)
+func (m *MerchantProgramSubscriptionModel) Cancel(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	return m.transitionStatus(
+		ctx,
+		m.DB,
+		"CancelMerchantProgramSubscription",
+		id,
+		SubscriptionStatusCancelled,
+	)
+}
+
+// CancelTx marks a non-deleted merchant program subscription as cancelled
+// through tx.
+//
+// CancelTx does not begin, commit, or roll back tx. The coordinating service
+// owns transaction lifecycle and must use the same transaction for the
+// canonical subscription mutation and its corresponding lifecycle event.
+func (m *MerchantProgramSubscriptionModel) CancelTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+) error {
+	if err := validateMerchantProgramSubscriptionTx(tx); err != nil {
+		return err
+	}
+
+	return m.transitionStatus(
+		ctx,
+		tx,
+		"CancelMerchantProgramSubscriptionTx",
+		id,
+		SubscriptionStatusCancelled,
+	)
 }
 
 // Expire marks a non-deleted merchant program subscription as expired.
-func (m *MerchantProgramSubscriptionModel) Expire(ctx context.Context, id uuid.UUID) error {
-	return m.transitionStatus(ctx, id, SubscriptionStatusExpired)
-} 
+//
+// Expiration sets expires_at to NOW() only if expires_at is currently NULL.
+func (m *MerchantProgramSubscriptionModel) Expire(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	return m.transitionStatus(
+		ctx,
+		m.DB,
+		"ExpireMerchantProgramSubscription",
+		id,
+		SubscriptionStatusExpired,
+	)
+}
+
+// ExpireTx marks a non-deleted merchant program subscription as expired
+// through tx.
+//
+// ExpireTx does not begin, commit, or roll back tx. The coordinating service
+// owns transaction lifecycle and must use the same transaction for the
+// canonical subscription mutation and its corresponding lifecycle event.
+func (m *MerchantProgramSubscriptionModel) ExpireTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+) error {
+	if err := validateMerchantProgramSubscriptionTx(tx); err != nil {
+		return err
+	}
+
+	return m.transitionStatus(
+		ctx,
+		tx,
+		"ExpireMerchantProgramSubscriptionTx",
+		id,
+		SubscriptionStatusExpired,
+	)
+}
 
 // SoftDelete marks a merchant program subscription as deleted.
 //
 // Subscription records are lifecycle records. This method intentionally uses
 // soft delete and does not hard-delete the row.
-func (m *MerchantProgramSubscriptionModel) SoftDelete(ctx context.Context, id uuid.UUID) error {
+func (m *MerchantProgramSubscriptionModel) SoftDelete(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
 	if err := m.validate(); err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("SoftDeleteMerchantProgramSubscription")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("SoftDeleteMerchantProgramSubscription")
 
 	if err := validateMerchantProgramSubscriptionID(id); err != nil {
 		logger.Error("Validation failed", err)
@@ -935,21 +1558,47 @@ func (m *MerchantProgramSubscriptionModel) SoftDelete(ctx context.Context, id uu
 	var merchantID uuid.UUID
 	var planID uuid.UUID
 	var status MerchantProgramSubscriptionStatus
-	err := m.DB.QueryRow(ctx, query, id).Scan(&merchantID, &planID, &status)
+
+	err := m.DB.
+		QueryRow(
+			ctx,
+			query,
+			id,
+		).
+		Scan(
+			&merchantID,
+			&planID,
+			&status,
+		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("merchant program subscription not found or already deleted: %s", id)
+			err = fmt.Errorf(
+				"merchant program subscription not found or already deleted: %s",
+				id,
+			)
 		}
-		logger.Error("Soft delete merchant program subscription failed", err, "subscription_id", id)
+
+		logger.Error(
+			"Soft delete merchant program subscription failed",
+			err,
+			"subscription_id",
+			id,
+		)
 		return err
 	}
 
-	logger.Info("Soft delete merchant program subscription successful",
-		"subscription_id", id,
-		"merchant_id", merchantID,
-		"plan_id", planID,
-		"status", status,
+	logger.Info(
+		"Soft delete merchant program subscription successful",
+		"subscription_id",
+		id,
+		"merchant_id",
+		merchantID,
+		"plan_id",
+		planID,
+		"status",
+		status,
 	)
+
 	return nil
 }
 
@@ -957,14 +1606,20 @@ func (m *MerchantProgramSubscriptionModel) SoftDelete(ctx context.Context, id uu
 //
 // Restoring a pending, active, paused, or suspended subscription may fail if
 // the merchant already has another current non-deleted subscription.
-func (m *MerchantProgramSubscriptionModel) Restore(ctx context.Context, id uuid.UUID) error {
+func (m *MerchantProgramSubscriptionModel) Restore(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
 	if err := m.validate(); err != nil {
 		return err
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("RestoreMerchantProgramSubscription")
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("RestoreMerchantProgramSubscription")
 
 	if err := validateMerchantProgramSubscriptionID(id); err != nil {
 		logger.Error("Validation failed", err)
@@ -984,22 +1639,52 @@ func (m *MerchantProgramSubscriptionModel) Restore(ctx context.Context, id uuid.
 	var merchantID uuid.UUID
 	var planID uuid.UUID
 	var status MerchantProgramSubscriptionStatus
-	err := m.DB.QueryRow(ctx, query, id).Scan(&merchantID, &planID, &status)
+
+	err := m.DB.
+		QueryRow(
+			ctx,
+			query,
+			id,
+		).
+		Scan(
+			&merchantID,
+			&planID,
+			&status,
+		)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			err = fmt.Errorf("no soft-deleted merchant program subscription found with ID %s", id)
+			err = fmt.Errorf(
+				"no soft-deleted merchant program subscription found with ID %s",
+				id,
+			)
 		} else {
-			err = translateMerchantProgramSubscriptionWriteError(err, uuid.Nil, uuid.Nil)
+			err = translateMerchantProgramSubscriptionWriteError(
+				err,
+				uuid.Nil,
+				uuid.Nil,
+			)
 		}
-		logger.Error("Restore merchant program subscription failed", err, "subscription_id", id)
+
+		logger.Error(
+			"Restore merchant program subscription failed",
+			err,
+			"subscription_id",
+			id,
+		)
 		return err
 	}
 
-	logger.Info("Restore merchant program subscription successful",
-		"subscription_id", id,
-		"merchant_id", merchantID,
-		"plan_id", planID,
-		"status", status,
+	logger.Info(
+		"Restore merchant program subscription successful",
+		"subscription_id",
+		id,
+		"merchant_id",
+		merchantID,
+		"plan_id",
+		planID,
+		"status",
+		status,
 	)
+
 	return nil
 }
