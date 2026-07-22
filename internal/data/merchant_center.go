@@ -7,7 +7,7 @@
 //   Release Class: DEFERRED
 //   Reason:
 //     Merchant Center is valid future merchant self-service infrastructure, but
-//     it is not required for the initial SagrentiDeals release spine. The v1
+//     it is not required for the initial Platform release spine. The v1
 //     spine requires merchant identity, merchant type classification,
 //     affiliate-program relationships, canonical offers, publication governance,
 //     click tracking, price history, favorites/stash, and merchant follows

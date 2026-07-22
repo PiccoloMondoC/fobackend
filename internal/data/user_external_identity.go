@@ -38,7 +38,7 @@ import (
 )
 
 // UserExternalIdentity represents an external OAuth identity linked to a
-// Sagrenti user account. Provider-subject ownership must not silently move
+// Platform user account. Provider-subject ownership must not silently move
 // between users.
 type UserExternalIdentity struct {
 	ID              uuid.UUID  `json:"id" db:"id"`

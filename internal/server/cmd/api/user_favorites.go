@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/user_favorites.go
 //
@@ -10,7 +10,7 @@
 //	  User favorites, My Stash behavior, merchant follows, favorite-derived
 //	  recommendations, personalized retrieval, sharing, migration, alerts,
 //	  and favorite analytics are valid future consumer capabilities, but they
-//	  are not required for the initial SagrentiDeals release spine. The initial
+//	  are not required for the initial Platform release spine. The initial
 //	  release prioritizes canonical offers, publication governance, commerce
 //	  routing, attribution, merchant foundations, and the Future Offering
 //	  Platform supported by its Monetization Layer.

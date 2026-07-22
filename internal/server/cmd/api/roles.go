@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/roles.go
 //

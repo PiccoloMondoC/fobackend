@@ -8,7 +8,7 @@
 //   Reason:
 //     Offer sponsorships, sponsorship bid types, and sponsorship bid minimums
 //     are valid future monetization infrastructure, but they are not required
-//     for the initial SagrentiDeals release spine. The v1 spine requires
+//     for the initial Platform release spine. The v1 spine requires
 //     canonical offers, publication governance, affiliate links, click tracking,
 //     price history, and moderation flags before expanding into paid placement
 //     and sponsorship workflows.

@@ -9,7 +9,7 @@
 //     User wishlists are release-critical consumer purchase-intent
 //     infrastructure. They support saved offers, My Stash behavior, return
 //     visits, consumer personalization, gifting intent, and price-alert-adjacent
-//     purchase planning required by the initial SagrentiDeals release spine.
+//     purchase planning required by the initial Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.

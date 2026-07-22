@@ -10,7 +10,7 @@
 //     authorization infrastructure. They define the canonical permission
 //     catalog, enforce role capability assignments, support permission checks,
 //     and preserve access-control integrity required by the initial
-//     SagrentiDeals release spine.
+//     Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.

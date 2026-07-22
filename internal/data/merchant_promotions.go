@@ -7,7 +7,7 @@
 //   Release Class: DEFERRED
 //   Reason:
 //     Merchant promotions are valid future merchandising and campaign
-//     infrastructure, but they are not required for the initial SagrentiDeals
+//     infrastructure, but they are not required for the initial Platform
 //     release spine. The v1 spine requires canonical offers, publication status,
 //     affiliate links, click tracking, price history, and merchant/catalog
 //     foundations before expanding into promotion workflow management.

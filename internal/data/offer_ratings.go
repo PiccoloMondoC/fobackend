@@ -7,7 +7,7 @@
 //   Release Class: DEFERRED
 //   Reason:
 //     Offer ratings are valid future engagement and trust-signal
-//     infrastructure, but they are not required for the initial SagrentiDeals
+//     infrastructure, but they are not required for the initial Platform
 //     release spine. The v1 spine requires canonical offers, publication
 //     governance, affiliate links, click tracking, price history, and moderation
 //     flags before expanding into user-generated rating and review workflows.

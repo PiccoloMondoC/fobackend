@@ -1,5 +1,5 @@
 // Package main provides HTTP handlers and retained internal integration points
-// for the SagrentiDeals API.
+// for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/user_wallets.go
 //
@@ -10,7 +10,7 @@
 //	Reason:
 //	  User wallets and wallet-ledger workflows are valid future rewards,
 //	  stored-value, platform-credit, and balance infrastructure, but they are
-//	  not required for the initial SagrentiDeals release spine.
+//	  not required for the initial Platform release spine.
 //
 //	  The data layer preserves the canonical wallet and immutable ledger
 //	  contracts so the domain can be activated later without reconstructing

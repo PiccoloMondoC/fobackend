@@ -7,7 +7,7 @@
 //   Release Class: DEFERRED
 //   Reason:
 //     Offer conversions are valid affiliate analytics infrastructure, but they
-//     are not required for the initial SagrentiDeals release spine because
+//     are not required for the initial Platform release spine because
 //     conversion reporting is expected to come from affiliate networks first.
 //     The v1 spine requires immutable offer-click tracking before expanding
 //     into internal conversion attribution.

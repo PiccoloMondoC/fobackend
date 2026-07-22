@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the Sagrenti API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/offer_clicks.go
 //

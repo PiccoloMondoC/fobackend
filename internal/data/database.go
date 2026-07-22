@@ -15,8 +15,8 @@
 //
 // Future Offering v1 Doctrine:
 //
-//	Sagrenti v1 is not a deals platform.
-//	Sagrenti v1 is a Future Offering anticipation platform.
+//	Platform v1 is not a deals platform.
+//	Platform v1 is a Future Offering anticipation platform.
 //
 //	SPINE means only what is required to let a merchant publish a Future
 //	Offering and let consumers discover, watch, and express future intent
@@ -171,7 +171,7 @@ func (m *DBConnectionParamsModel) ConnectWithConnector(cfg *bootstrap.Config) (*
 	return nil, fmt.Errorf("verify database connection after %d attempts: %w", maxRetries, lastErr)
 }
 
-// CreateTables creates the canonical Sagrenti schema objects required at startup.
+// CreateTables creates the canonical Platform schema objects required at startup.
 //
 // Schema creation runs inside a transaction so a failure cannot leave a partially
 // initialized foundation. The timeout is intentionally longer than request-path
@@ -1202,7 +1202,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 		-- Canonical public destination for this offer.
 		-- For Deals this may resolve to outbound commerce.
-		-- For Trends this should normally resolve to the Sagrenti Trend page/action flow.
+		-- For Trends this should normally resolve to the Platform Trend page/action flow.
 		destination_url TEXT NOT NULL CHECK (destination_url ~* '^https?://'),
 
 		price NUMERIC(19,4),
@@ -1797,7 +1797,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		id
 	);
 
-	
+
 	-- ===============================================================
 	-- DEFERRED: Merchant Platform Credits / Merchant Platform Credit Eligible Fee Types
 	-- Non-v1 merchant credit account and eligibility infrastructure.
@@ -2065,9 +2065,9 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			'preorder'
 		)),
 
-		fulfillment_mode TEXT NOT NULL DEFAULT 'sagrenti_hosted'
+		fulfillment_mode TEXT NOT NULL DEFAULT 'platform_hosted'
 			CHECK (fulfillment_mode IN (
-				'sagrenti_hosted',
+				'platform_hosted',
 				'merchant_hosted',
 				'disabled'
 			)),
@@ -3095,7 +3095,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 	-- ===============================================================
 	-- DEFERRED: OAuth Clients / Authorization Codes / User Consent
-	-- Non-v1 Sagrenti-as-OAuth-provider infrastructure (Layer 2.2.b).
+	-- Non-v1 Platform-as-OAuth-provider infrastructure (Layer 2.2.b).
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
 	-- ===============================================================

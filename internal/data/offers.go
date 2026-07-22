@@ -6,8 +6,8 @@
 //   Layer: 2.5 Catalog / Offer Domain
 //   Release Class: SPINE
 //   Reason:
-//     Offers are the canonical release-critical commerce object for
-//     SagrentiDeals. This file owns the Offer struct, OfferModel, canonical
+//     Offers are the canonical release-critical commerce object for the
+//     Platform. This file owns the Offer struct, OfferModel, canonical
 //     scan contract, core offer persistence, public visibility contract,
 //     internal/admin offer reads, soft-delete lifecycle, and hard-delete
 //     maintenance path used by the split offer-domain files.

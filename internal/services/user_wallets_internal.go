@@ -10,7 +10,7 @@
 //   Reason:
 //     User wallets and wallet-ledger operations are valid future rewards,
 //     points, balance, and incentive infrastructure, but they are not required
-//     for the initial SagrentiDeals release spine. The v1 spine requires
+//     for the initial Platform release spine. The v1 spine requires
 //     account identity, user settings, notifications, favorites/stash,
 //     merchant follows, canonical offers, click tracking, and price history
 //     before rewards wallets and ledger-backed incentive flows are activated.
@@ -44,7 +44,7 @@ import (
 )
 
 // EnsureUserRewardWalletInternal creates or retrieves the user's canonical
-// Sagrenti rewards wallet.
+// Platform rewards wallet.
 //
 // This operation does not mutate the wallet balance and does not create a
 // wallet ledger entry.

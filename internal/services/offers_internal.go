@@ -13,7 +13,7 @@
 //     description generation, fraud detection, expiration and removal,
 //     personalized suggestion generation, status transitions, flagging, and
 //     blacklisting. These operations mutate the SPINE-tier offers table and
-//     drive audit-logged catalog integrity for SagrentiDeals.
+//     drive audit-logged catalog integrity for Platform.
 //
 // SPINE Rule:
 //   Keep compiling.

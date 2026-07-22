@@ -9,7 +9,7 @@
 //     Secure random token generation is release-critical authentication
 //     infrastructure. It supports activation tokens, password reset tokens,
 //     verification flows, one-time credential material, refresh tokens, and
-//     other security boundaries required by the initial SagrentiDeals release
+//     other security boundaries required by the initial Platform release
 //     spine.
 //
 // SPINE Rule:

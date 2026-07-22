@@ -11,7 +11,7 @@
 //     infrastructure. They support retained notification history, price-drop
 //     and offer-related alerts, active notification lookup, dismissal behavior,
 //     and dynamic notification type/channel resolution required by the initial
-//     SagrentiDeals release spine.
+//     Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.

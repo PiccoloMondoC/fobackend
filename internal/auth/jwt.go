@@ -82,7 +82,7 @@ func wrapMisconfigured(detail string) error {
 	return fmt.Errorf("%w: %s", errTokenServiceMisconfigured, detail)
 }
 
-// TokenService issues Sagrenti access and refresh tokens and validates
+// TokenService issues Platform access and refresh tokens and validates
 // access-token signatures using Ed25519 public keys.
 type TokenService struct {
 	DB              *pgxpool.Pool
@@ -224,7 +224,7 @@ func (ts *TokenService) GenerateRefreshToken(
 	return refreshToken, nil
 }
 
-// ParseToken validates an EdDSA JWT and returns canonical Sagrenti claims.
+// ParseToken validates an EdDSA JWT and returns canonical Platform claims.
 func (ts *TokenService) ParseToken(tokenStr string) (*jwtutil.Claims, error) {
 	if err := ts.validateTokenService(false, false); err != nil {
 		return nil, err
@@ -252,7 +252,7 @@ func (ts *TokenService) ParseToken(tokenStr string) (*jwtutil.Claims, error) {
 	)
 }
 
-// ValidateToken reports whether tokenStr is a valid Sagrenti access token.
+// ValidateToken reports whether tokenStr is a valid Platform access token.
 func (ts *TokenService) ValidateToken(tokenStr string) bool {
 	_, err := ts.ParseToken(tokenStr)
 	return err == nil

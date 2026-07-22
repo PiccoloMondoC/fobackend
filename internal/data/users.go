@@ -10,7 +10,7 @@
 //     This file owns canonical user persistence, registration, authentication,
 //     OAuth account linking, password hashing, password reset, primary role
 //     assignment, contact-info lookup, active-state control, and account
-//     soft-delete cascade behavior required by the initial SagrentiDeals release
+//     soft-delete cascade behavior required by the initial Platform release
 //     spine.
 //
 // SPINE Rule:

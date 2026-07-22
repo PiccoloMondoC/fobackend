@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/affiliate_performance.go
 //
@@ -9,7 +9,7 @@
 //	Reason:
 //	  Affiliate performance HTTP administration is valid post-release
 //	  analytics and reporting infrastructure, but it is not required for the
-//	  initial SagrentiDeals release spine. The v1 spine only requires offer
+//	  initial Platform release spine. The v1 spine only requires offer
 //	  publication, affiliate click tracking, and safe public offer behavior.
 //	  Do not expand these handlers until the release spine is functionally
 //	  complete.

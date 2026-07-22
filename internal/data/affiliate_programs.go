@@ -6,7 +6,7 @@
 //   Layer: 2.4 Merchant / Affiliate Domain
 //   Release Class: DEFERRED
 //   Reason:
-//     Affiliate programs are release-critical because SagrentiDeals needs a
+//     Affiliate programs are release-critical because the Platform needs a
 //     canonical affiliate program catalog to support merchant affiliate
 //     relationships, provider configuration, outbound integration credentials,
 //     and offer monetization. This file must remain production-ready for v1.

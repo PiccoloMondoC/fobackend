@@ -11,7 +11,7 @@
 //	  User favorites, My Stash behavior, merchant follows, favorite-derived
 //	  recommendations, personalized retrieval, and favorite analytics are
 //	  valid future consumer-engagement capabilities, but they are not required
-//	  for the initial SagrentiDeals release spine. The initial release
+//	  for the initial Platform release spine. The initial release
 //	  prioritizes canonical offers, publication governance, commerce routing,
 //	  attribution, merchant foundations, and the Future Offering Platform
 //	  supported by its Monetization Layer.

@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/coupons.go
 //
@@ -9,7 +9,7 @@
 //	Reason:
 //	  Coupon administration, moderation, clipping, and performance reporting
 //	  are valid future commerce capabilities, but they are not required for
-//	  the initial SagrentiDeals release spine. The v1 spine is offer-first and
+//	  the initial Platform release spine. The v1 spine is offer-first and
 //	  relies on canonical offers, affiliate links, publication status, click
 //	  tracking, and price history before expanding into a dedicated coupon
 //	  ecosystem.

@@ -22,7 +22,7 @@ func (app *Application) LivenessHandler(w http.ResponseWriter, r *http.Request) 
 
 	resp := healthResp{
 		Status:  "ok",
-		Service: "sagrentideals",
+		Service: "platform",
 		Time:    time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -51,7 +51,7 @@ func (app *Application) ReadinessHandler(w http.ResponseWriter, r *http.Request)
 
 		resp := healthResp{
 			Status:  "not_ready",
-			Service: "sagrentideals",
+			Service: "platform",
 			Time:    time.Now().UTC().Format(time.RFC3339),
 		}
 		_ = json.NewEncoder(w).Encode(resp) // best-effort; ignore encode error for probe
@@ -61,7 +61,7 @@ func (app *Application) ReadinessHandler(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	resp := healthResp{
 		Status:  "ready",
-		Service: "sagrentideals",
+		Service: "platform",
 		Time:    time.Now().UTC().Format(time.RFC3339),
 	}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {

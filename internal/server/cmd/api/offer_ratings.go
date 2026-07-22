@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/offer_ratings.go
 //
@@ -9,7 +9,7 @@
 //	Reason:
 //	  Offer ratings and written reviews are valid future engagement and
 //	  trust-signal infrastructure, but they are not required for the initial
-//	  SagrentiDeals release spine. The initial release prioritizes canonical
+//	  Platform release spine. The initial release prioritizes canonical
 //	  offers, publication governance, commerce routing, attribution,
 //	  price history, merchant foundations, and the Future Offering Platform
 //	  supported by its Monetization Layer.

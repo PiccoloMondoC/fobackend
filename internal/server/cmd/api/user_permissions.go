@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/user_permissions.go
 //
@@ -11,7 +11,7 @@
 //	  administration are release-critical authorization infrastructure.
 //	  These handlers expose the canonical permission catalog, support explicit
 //	  user capability checks, and preserve controlled role capability
-//	  assignments required by the initial SagrentiDeals release spine.
+//	  assignments required by the initial Platform release spine.
 //
 // SPINE Rule:
 //

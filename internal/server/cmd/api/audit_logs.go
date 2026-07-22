@@ -1,4 +1,4 @@
-// Package main contains HTTP handlers for the Sagrenti backend API.
+// Package main contains HTTP handlers for the Platform backend API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/audit_logs.go
 //

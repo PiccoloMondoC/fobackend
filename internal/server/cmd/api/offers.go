@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/offers.go
 //
@@ -13,7 +13,7 @@
 //	  lifecycle, and the administrative hard-delete maintenance path.
 //
 //	  Offers are release-critical because they are the public expression of
-//	  Sagrenti commerce. An Offer is either a Deal representing Present
+//	  Platform commerce. An Offer is either a Deal representing Present
 //	  Commerce or a Trend representing Future Commerce.
 //
 // SPINE Rule:

@@ -11,7 +11,7 @@
 //	  Centralized UTC time generation is release-critical shared infrastructure.
 //	  It supports authentication, token expiration, authorization deadlines,
 //	  password recovery, account activation, and other application-owned time
-//	  calculations required by the initial SagrentiDeals release spine.
+//	  calculations required by the initial Platform release spine.
 //
 // SPINE Rule:
 //

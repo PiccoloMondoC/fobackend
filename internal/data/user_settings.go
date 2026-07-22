@@ -10,7 +10,7 @@
 //     They preserve notification preferences, privacy data-sharing controls,
 //     preferred notification channel selection, structured preference storage,
 //     and soft-delete/restore lifecycle behavior required by the initial
-//     SagrentiDeals release spine.
+//     Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.

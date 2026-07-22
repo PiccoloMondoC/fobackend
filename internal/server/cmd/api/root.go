@@ -24,7 +24,7 @@ type rootResp struct {
 func (app *Application) RootHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")
     resp := rootResp{
-        Service: "sagrentideals",
+        Service: "platform",
         Status:  "ok",
         Time:    time.Now().UTC().Format(time.RFC3339),
         Endpoints: app.publicRoutes.listWithEnsure(
@@ -47,6 +47,6 @@ func (app *Application) NotFoundHandler(w http.ResponseWriter, r *http.Request) 
 		"error":   "route not found",
 		"method":  r.Method,
 		"path":    r.URL.Path,
-		"service": "sagrentideals",
+		"service": "platform",
 	})
 }

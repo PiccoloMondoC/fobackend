@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/merchant_applications.go
 //
@@ -9,7 +9,7 @@
 //	Reason:
 //	  Merchant applications and merchant application statuses are valid
 //	  self-service merchant onboarding infrastructure, but they are not required
-//	  for the initial SagrentiDeals release spine. The v1 spine requires
+//	  for the initial Platform release spine. The v1 spine requires
 //	  merchant identity, merchant type classification, affiliate program catalog,
 //	  and merchant-affiliate relationships before expanding into application
 //	  workflow management.

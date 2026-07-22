@@ -10,7 +10,7 @@
 //     platforms are release-critical merchant/catalog infrastructure. They
 //     support merchant identity, merchant classification, affiliate-program
 //     linkage, platform lookup, offer ownership, and monetization routing for
-//     the initial SagrentiDeals release spine.
+//     the initial Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.

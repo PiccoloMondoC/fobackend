@@ -14,7 +14,7 @@
 //	  registration, email/password authentication, verified Google and Facebook
 //	  login, OAuth account linking, password management, access-token issuance,
 //	  refresh-token rotation, logout, and controlled account deletion required
-//	  by the initial SagrentiDeals release spine.
+//	  by the initial Platform release spine.
 //
 // SPINE Rule:
 //

@@ -1,5 +1,5 @@
 // Package data provides canonical persistence models and database access for
-// SagrentiDeals.
+// the Platform.
 //
 // sdworkspace/sdbackend/internal/data/user_dashboard_reports.go
 //

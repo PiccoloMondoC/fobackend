@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/merchant_promotions.go
 //
@@ -8,7 +8,7 @@
 //	Release Class: DEFERRED
 //	Reason:
 //	  Merchant promotions are valid future merchandising and campaign
-//	  infrastructure, but they are not required for the initial SagrentiDeals
+//	  infrastructure, but they are not required for the initial Platform
 //	  release spine. The initial release prioritizes canonical offers,
 //	  publication status, commerce routing, attribution, price history,
 //	  merchant foundations, and the Future Offering Platform supported by

@@ -1,5 +1,5 @@
 // Package main owns release-critical API process startup and lifecycle
-// orchestration for the Sagrenti backend.
+// orchestration for the Platform backend.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/main.go
 //

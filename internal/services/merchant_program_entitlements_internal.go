@@ -14,7 +14,7 @@
 //	  checks, and reusable service-layer guards for Launch Campaign and Future
 //	  Offering workflows.
 //
-//	  Future Offering is Sagrenti's core merchant-side future-commerce object.
+//	  Future Offering is Platform's core merchant-side future-commerce object.
 //	  A merchant program plan must not be treated as capable of activating
 //	  Future Offering workflows unless the plan carries the appropriate
 //	  entitlement.

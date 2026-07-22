@@ -8,7 +8,7 @@
 //   Reason:
 //     User dashboards, dashboard reports, and dashboard templates are valid
 //     future personalization and reporting infrastructure, but they are not
-//     required for the initial SagrentiDeals release spine. The v1 spine
+//     required for the initial Platform release spine. The v1 spine
 //     requires account identity, notifications, favorites/stash, merchant
 //     follows, and core offer behavior before expanding into rich dashboard
 //     configuration and reporting.

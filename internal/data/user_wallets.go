@@ -8,7 +8,7 @@
 //   Reason:
 //     User wallets and wallet ledger entries are valid future rewards,
 //     points, balance, and internal ledger infrastructure, but they are not
-//     required for the initial SagrentiDeals release spine. The v1 spine
+//     required for the initial Platform release spine. The v1 spine
 //     requires account identity, user settings, notifications, favorites/stash,
 //     merchant follows, canonical offers, click tracking, and price history
 //     before expanding into rewards wallets and ledger-backed incentive flows.
@@ -72,7 +72,7 @@ var walletAmountPattern = regexp.MustCompile(`^\d+(\.\d{1,4})?$`)
 
 // UserWallet represents a user's wallet/account container.
 //
-// For SagrentiDeals, the first supported production use case is rewards:
+// For the Platform, the first supported production use case is rewards:
 // wallet_type = "rewards", unit_code = "SAGR_POINTS".
 //
 // Balance is the confirmed available balance. LifetimeEarned is cumulative
@@ -188,7 +188,7 @@ func scanWalletLedgerEntry(row walletScanner) (*WalletLedgerEntry, error) {
 	return &entry, nil
 }
 
-// EnsureRewardWallet creates or retrieves the user's Sagrenti reward wallet.
+// EnsureRewardWallet creates or retrieves the user's Platform reward wallet.
 //
 // This method is safe to call after registration and before reward issuance.
 // It does not mutate balances and does not create ledger activity.

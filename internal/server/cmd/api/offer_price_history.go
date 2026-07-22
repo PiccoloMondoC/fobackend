@@ -1,4 +1,4 @@
-// Package main provides the Sagrenti HTTP API application.
+// Package main provides the Platform HTTP API application.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/offer_price_history.go
 //

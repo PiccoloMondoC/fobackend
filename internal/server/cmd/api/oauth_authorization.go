@@ -6,9 +6,9 @@
 //	Release Class: DEFERRED
 //	Reason:
 //	  OAuth Authorization Code and Consent handlers are valid OAuth provider
-//	  infrastructure, but Sagrenti acting as an OAuth provider for
+//	  infrastructure, but Platform acting as an OAuth provider for
 //	  third-party applications is not required for the initial
-//	  SagrentiDeals release spine. Do not expand this file until the
+//	  Platform release spine. Do not expand this file until the
 //	  release spine is functionally complete.
 //
 // DEFERRED Rule:

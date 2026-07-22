@@ -11,7 +11,7 @@
 //	  infrastructure for Future Offering access, Launch Campaign access,
 //	  merchant subscriptions, entitlement assignment, fee schedules, billing
 //	  accounts, and Merchant Center plan selection. Future Offering is
-//	  Sagrenti's core business object, and program-plan integrity is required
+//	  the Platform's core business object, and program-plan integrity is required
 //	  before merchant-owned future-commerce workflows can be safely activated.
 //
 // SPINE Rule:

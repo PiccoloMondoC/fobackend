@@ -18,7 +18,7 @@
 //     enforce token parsing, EdDSA signing-method validation, required time
 //     claims, audience/issuer checks, subject/user_id consistency, JTI integrity,
 //     key ID readiness, and access-token generation required by the initial
-//     SagrentiDeals release spine.
+//     Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.
@@ -162,7 +162,7 @@ var (
 	ErrInvalidKeyID = errors.New("jwtutil: invalid key id")
 )
 
-// Claims wraps jwt.RegisteredClaims with Sagrenti application-specific fields.
+// Claims wraps jwt.RegisteredClaims with Platform application-specific fields.
 //
 // UserID mirrors the registered subject claim as a typed UUID.
 // RegisteredClaims.ID is the JWT ID / JTI and must also be a UUID.
@@ -221,11 +221,11 @@ func WithKeyID(keyID string) SignOption {
 	}
 }
 
-// ParseAndValidate parses an EdDSA JWT and enforces Sagrenti access-token
+// ParseAndValidate parses an EdDSA JWT and enforces Platform access-token
 // invariants.
 //
 // Audience and issuer enforcement are opt-in at this low-level utility boundary.
-// Callers that validate Sagrenti production access tokens should normally pass
+// Callers that validate Platform production access tokens should normally pass
 // WithAudience and WithIssuer so cryptographically valid tokens from the wrong
 // audience or issuer are rejected. When those options are omitted, this function
 // validates signature, signing algorithm, required time claims, subject/user_id

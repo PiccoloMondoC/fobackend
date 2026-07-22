@@ -11,7 +11,7 @@
 //     SMS delivery is release-critical communication infrastructure. It
 //     supports account activation, security notifications, price-drop alerts,
 //     offer-related notifications, and future provider-backed outbound SMS
-//     delivery required by the initial SagrentiDeals release spine.
+//     delivery required by the initial Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.

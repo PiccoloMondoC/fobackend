@@ -10,7 +10,7 @@
 //   Reason:
 //     User-wallet async orchestration supports future rewards, points, balance,
 //     and ledger-backed incentive automation, but it is not required for the
-//     initial SagrentiDeals release spine. It remains deferred until reward
+//     initial Platform release spine. It remains deferred until reward
 //     qualification, confirmation, reversal, expiry, and incentive automation
 //     are activated as production product behavior.
 //
@@ -43,7 +43,7 @@ import (
 const userWalletAsyncTimeout = 10 * time.Second
 
 // EnsureUserRewardWalletEvent requests creation or retrieval of a user's
-// canonical Sagrenti rewards wallet.
+// canonical Platform rewards wallet.
 type EnsureUserRewardWalletEvent struct {
 	UserID uuid.UUID
 }

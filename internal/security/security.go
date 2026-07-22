@@ -9,7 +9,7 @@
 //     Token hashing is release-critical authentication infrastructure. It
 //     supports protected storage of bearer-style token material, activation
 //     tokens, password reset tokens, refresh-token style lookup patterns, and
-//     other security boundaries required by the initial SagrentiDeals release
+//     other security boundaries required by the initial Platform release
 //     spine.
 //
 // SPINE Rule:

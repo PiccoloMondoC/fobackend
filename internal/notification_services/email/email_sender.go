@@ -10,7 +10,7 @@
 //     Email delivery is release-critical communication infrastructure. It
 //     supports account activation, security notifications, price-drop alerts,
 //     offer-related notifications, and future provider-backed outbound email
-//     delivery required by the initial SagrentiDeals release spine.
+//     delivery required by the initial Platform release spine.
 //
 // SPINE Rule:
 //   Keep compiling.
@@ -57,7 +57,7 @@ var (
 // Message is the canonical provider-neutral outbound email payload.
 //
 // From may contain either a bare mailbox address or an RFC 5322 display-name
-// sender such as "Sagrenti Support" <support@example.com>. To is normalized
+// sender such as "Platform Support" <support@example.com>. To is normalized
 // to a bare mailbox address for provider portability.
 type Message struct {
 	From    string
@@ -72,7 +72,7 @@ type Provider interface {
 	Send(ctx context.Context, message Message) error
 }
 
-// EmailService is the centralized outbound email boundary for Sagrenti
+// EmailService is the centralized outbound email boundary for Platform
 // notification delivery.
 type EmailService struct {
 	provider    Provider

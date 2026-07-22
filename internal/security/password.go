@@ -10,7 +10,7 @@
 //	  Password hashing and password verification are release-critical
 //	  authentication infrastructure. They protect plaintext credential handling,
 //	  bcrypt password persistence, login verification, password updates, and
-//	  password-reset flows required by the initial SagrentiDeals release spine.
+//	  password-reset flows required by the initial Platform release spine.
 //
 // SPINE Rule:
 //

@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/oauth_tokens.go
 //
@@ -8,9 +8,9 @@
 //	Release Class: DEFERRED
 //	Reason:
 //	  OAuth token issuance, refresh, introspection, and revocation are valid
-//	  OAuth provider infrastructure, but Sagrenti acting as an OAuth provider
+//	  OAuth provider infrastructure, but Platform acting as an OAuth provider
 //	  for third-party applications is not required for the initial
-//	  SagrentiDeals release spine. Do not expand this file until the release
+//	  Platform release spine. Do not expand this file until the release
 //	  spine is functionally complete.
 //
 // DEFERRED Rule:

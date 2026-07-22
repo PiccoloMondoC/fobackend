@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/user_activation.go
 //
@@ -10,7 +10,7 @@
 //	  User activation is release-critical identity infrastructure. These
 //	  handlers create and deliver activation credentials, activate eligible
 //	  user accounts, expose authenticated activation-status reads, and preserve
-//	  the audit trail required by the initial SagrentiDeals release spine.
+//	  the audit trail required by the initial Platform release spine.
 //
 // SPINE Rule:
 //

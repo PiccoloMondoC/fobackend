@@ -12,7 +12,7 @@
 //	  merchant program plans to the capabilities they unlock, including Launch
 //	  Campaign access and Future Offering / Launch Intelligence access.
 //
-//	  Future Offering is Sagrenti's core business object. A merchant program
+//	  Future Offering is the Platform's core business object. A merchant program
 //	  plan must not be treated as capable of activating Future Offering
 //	  workflows unless the plan carries the appropriate entitlement.
 //

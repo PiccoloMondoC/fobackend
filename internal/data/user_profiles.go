@@ -10,7 +10,7 @@
 //     infrastructure. They preserve canonical user profile data, user-handle
 //     validation, global handle reservation, profile moderation state,
 //     normalized social-link reads, notification-preference reads, and
-//     soft-delete lifecycle behavior required by the initial SagrentiDeals
+//     soft-delete lifecycle behavior required by the initial Platform
 //     release spine.
 //
 // SPINE Rule:

@@ -13,7 +13,7 @@
 //	  list, check, and hard-delete operations for entitlement rows that connect
 //	  merchant program plans to Launch Campaign and Future Offering capability.
 //
-//	  Future Offering is Sagrenti's core merchant-side future-commerce object.
+//	  Future Offering is the Platform's core merchant-side future-commerce object.
 //	  A merchant program plan must not be treated as capable of activating
 //	  Future Offering workflows unless the plan carries the appropriate
 //	  entitlement row.

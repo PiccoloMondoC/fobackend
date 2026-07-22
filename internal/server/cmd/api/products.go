@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/products.go
 //
@@ -9,7 +9,7 @@
 //	Reason:
 //	  Standalone product and brand HTTP administration is valid expanded
 //	  catalog infrastructure, but it is not required for the initial
-//	  SagrentiDeals release spine. The initial release prioritizes canonical
+//	  Platform release spine. The initial release prioritizes canonical
 //	  offers, publication governance, commerce routing, attribution,
 //	  merchant foundations, and the Future Offering Platform supported by
 //	  its Monetization Layer.

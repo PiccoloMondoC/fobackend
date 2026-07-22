@@ -1,5 +1,5 @@
 // Package data provides the centralized database model aggregate for the
-// Sagrenti backend.
+// Platform backend.
 //
 // File: sdworkspace/sdbackend/internal/data/models.go
 //
@@ -14,8 +14,8 @@
 //
 // Future Offering v1 Doctrine:
 //
-//   Sagrenti v1 is not a deals platform.
-//   Sagrenti v1 is a Future Offering anticipation platform.
+//   Platform v1 is not a deals platform.
+//   Platform v1 is a Future Offering anticipation platform.
 //
 //   SPINE means only what is required to let a merchant publish a Future
 //   Offering and let consumers discover, watch, and express future intent

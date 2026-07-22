@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/user_profiles.go
 //
@@ -12,7 +12,7 @@
 //	  access, controlled internal profile administration, canonical user-handle
 //	  validation, normalized related-data reads, profile moderation, reserved-
 //	  handle governance, and soft-delete lifecycle operations required by the
-//	  initial SagrentiDeals release spine.
+//	  initial Platform release spine.
 //
 // SPINE Rule:
 //

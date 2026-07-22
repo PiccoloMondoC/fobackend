@@ -1,5 +1,5 @@
 // Package logging provides zap-backed structured logging and contextual request
-// enrichment for the Sagrenti backend.
+// enrichment for the Platform backend.
 //
 // sdworkspace/sdbackend/internal/logging/logger.go
 //
@@ -57,7 +57,7 @@ const (
 	redactedValue      = "[REDACTED]"
 )
 
-// Logger wraps zap with Sagrenti-standard structured logging, service tagging,
+// Logger wraps zap with Platform-standard structured logging, service tagging,
 // and contextual enrichment.
 type Logger struct {
 	zapLogger   *zap.Logger

@@ -8,7 +8,7 @@
 //	Release Class: DEFERRED
 //	Reason:
 //	  Affiliate performance is valid post-release analytics/reporting infrastructure,
-//	  but it is not required for the initial SagrentiDeals release spine. The v1
+//	  but it is not required for the initial Platform release spine. The v1
 //	  spine only requires offer publication, affiliate click tracking, and safe
 //	  public offer behavior. Do not expand this file until the release spine is
 //	  functionally complete.

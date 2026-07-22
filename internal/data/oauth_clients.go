@@ -7,9 +7,9 @@
 //	Layer: 2.2 Identity / Auth Domain
 //	Release Class: DEFERRED
 //	Reason:
-//	  OAuth clients are valid OAuth provider infrastructure, but Sagrenti
+//	  OAuth clients are valid OAuth provider infrastructure, but the Platform
 //	  acting as an OAuth provider for third-party applications is not required
-//	  for the initial SagrentiDeals release spine. Do not expand this file until
+//	  for the initial Platform release spine. Do not expand this file until
 //	  the release spine is functionally complete.
 //
 // DEFERRED Rule:

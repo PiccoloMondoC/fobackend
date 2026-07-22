@@ -9,7 +9,7 @@
 //	Reason:
 //	  platform_settings is release-critical system configuration infrastructure.
 //	  It provides the canonical, auditable, admin-controlled configuration
-//	  surface for Sagrenti's backend.
+//	  surface for the Platform's backend.
 //
 //	  This table is for platform-level operational configuration only. It is
 //	  not a generic product-behavior escape hatch, not a user preferences table,

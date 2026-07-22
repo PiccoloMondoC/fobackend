@@ -1,4 +1,4 @@
-// Package main provides HTTP handlers for the SagrentiDeals API.
+// Package main provides HTTP handlers for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/user_settings.go
 //
@@ -11,7 +11,7 @@
 //	  infrastructure. They provide authenticated access to user-owned
 //	  notification preferences, privacy data-sharing controls, preferred
 //	  notification-channel selection, and structured account preferences
-//	  required by the initial SagrentiDeals release spine.
+//	  required by the initial Platform release spine.
 //
 // SPINE Rule:
 //

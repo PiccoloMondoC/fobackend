@@ -14,7 +14,7 @@
 //	  paused, suspended, cancelled, or expired subscription relationship to a
 //	  plan.
 //
-//	  Future Offering is Sagrenti's core business object. Merchant program
+//	  Future Offering is the Platform's core business object. Merchant program
 //	  subscriptions are the durable merchant-plan lifecycle records that later
 //	  services use to resolve merchant program access, Future Offering
 //	  readiness, entitlement eligibility, Merchant Center plan state, and

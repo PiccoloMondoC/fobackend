@@ -1,4 +1,4 @@
-// Package main provides HTTP routing for the SagrentiDeals API.
+// Package main provides HTTP routing for the Platform API.
 //
 // sdworkspace/sdbackend/internal/server/cmd/api/routes.go
 //
@@ -10,7 +10,7 @@
 //	  Canonical HTTP route registration is release-critical platform
 //	  infrastructure. This file defines the public, authenticated, privileged,
 //	  administrative, health, observability, and development-only entry points
-//	  for the SagrentiDeals API. It establishes the middleware boundaries,
+//	  for the Platform API. It establishes the middleware boundaries,
 //	  authentication requirements, permission enforcement, public-route
 //	  registry, route ordering, and versioned API surface required by every
 //	  release-critical domain.

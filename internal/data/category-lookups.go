@@ -6,7 +6,7 @@
 //   Layer: 2.5 Catalog / Offer Domain
 //   Release Class: SPINE
 //   Reason:
-//     Category-to-department lookup is release-critical because Sagrenti persists
+//     Category-to-department lookup is release-critical because the platform persists
 //     only the leaf category_id on offers while the frontend remains
 //     department-first. This helper preserves the canonical offer contract by
 //     resolving the root department from the category tree.
@@ -33,7 +33,7 @@ import (
 
 // lookupDepartmentIDForCategory resolves the root department for a category.
 //
-// Sagrenti persists only the leaf category_id on offers, while the frontend
+// The platform persists only the leaf category_id on offers, while the frontend
 // remains department-first. This helper preserves that contract by resolving
 // the category's canonical department_id.
 //

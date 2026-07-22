@@ -8,7 +8,7 @@
 //   Reason:
 //     Coupons, coupon statuses, coupon usage, and coupon performance statistics
 //     are valid future commerce features, but they are not required for the
-//     initial SagrentiDeals release spine. The v1 spine is offer-first and
+//     initial Platform release spine. The v1 spine is offer-first and
 //     relies on canonical offers, affiliate links, publication status, click
 //     tracking, and price history before expanding into a dedicated coupon
 //     ecosystem.
