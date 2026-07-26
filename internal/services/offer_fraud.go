@@ -1,3 +1,31 @@
+// Package services contains trusted internal service composition,
+// automation support, moderation helpers, and shared internal workflow logic.
+//
+// sdworkspace/sdbackend/internal/services/internal-services/offer-fraud.go
+//
+// GTM:
+//
+//	Layer: 2.6 Internal Services / Automation Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Provides internal offer-moderation heuristics and structured reason
+//	  collection for suspicious present-commerce offers.
+//
+//	  The established boolean service contract remains available while the
+//	  implementation records complete reason information internally.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve exact decimal handling for discount percentages.
+//	Evaluate Unicode title length by rune count, not byte count.
+//	Require valid HTTPS merchant commerce URLs where this present-commerce
+//	heuristic applies.
+//	Never treat malformed input as trustworthy.
+//	Never short-circuit in a way that loses additional moderation reasons.
+//	Do not apply present-commerce affiliate requirements to Future Offerings
+//	without an explicit domain-specific policy boundary.
 package services
 
 import (
@@ -18,11 +46,11 @@ var suspiciousDiscountThresholdPercent = big.NewRat(85, 1)
 type offerFraudReason string
 
 const (
-	offerFraudInvalidDiscount   offerFraudReason = "invalid_discount"
-	offerFraudHighDiscount      offerFraudReason = "high_discount"
-	offerFraudInvalidTitle      offerFraudReason = "invalid_title"
-	offerFraudMissingMerchant   offerFraudReason = "missing_merchant"
-	offerFraudInvalidAffiliate  offerFraudReason = "invalid_affiliate_url"
+	offerFraudInvalidDiscount  offerFraudReason = "invalid_discount"
+	offerFraudHighDiscount     offerFraudReason = "high_discount"
+	offerFraudInvalidTitle     offerFraudReason = "invalid_title"
+	offerFraudMissingMerchant  offerFraudReason = "missing_merchant"
+	offerFraudInvalidAffiliate offerFraudReason = "invalid_affiliate_url"
 )
 
 type offerFraudAssessment struct {

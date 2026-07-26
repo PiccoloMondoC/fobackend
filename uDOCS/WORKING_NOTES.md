@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write helper files container.go, decimals.go, errors.go, notification-jobs.go, offer-description.go, offer-fraud.go, pagination.go, status-resolution.go sevices layer"
+git commit -m "rewrite helper files container.go, decimals.go, errors.go, notification-jobs.go, offer-description.go, offer-fraud.go, pagination.go, status-resolution.go sevices layer"
 git push
 
 | data layer | handler layer | services layer |

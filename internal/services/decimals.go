@@ -1,3 +1,29 @@
+// Package services contains trusted internal service composition,
+// automation support, moderation helpers, and shared internal workflow logic.
+//
+// sdworkspace/sdbackend/internal/services/internal-services/decimals.go
+//
+// GTM:
+//
+//	Layer: 2.6 Internal Services / Automation Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Provides exact canonical decimal parsing for offer monetary and percentage
+//	  values used by internal moderation and description workflows.
+//
+//	  Offer prices and discount percentages remain decimal strings and are
+//	  parsed without binary floating-point conversion.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve exact rational parsing for monetary and percentage values.
+//	Never convert offer prices or discount percentages to float32 or float64.
+//	Reject fraction notation, exponent notation, malformed decimals, excessive
+//	input length, non-positive prices, and percentages outside 0 through 100.
+//	Keep absence distinct from invalid input.
+//	Do not silently round or normalize stored business values.
 package services
 
 import (

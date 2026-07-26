@@ -1,3 +1,29 @@
+// Package services contains trusted internal service composition,
+// automation support, moderation helpers, and shared internal workflow logic.
+//
+// sdworkspace/sdbackend/internal/services/internal-services/pagination.go
+//
+// GTM:
+//
+//	Layer: 2.6 Internal Services / Automation Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Provides bounded pagination normalization for interactive internal reads
+//	  and larger internal automation batches.
+//
+//	  The two established caller contracts intentionally retain different
+//	  defaults and ceilings according to workload class.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve bounded limits for every internal query path.
+//	Preserve the established interactive defaults of 10 and maximum of 100.
+//	Preserve the established internal-batch defaults of 100 and maximum of 500.
+//	Never permit negative offsets or unbounded limits.
+//	Keep pagination normalization deterministic and side-effect free.
+//	Do not add per-call logging to pure clamping operations.
 package services
 
 import "context"

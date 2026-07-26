@@ -1,3 +1,31 @@
+// Package services contains trusted internal service composition,
+// automation support, moderation helpers, and shared internal workflow logic.
+//
+// sdworkspace/sdbackend/internal/services/internal-services/offer-description.go
+//
+// GTM:
+//
+//	Layer: 2.6 Internal Services / Automation Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Generates deterministic internal offer-description text from validated
+//	  offer metadata without weakening canonical decimal handling or allowing
+//	  merchant-controlled Markdown structure.
+//
+//	  This file supports present-commerce offer description workflows only. It
+//	  does not define Future Offering messaging or lifecycle policy.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Require complete validated offer metadata before generating text.
+//	Preserve exact decimal parsing and never convert monetary values to float64.
+//	Escape merchant-controlled Markdown characters before interpolation.
+//	Never embed platform branding, unsupported claims, affiliate persuasion,
+//	or Future Offering purchase language in generated copy.
+//	Never log the full generated description.
+//	Do not overwrite authoritative merchant or editorial content implicitly.
 package services
 
 import (

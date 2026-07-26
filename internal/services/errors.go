@@ -1,3 +1,26 @@
+// Package services contains trusted internal service composition,
+// automation support, moderation helpers, and shared internal workflow logic.
+//
+// sdworkspace/sdbackend/internal/services/internal-services/errors.go
+//
+// GTM:
+//
+//	Layer: 2.6 Internal Services / Automation Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Defines stable internal-service sentinel errors used by composition,
+//	  decimal validation, offer processing, status resolution, and governed
+//	  notification-job behavior.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve errors.Is compatibility for every sentinel defined here.
+//	Wrap underlying failures with %w when adding operational context.
+//	Never collapse cancellation, timeout, datastore, configuration, validation,
+//	or not-found failures into an unrelated error category.
+//	Do not expose secrets, credentials, or sensitive payloads in errors.
 package services
 
 import "errors"
