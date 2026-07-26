@@ -50,7 +50,6 @@ import (
 // Principles:
 // Always extract sensitive identifiers from a trusted context
 
-
 // createUserWalletAfterRegistration ensures that the canonical rewards wallet
 // exists for a newly registered user.
 //
@@ -189,7 +188,6 @@ func (app *Application) createUserWalletAfterRegistration(
 	return nil
 }
 
-
 // GetUserWalletByIDHandler handles retrieving a user wallet by its ID.
 // It enforces permission checks, extracts user_id from context, retrieves the user wallet from the database,
 // performs audit logging, and responds with the user wallet details.
@@ -279,7 +277,6 @@ func (app *Application) GetUserWalletByIDHandler(w http.ResponseWriter, r *http.
 	})
 }
 
-
 // GetUserWalletByUserIDHandler retrieves a user wallet by user ID.
 // It enforces permission checks, extracts the user ID from the trusted context,
 // queries the database for the user wallet, performs audit logging, and responds with the user wallet details.
@@ -368,7 +365,6 @@ func (app *Application) GetUserWalletByUserIDHandler(w http.ResponseWriter, r *h
 		Data:    userWallet,
 	})
 }
-
 
 // ListUserWalletsHandler handles the retrieval of user wallets.
 // It enforces permission checks, extracts identifiers from trusted context,

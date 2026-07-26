@@ -644,7 +644,7 @@ func (app *Application) UpdateRolePermissionsHandler(
 		Error:   false,
 		Message: "Role permissions updated successfully",
 		Data: map[string]any{
-			"role_id":       roleID,
+			"role_id":        roleID,
 			"permission_ids": desiredPermissionIDs,
 		},
 	})

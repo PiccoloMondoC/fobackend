@@ -3,25 +3,27 @@
 // sdworkspace/sdbackend/internal/data/offer_conversions.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer conversions are valid affiliate analytics infrastructure, but they
-//     are not required for the initial Platform release spine because
-//     conversion reporting is expected to come from affiliate networks first.
-//     The v1 spine requires immutable offer-click tracking before expanding
-//     into internal conversion attribution.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer conversions are valid affiliate analytics infrastructure, but they
+//	  are not required for the initial Platform release spine because
+//	  conversion reporting is expected to come from affiliate networks first.
+//	  The v1 spine requires immutable offer-click tracking before expanding
+//	  into internal conversion attribution.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve immutable conversion-event semantics.
-//   Preserve DB-owned id and converted_at lifecycle behavior.
-//   Preserve bounded read paths.
-//   Preserve LogOfferConversion as the canonical write entry point.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve immutable conversion-event semantics.
+//	Preserve DB-owned id and converted_at lifecycle behavior.
+//	Preserve bounded read paths.
+//	Preserve LogOfferConversion as the canonical write entry point.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (

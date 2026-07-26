@@ -52,22 +52,22 @@ const (
 	merchantApplicationStatusEntityTypeName        = "merchant_application_status"
 	merchantApplicationStatusEntityTypeDescription = "Merchant application status entity"
 
-	createMerchantApplicationAction                   = "create_merchant_application"
-	readMerchantApplicationAction                     = "read_merchant_application"
-	readMerchantApplicationByMerchantAction           = "read_merchant_application_by_merchant"
-	listMerchantApplicationsAction                    = "list_merchant_applications"
-	adminListMerchantApplicationsAction               = "admin_list_merchant_applications"
-	listMerchantApplicationsByStatusAction            = "list_merchant_applications_by_status"
-	listMerchantApplicationsByAffiliateProgramAction  = "list_merchant_applications_by_affiliate_program"
-	updateMerchantApplicationAction                   = "update_merchant_application"
-	softDeleteMerchantApplicationAction               = "soft_delete_merchant_application"
-	createMerchantApplicationStatusAction             = "create_merchant_application_status"
-	readMerchantApplicationStatusAction               = "read_merchant_application_status"
-	listMerchantApplicationStatusesAction             = "list_merchant_application_statuses"
-	updateMerchantApplicationStatusAction             = "update_merchant_application_status"
-	softDeleteMerchantApplicationStatusAction         = "soft_delete_merchant_application_status"
-	defaultMerchantApplicationLimit                   = 20
-	maxMerchantApplicationLimit                       = 100
+	createMerchantApplicationAction                  = "create_merchant_application"
+	readMerchantApplicationAction                    = "read_merchant_application"
+	readMerchantApplicationByMerchantAction          = "read_merchant_application_by_merchant"
+	listMerchantApplicationsAction                   = "list_merchant_applications"
+	adminListMerchantApplicationsAction              = "admin_list_merchant_applications"
+	listMerchantApplicationsByStatusAction           = "list_merchant_applications_by_status"
+	listMerchantApplicationsByAffiliateProgramAction = "list_merchant_applications_by_affiliate_program"
+	updateMerchantApplicationAction                  = "update_merchant_application"
+	softDeleteMerchantApplicationAction              = "soft_delete_merchant_application"
+	createMerchantApplicationStatusAction            = "create_merchant_application_status"
+	readMerchantApplicationStatusAction              = "read_merchant_application_status"
+	listMerchantApplicationStatusesAction            = "list_merchant_application_statuses"
+	updateMerchantApplicationStatusAction            = "update_merchant_application_status"
+	softDeleteMerchantApplicationStatusAction        = "soft_delete_merchant_application_status"
+	defaultMerchantApplicationLimit                  = 20
+	maxMerchantApplicationLimit                      = 100
 )
 
 type createMerchantApplicationInput struct {

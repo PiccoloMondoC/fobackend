@@ -12,8 +12,8 @@ import (
 // endpointRegistry tracks public endpoints as a tiny thread-safe set.
 // Entries are stored as "METHOD path" and returned sorted for stable UX.
 type endpointRegistry struct {
-    mu  sync.RWMutex
-    set map[string]struct{}
+	mu  sync.RWMutex
+	set map[string]struct{}
 }
 
 func (app *Application) PublicEndpointsSnapshot() []string {
@@ -44,25 +44,30 @@ func (app *Application) PublicEndpointsSnapshot() []string {
 	return out
 }
 
-
 func newEndpointRegistry() *endpointRegistry {
-	 return &endpointRegistry{set: make(map[string]struct{})} 
+	return &endpointRegistry{set: make(map[string]struct{})}
 }
 
 func (er *endpointRegistry) add(method, path string) {
-    er.mu.Lock(); er.set[method+" "+path] = struct{}{}; er.mu.Unlock()
+	er.mu.Lock()
+	er.set[method+" "+path] = struct{}{}
+	er.mu.Unlock()
 }
 
 func (er *endpointRegistry) listWithEnsure(baseline ...string) []string {
-    er.mu.Lock()
-    for _, b := range baseline { er.set[b] = struct{}{} }
-    er.mu.Unlock()
+	er.mu.Lock()
+	for _, b := range baseline {
+		er.set[b] = struct{}{}
+	}
+	er.mu.Unlock()
 
-    er.mu.RLock()
-    out := make([]string, 0, len(er.set))
-    for k := range er.set { out = append(out, k) }
-    er.mu.RUnlock()
+	er.mu.RLock()
+	out := make([]string, 0, len(er.set))
+	for k := range er.set {
+		out = append(out, k)
+	}
+	er.mu.RUnlock()
 
-    sort.Strings(out)
-    return out
+	sort.Strings(out)
+	return out
 }

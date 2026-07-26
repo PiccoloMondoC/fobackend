@@ -48,7 +48,6 @@ import (
 // Principles:
 // Always extract sensitive identifiers from a trusted context
 
-
 // SponsorOfferHandler creates an offer sponsorship through the canonical
 // data-layer sponsorship write path.
 //
@@ -220,7 +219,6 @@ func (app *Application) SponsorOfferHandler(w http.ResponseWriter, r *http.Reque
 		},
 	})
 }
-
 
 // CreateOfferSponsorshipHandler creates an offer sponsorship through the
 // canonical data-layer Insert path.
@@ -418,7 +416,6 @@ func (app *Application) CreateOfferSponsorshipHandler(
 	})
 }
 
-
 // GetOfferSponsorshipByIDHandler handles retrieving a offer sponsorship by its ID.
 // It enforces permission checks, extracts sponsorship ID from context,
 // retrieves the sponsorship from the database, performs audit logging,
@@ -509,7 +506,6 @@ func (app *Application) GetOfferSponsorshipByIDHandler(w http.ResponseWriter, r 
 		Data:    offerSponsorship,
 	})
 }
-
 
 // ListOfferSponsorshipsHandler handles the retrieval of all offer sponsorships.
 // It enforces permission checks, extracts trusted identifiers from context,
@@ -606,7 +602,6 @@ func (app *Application) ListOfferSponsorshipsHandler(w http.ResponseWriter, r *h
 		},
 	})
 }
-
 
 // UpdateOfferSponsorshipHandler partially updates an existing offer
 // sponsorship.
@@ -829,7 +824,6 @@ func (app *Application) UpdateOfferSponsorshipHandler(
 		Data:    sponsorshipID,
 	})
 }
-
 
 // SoftDeleteOfferSponsorshipHandler handles the soft deletion of a offer sponsorship.
 // It enforces permission checks, extracts trusted identifiers from context,

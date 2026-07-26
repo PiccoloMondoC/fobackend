@@ -3,24 +3,26 @@
 // File: sdworkspace/sdbackend/internal/data/offer_review.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Offer review and publication workflow is release-critical catalog
-//     governance infrastructure. It controls status transitions, editorial
-//     approval, publishing, unpublishing, and expiration behavior over the
-//     canonical offers table used by the public catalog.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Offer review and publication workflow is release-critical catalog
+//	  governance infrastructure. It controls status transitions, editorial
+//	  approval, publishing, unpublishing, and expiration behavior over the
+//	  canonical offers table used by the public catalog.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve OfferModel ownership.
-//   Preserve canonical offers table dependency.
-//   Preserve offer status lookup behavior.
-//   Preserve editorial approval and publication semantics.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Block deployment if this file breaks build, offer review,
-//   publication workflow, expiration handling, or catalog governance integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve OfferModel ownership.
+//	Preserve canonical offers table dependency.
+//	Preserve offer status lookup behavior.
+//	Preserve editorial approval and publication semantics.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Block deployment if this file breaks build, offer review,
+//	publication workflow, expiration handling, or catalog governance integrity.
 package data
 
 import (

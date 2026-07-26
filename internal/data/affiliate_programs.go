@@ -3,21 +3,23 @@
 // sdworkspace/sdbackend/internal/data/affiliate_programs.go
 //
 // GTM:
-//   Layer: 2.4 Merchant / Affiliate Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Affiliate programs are release-critical because the Platform needs a
-//     canonical affiliate program catalog to support merchant affiliate
-//     relationships, provider configuration, outbound integration credentials,
-//     and offer monetization. This file must remain production-ready for v1.
+//
+//	Layer: 2.4 Merchant / Affiliate Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Affiliate programs are release-critical because the Platform needs a
+//	  canonical affiliate program catalog to support merchant affiliate
+//	  relationships, provider configuration, outbound integration credentials,
+//	  and offer monetization. This file must remain production-ready for v1.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Keep secret material protected.
-//   Preserve public-safe read paths.
-//   Block deployment if this file breaks build, persistence, validation,
-//   credential-safety, or affiliate program integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Keep secret material protected.
+//	Preserve public-safe read paths.
+//	Block deployment if this file breaks build, persistence, validation,
+//	credential-safety, or affiliate program integrity.
 package data
 
 import (

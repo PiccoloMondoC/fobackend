@@ -3,22 +3,24 @@
 // sdworkspace/sdbackend/internal/data/scan.go
 //
 // GTM:
-//   Layer: 2.1 Database / Governance Foundation
-//   Release Class: SPINE
-//   Reason:
-//     The shared scan contract is release-critical data-layer infrastructure. It
-//     centralizes row hydration behavior used across model files and helps
-//     prevent scan drift between SQL column lists and Go destination ordering.
+//
+//	Layer: 2.1 Database / Governance Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  The shared scan contract is release-critical data-layer infrastructure. It
+//	  centralizes row hydration behavior used across model files and helps
+//	  prevent scan drift between SQL column lists and Go destination ordering.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve the shared scanner interface.
-//   Preserve canonical row-hydration behavior.
-//   Preserve compatibility with pgx.Row, pgx.Rows, and pgx.CollectableRow
-//   scan paths, including collector functions used with pgx.CollectRows.
-//   Block deployment if this file breaks build, model scanning,
-//   row hydration, or data-layer persistence integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve the shared scanner interface.
+//	Preserve canonical row-hydration behavior.
+//	Preserve compatibility with pgx.Row, pgx.Rows, and pgx.CollectableRow
+//	scan paths, including collector functions used with pgx.CollectRows.
+//	Block deployment if this file breaks build, model scanning,
+//	row hydration, or data-layer persistence integrity.
 package data
 
 // scannableRow is the shared package-level scanner contract used by row

@@ -291,7 +291,6 @@ func validatePlatformSettingForInsert(setting *PlatformSetting) error {
 	return nil
 }
 
-
 // Insert inserts a new platform setting.
 //
 // Duplicate setting_key values return an error. Startup seed paths should use

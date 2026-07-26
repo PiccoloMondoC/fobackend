@@ -46,7 +46,30 @@ SEA answers:
 
 > **What do we build first, in what order, and what must not drift?**
 
----
+
+## **2A. Architectural Responsibility Separation** *(new section)*
+
+> ### 2A. Architectural Responsibility Separation
+Sagrenti separates **architecture**, **engineering**, and **operations** into distinct responsibilities.
+
+**Architecture** defines platform capabilities and their governing relationships.
+
+**Engineering** implements those capabilities together with the extension points required for safe evolution.
+
+**Administration** governs the operational state of those capabilities through approved configuration rather than software modification.
+
+This separation preserves a stable platform architecture while allowing operational policy to evolve independently of engineering releases.
+
+Consequently:
+
+* Engineering creates capabilities.
+* Administration configures capabilities.
+* Business operates capabilities.
+
+Supported operational changes should be achieved through governed administrative configuration rather than source-code modification, recompilation, or redeployment.
+
+New capabilities, new extension points, and changes to architectural contracts remain Engineering responsibilities.
+
 
 # 3. Core Execution Correction
 
@@ -60,7 +83,6 @@ SEA v1.01 corrects the model:
 
 > **Sagrenti uses anticipation to improve attributable merchant commerce, not abandon it.**
 
----
 
 # 4. Primary Execution Principle
 

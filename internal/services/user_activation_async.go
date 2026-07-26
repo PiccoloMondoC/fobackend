@@ -4,6 +4,7 @@
 //
 // sdworkspace/sdbackend/internal/services/async/user_activation_async.go
 package services
+
 /*
 func (s *Service) DeleteExpiredActivationTokensAsync()
 

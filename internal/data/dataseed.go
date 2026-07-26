@@ -239,6 +239,18 @@ const (
 		'read_current_merchant_program_subscription',
 		'read_active_merchant_program_subscription',
 		'read_merchant_program_subscriptions_by_merchant',
+
+		'create_merchant_payment_method',
+		'read_merchant_payment_method',
+		'read_default_merchant_payment_method',
+		'list_merchant_payment_methods',
+		'update_merchant_payment_method',
+		'set_default_merchant_payment_method',
+		'clear_default_merchant_payment_method',
+		'update_merchant_payment_method_status',
+		'soft_delete_merchant_payment_method',
+		'restore_merchant_payment_method',
+		
 		'delete_own_account'
 	)
 	WHERE r.name = 'merchant'
@@ -975,6 +987,17 @@ const (
 		('cancel_merchant_program_subscription', 'Allows cancelling merchant program subscriptions'),
 		('soft_delete_merchant_program_subscription', 'Allows soft-deleting merchant program subscriptions'),
 		('restore_merchant_program_subscription', 'Allows restoring soft-deleted merchant program subscriptions'),
+		-- Merchant Payment Methods
+		('create_merchant_payment_method', 'Allows creating merchant-owned payment method references'),
+		('read_merchant_payment_method', 'Allows reading a merchant-owned payment method reference'),
+		('read_default_merchant_payment_method', 'Allows reading the merchant''s active default payment method reference'),
+		('list_merchant_payment_methods', 'Allows listing merchant-owned payment method references'),
+		('update_merchant_payment_method', 'Allows updating merchant payment method display metadata'),
+		('set_default_merchant_payment_method', 'Allows assigning the merchant''s active default payment method'),
+		('clear_default_merchant_payment_method', 'Allows clearing the merchant''s default payment method'),
+		('update_merchant_payment_method_status', 'Allows transitioning merchant payment method status'),
+		('soft_delete_merchant_payment_method', 'Allows soft-deleting a merchant-owned payment method reference'),
+		('restore_merchant_payment_method', 'Allows restoring a soft-deleted merchant payment method reference'),
 		-- Merchant Promotion
 		('create_merchant_promotion', 'Allows creating a new merchant promotion record'),
 		('extend_merchant_promotion_dates', 'Allows extending the start and/or end dates of an merchant promotion record'),
@@ -1156,6 +1179,7 @@ const (
 		),
 		('merchant_program_plan', 'Merchant program plan entity'),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
+		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
 		('merchant_promotion', 'Merchant-specific promotion applied to offers'),
@@ -1427,6 +1451,17 @@ const (
 		('cancel_merchant_program_subscription', 'Cancel a merchant program subscription'),
 		('soft_delete_merchant_program_subscription', 'Soft-delete a merchant program subscription'),
 		('restore_merchant_program_subscription', 'Restore a merchant program subscription'),
+		-- Merchant Payment Methods
+		('create_merchant_payment_method', 'Create a merchant payment method reference'),
+		('read_merchant_payment_method', 'Read a merchant payment method reference'),
+		('read_default_merchant_payment_method', 'Read the merchant''s active default payment method reference'),
+		('list_merchant_payment_methods', 'List merchant payment method references'),
+		('update_merchant_payment_method', 'Update merchant payment method display metadata'),
+		('set_default_merchant_payment_method', 'Set the merchant''s active default payment method'),
+		('clear_default_merchant_payment_method', 'Clear the merchant''s default payment method'),
+		('update_merchant_payment_method_status', 'Update merchant payment method status'),
+		('soft_delete_merchant_payment_method', 'Soft-delete a merchant payment method reference'),
+		('restore_merchant_payment_method', 'Restore a merchant payment method reference'),
 		-- Merchant Promotion
 		('create_merchant_promotion', 'Create a new merchant promotion record'),
 		('extend_merchant_promotion_dates', 'Extend the start and/or end dates of an merchant promotion record'),

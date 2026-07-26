@@ -3,25 +3,27 @@
 // File: sdworkspace/sdbackend/internal/data/user_permissions.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     Permissions and role-permission mappings are release-critical
-//     authorization infrastructure. They define the canonical permission
-//     catalog, enforce role capability assignments, support permission checks,
-//     and preserve access-control integrity required by the initial
-//     Platform release spine.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Permissions and role-permission mappings are release-critical
+//	  authorization infrastructure. They define the canonical permission
+//	  catalog, enforce role capability assignments, support permission checks,
+//	  and preserve access-control integrity required by the initial
+//	  Platform release spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve permission reference-data semantics.
-//   Preserve role-permission assignment integrity.
-//   Preserve duplicate-assignment rejection.
-//   Preserve UUID validation for permission and role identifiers.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Block deployment if this file breaks build, permission lookup,
-//   role-permission assignment, permission checks, or authorization integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve permission reference-data semantics.
+//	Preserve role-permission assignment integrity.
+//	Preserve duplicate-assignment rejection.
+//	Preserve UUID validation for permission and role identifiers.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Block deployment if this file breaks build, permission lookup,
+//	role-permission assignment, permission checks, or authorization integrity.
 package data
 
 import (
@@ -73,9 +75,9 @@ type RolePermissionModel struct {
 // CreatePermission inserts a new permission.
 //
 // Production rules applied here:
-// - The database owns the canonical ID and lifecycle timestamps.
-// - The inserted row is read back via RETURNING so the caller receives the
-//   canonical stored values rather than application-invented values.
+//   - The database owns the canonical ID and lifecycle timestamps.
+//   - The inserted row is read back via RETURNING so the caller receives the
+//     canonical stored values rather than application-invented values.
 func (m *PermissionModel) CreatePermission(ctx context.Context, permission *Permission) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()

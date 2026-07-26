@@ -3,25 +3,27 @@
 // sdworkspace/sdbackend/internal/data/merchant_promotions.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Merchant promotions are valid future merchandising and campaign
-//     infrastructure, but they are not required for the initial Platform
-//     release spine. The v1 spine requires canonical offers, publication status,
-//     affiliate links, click tracking, price history, and merchant/catalog
-//     foundations before expanding into promotion workflow management.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Merchant promotions are valid future merchandising and campaign
+//	  infrastructure, but they are not required for the initial Platform
+//	  release spine. The v1 spine requires canonical offers, publication status,
+//	  affiliate links, click tracking, price history, and merchant/catalog
+//	  foundations before expanding into promotion workflow management.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve merchant-owned promotion semantics.
-//   Preserve storewide vs targeted-offer distinction.
-//   Preserve soft-delete lifecycle behavior.
-//   Preserve normalized merchant_promotion_offers join behavior.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve merchant-owned promotion semantics.
+//	Preserve storewide vs targeted-offer distinction.
+//	Preserve soft-delete lifecycle behavior.
+//	Preserve normalized merchant_promotion_offers join behavior.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (
@@ -86,16 +88,16 @@ const merchantPromotionGroupBy = `
 // deleted_at IS NULL. Use dedicated admin queries to access soft-deleted records.
 // DeletedAt is intentionally excluded from JSON responses via json:"-".
 type MerchantPromotion struct {
-	ID             uuid.UUID  `json:"id" db:"id"`
-	MerchantID     uuid.UUID  `json:"merchant_id" db:"merchant_id"`
-	PromotionID    uuid.UUID  `json:"promotion_id" db:"promotion_id"`
-	StoreWide      bool       `json:"storewide" db:"storewide"`
+	ID             uuid.UUID   `json:"id" db:"id"`
+	MerchantID     uuid.UUID   `json:"merchant_id" db:"merchant_id"`
+	PromotionID    uuid.UUID   `json:"promotion_id" db:"promotion_id"`
+	StoreWide      bool        `json:"storewide" db:"storewide"`
 	TargetOfferIDs []uuid.UUID `json:"target_offer_ids,omitempty" db:"target_offer_ids"`
-	StartDate      time.Time  `json:"start_date" db:"start_date"`
-	EndDate        time.Time  `json:"end_date" db:"end_date"`
-	DeletedAt      *time.Time `json:"-" db:"deleted_at"`
-	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
+	StartDate      time.Time   `json:"start_date" db:"start_date"`
+	EndDate        time.Time   `json:"end_date" db:"end_date"`
+	DeletedAt      *time.Time  `json:"-" db:"deleted_at"`
+	CreatedAt      time.Time   `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at" db:"updated_at"`
 }
 
 // MerchantPromotionModel is the structure which holds the DB instance.

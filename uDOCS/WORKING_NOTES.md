@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_program_subscription_events.go for all 3 layers: data, handler, and services"
+git commit -m "write and review merchant_payment_methods.go for all 3 layers: data, handler, and services"
 git push
 
 | data layer | handler layer | services layer |

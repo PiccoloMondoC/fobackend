@@ -618,6 +618,101 @@ func (app *Application) Routes() http.Handler {
 				Patch("/{merchantProgramSubscriptionID}/restore", app.RestoreMerchantProgramSubscriptionHandler)
 		})
 
+		// Merchant Payment Methods
+		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
+			mpm.Use(app.AuthMiddleware)
+
+			mpm.With(
+				app.RequirePermission(
+					actionCreateMerchantPaymentMethod,
+				),
+			).Post(
+				"/",
+				app.CreateMerchantPaymentMethodHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionReadDefaultMerchantPaymentMethod,
+				),
+			).Get(
+				"/default",
+				app.GetDefaultMerchantPaymentMethodHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionListMerchantPaymentMethods,
+				),
+			).Get(
+				"/",
+				app.ListMerchantPaymentMethodsHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionReadMerchantPaymentMethod,
+				),
+			).Get(
+				"/{merchantPaymentMethodID}",
+				app.GetMerchantPaymentMethodByIDHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionUpdateMerchantPaymentMethod,
+				),
+			).Put(
+				"/{merchantPaymentMethodID}",
+				app.UpdateMerchantPaymentMethodHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionSetDefaultMerchantPaymentMethod,
+				),
+			).Patch(
+				"/{merchantPaymentMethodID}/set-default",
+				app.SetDefaultMerchantPaymentMethodHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionClearDefaultMerchantPaymentMethod,
+				),
+			).Patch(
+				"/{merchantPaymentMethodID}/clear-default",
+				app.ClearDefaultMerchantPaymentMethodHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionUpdateMerchantPaymentMethodStatus,
+				),
+			).Patch(
+				"/{merchantPaymentMethodID}/status",
+				app.UpdateMerchantPaymentMethodStatusHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionRestoreMerchantPaymentMethod,
+				),
+			).Patch(
+				"/{merchantPaymentMethodID}/restore",
+				app.RestoreMerchantPaymentMethodHandler,
+			)
+
+			mpm.With(
+				app.RequirePermission(
+					actionSoftDeleteMerchantPaymentMethod,
+				),
+			).Delete(
+				"/{merchantPaymentMethodID}",
+				app.SoftDeleteMerchantPaymentMethodHandler,
+			)
+		})
+
 		// Categories
 		v1.Route("/categories", func(cat chi.Router) {
 			cat.Use(app.AuthMiddleware)

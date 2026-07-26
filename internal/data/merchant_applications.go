@@ -3,25 +3,27 @@
 // sdworkspace/sdbackend/internal/data/merchant_applications.go
 //
 // GTM:
-//   Layer: 2.4 Merchant / Affiliate Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Merchant applications and merchant application statuses are valid
-//     self-service merchant onboarding infrastructure, but they are not required
-//     for the initial Platform release spine. The v1 spine requires
-//     merchant identity, merchant type classification, affiliate program catalog,
-//     and merchant-affiliate relationships before expanding into application
-//     workflow management.
+//
+//	Layer: 2.4 Merchant / Affiliate Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Merchant applications and merchant application statuses are valid
+//	  self-service merchant onboarding infrastructure, but they are not required
+//	  for the initial Platform release spine. The v1 spine requires
+//	  merchant identity, merchant type classification, affiliate program catalog,
+//	  and merchant-affiliate relationships before expanding into application
+//	  workflow management.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve DB-owned lifecycle timestamps.
-//   Preserve status workflow semantics.
-//   Preserve soft-delete/deactivation distinctions.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve DB-owned lifecycle timestamps.
+//	Preserve status workflow semantics.
+//	Preserve soft-delete/deactivation distinctions.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (

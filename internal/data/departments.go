@@ -4,23 +4,25 @@
 // sdworkspace/sdbackend/internal/data/departments.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Departments and categories are release-critical catalog taxonomy
-//     infrastructure. They define the department-first navigation model,
-//     category hierarchy, offer classification, slug-based routing, and
-//     soft-delete lifecycle used by the public offer experience.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Departments and categories are release-critical catalog taxonomy
+//	  infrastructure. They define the department-first navigation model,
+//	  category hierarchy, offer classification, slug-based routing, and
+//	  soft-delete lifecycle used by the public offer experience.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve department-first taxonomy behavior.
-//   Preserve category hierarchy and parent-child lookup semantics.
-//   Preserve slug-based lookup behavior.
-//   Preserve soft-delete lifecycle semantics.
-//   Block deployment if this file breaks build, taxonomy persistence,
-//   offer classification, department-first routing, or catalog integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve department-first taxonomy behavior.
+//	Preserve category hierarchy and parent-child lookup semantics.
+//	Preserve slug-based lookup behavior.
+//	Preserve soft-delete lifecycle semantics.
+//	Block deployment if this file breaks build, taxonomy persistence,
+//	offer classification, department-first routing, or catalog integrity.
 package data
 
 import (

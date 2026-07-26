@@ -3,24 +3,26 @@
 // File: sdworkspace/sdbackend/internal/data/products.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Products and brands are release-critical catalog support infrastructure.
-//     They provide product identity, brand identity, category association, and
-//     offer support for the public catalog. Merchant-product associations remain
-//     valid expanded catalog infrastructure but are not the v1 spine driver.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Products and brands are release-critical catalog support infrastructure.
+//	  They provide product identity, brand identity, category association, and
+//	  offer support for the public catalog. Merchant-product associations remain
+//	  valid expanded catalog infrastructure but are not the v1 spine driver.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve product and brand canonical row alignment.
-//   Preserve soft-delete lifecycle behavior for products and brands.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Preserve brand-handle lookup behavior.
-//   Preserve merchant_products association behavior without making it the v1 driver.
-//   Block deployment if this file breaks build, product persistence,
-//   brand persistence, offer support, catalog lookup, or catalog integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve product and brand canonical row alignment.
+//	Preserve soft-delete lifecycle behavior for products and brands.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Preserve brand-handle lookup behavior.
+//	Preserve merchant_products association behavior without making it the v1 driver.
+//	Block deployment if this file breaks build, product persistence,
+//	brand persistence, offer support, catalog lookup, or catalog integrity.
 package data
 
 import (
@@ -68,15 +70,15 @@ type Brand struct {
 // MerchantProduct represents the canonical merchant-specific product association
 // persisted in the merchant_products table.
 type MerchantProduct struct {
-	ID                 uuid.UUID  `json:"id" db:"id"`
-	ProductID          uuid.UUID  `json:"product_id" db:"product_id"`
-	MerchantID         uuid.UUID  `json:"merchant_id" db:"merchant_id"`
-	MerchantSKU        *string    `json:"merchant_sku,omitempty" db:"merchant_sku"`
-	MerchantProductURL *string    `json:"merchant_product_url,omitempty" db:"merchant_product_url"`
-	MerchantTitle      *string    `json:"merchant_title,omitempty" db:"merchant_title"`
-	IsActive           bool       `json:"is_active" db:"is_active"`
-	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt          time.Time  `json:"updated_at" db:"updated_at"`
+	ID                 uuid.UUID `json:"id" db:"id"`
+	ProductID          uuid.UUID `json:"product_id" db:"product_id"`
+	MerchantID         uuid.UUID `json:"merchant_id" db:"merchant_id"`
+	MerchantSKU        *string   `json:"merchant_sku,omitempty" db:"merchant_sku"`
+	MerchantProductURL *string   `json:"merchant_product_url,omitempty" db:"merchant_product_url"`
+	MerchantTitle      *string   `json:"merchant_title,omitempty" db:"merchant_title"`
+	IsActive           bool      `json:"is_active" db:"is_active"`
+	CreatedAt          time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // ProductModel holds the DB pool and logger for product operations.

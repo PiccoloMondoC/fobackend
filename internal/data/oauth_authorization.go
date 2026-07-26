@@ -4,23 +4,25 @@
 // sdworkspace/sdbackend/internal/data/oauth_authorization.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     OAuth authorization codes and user consent records are valid OAuth
-//     provider infrastructure, but the Platform acting as an OAuth provider is not
-//     required for the initial Platform release spine. Do not expand this
-//     file until the release spine is functionally complete.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  OAuth authorization codes and user consent records are valid OAuth
+//	  provider infrastructure, but the Platform acting as an OAuth provider is not
+//	  required for the initial Platform release spine. Do not expand this
+//	  file until the release spine is functionally complete.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve authorization-code hashing.
-//   Preserve revoked_at / revoked consent lifecycle semantics.
-//   Preserve no generic SoftDelete/Delete behavior.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve authorization-code hashing.
+//	Preserve revoked_at / revoked consent lifecycle semantics.
+//	Preserve no generic SoftDelete/Delete behavior.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 // NOTE TO MAINTAINERS:

@@ -5,25 +5,27 @@
 // sdworkspace/sdbackend/internal/services/user_notifications_async.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: SPINE
-//   Reason:
-//     User notification async services are release-critical consumer
-//     communication infrastructure. They provide safe non-blocking execution
-//     for automation-triggered notification persistence while preserving timeout,
-//     panic-safety, tracing, metrics, and structured logging.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User notification async services are release-critical consumer
+//	  communication infrastructure. They provide safe non-blocking execution
+//	  for automation-triggered notification persistence while preserving timeout,
+//	  panic-safety, tracing, metrics, and structured logging.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve non-blocking async notification dispatch.
-//   Preserve timeout boundaries.
-//   Preserve panic recovery.
-//   Preserve metrics emission.
-//   Preserve tracing.
-//   Preserve delegation to internal notification persistence.
-//   Block deployment if this file breaks build, async notification dispatch,
-//   observability, or consumer communication integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve non-blocking async notification dispatch.
+//	Preserve timeout boundaries.
+//	Preserve panic recovery.
+//	Preserve metrics emission.
+//	Preserve tracing.
+//	Preserve delegation to internal notification persistence.
+//	Block deployment if this file breaks build, async notification dispatch,
+//	observability, or consumer communication integrity.
 package services
 
 import (

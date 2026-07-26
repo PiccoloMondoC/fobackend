@@ -3,24 +3,26 @@
 // sdworkspace/sdbackend/internal/data/coupons.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Coupons, coupon statuses, coupon usage, and coupon performance statistics
-//     are valid future commerce features, but they are not required for the
-//     initial Platform release spine. The v1 spine is offer-first and
-//     relies on canonical offers, affiliate links, publication status, click
-//     tracking, and price history before expanding into a dedicated coupon
-//     ecosystem.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Coupons, coupon statuses, coupon usage, and coupon performance statistics
+//	  are valid future commerce features, but they are not required for the
+//	  initial Platform release spine. The v1 spine is offer-first and
+//	  relies on canonical offers, affiliate links, publication status, click
+//	  tracking, and price history before expanding into a dedicated coupon
+//	  ecosystem.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve offer-first coupon ownership.
-//   Preserve coupon status lookup semantics.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve offer-first coupon ownership.
+//	Preserve coupon status lookup semantics.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (
@@ -839,9 +841,9 @@ func (m *CouponModel) DeleteExpiredCoupons(ctx context.Context) error {
 func (m *CouponModel) ClipCoupon(ctx context.Context, userID, couponID uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
- 
+
 	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("ClipCoupon")
- 
+
 	if userID == uuid.Nil {
 		err := errors.New("user_id is required")
 		logger.Error("Validation failed", err)
@@ -852,7 +854,7 @@ func (m *CouponModel) ClipCoupon(ctx context.Context, userID, couponID uuid.UUID
 		logger.Error("Validation failed", err)
 		return err
 	}
- 
+
 	// Resolve the offer that owns this coupon. offer_id is nullable on coupons,
 	// so scan into a pointer to avoid a pgx error when the column value is NULL.
 	var offerID *uuid.UUID
@@ -873,7 +875,7 @@ func (m *CouponModel) ClipCoupon(ctx context.Context, userID, couponID uuid.UUID
 		logger.Warn("Clip coupon failed: coupon has no linked offer", "coupon_id", couponID)
 		return ErrCouponClipNotSupported
 	}
- 
+
 	// Upsert into user_favorites at the offer level.
 	favoriteID := uuid.New()
 	_, err = m.DB.Exec(
@@ -892,14 +894,14 @@ func (m *CouponModel) ClipCoupon(ctx context.Context, userID, couponID uuid.UUID
 		)
 		return err
 	}
- 
+
 	logger.Info("Clip coupon successful",
 		"user_id", userID,
 		"coupon_id", couponID,
 		"offer_id", *offerID,
 		"user_favorite_id", favoriteID,
 	)
- 
+
 	return nil
 }
 

@@ -53,7 +53,6 @@ import (
 // That permission can be checked via a HasPermission() helper tied to  role/permission system.
 // Always extract sensitive identifiers from a trusted context
 
-
 // ListRolesHandler handles the retrieval of all roles in the system.
 // It enforces permission checks, extracts trusted identifiers from context,
 // retrieves roles from the database, performs audit logging, and returns the result.
@@ -147,7 +146,6 @@ func (app *Application) ListRolesHandler(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-
 // GetRoleByIDHandler retrieves a role by its ID from the database.
 // It uses structured logging, context management, and audit logging for traceability and reliability.
 func (app *Application) GetRoleByIDHandler(w http.ResponseWriter, r *http.Request) {
@@ -212,30 +210,30 @@ func (app *Application) GetRoleByIDHandler(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-
 // CreateRoleHandler creates a new role record.
 //
 // Behaviour
 // ---------
-//   • AuthZ: caller must hold "create_role" permission.  
-//   • Validation: name required, hierarchy_level ≥ 0.  
-//   • Idempotent name: duplicate name → HTTP 409.  
-//   • Audit‑ready: dynamic action "create_role", entity type "role".
+//   - AuthZ: caller must hold "create_role" permission.
+//   - Validation: name required, hierarchy_level ≥ 0.
+//   - Idempotent name: duplicate name → HTTP 409.
+//   - Audit‑ready: dynamic action "create_role", entity type "role".
 //
 // Request JSON
 // -------------
-//   {
-//     "name":            "Editor",
-//     "description":     "Can edit content",
-//     "hierarchy_level": 30
-//   }
+//
+//	{
+//	  "name":            "Editor",
+//	  "description":     "Can edit content",
+//	  "hierarchy_level": 30
+//	}
 //
 // Response
 // --------
-//   201 Created  { "role_id": "<uuid>" }  
-//   206 Partial  same body + "audit_error" if audit logging failed  
-//   4xx/5xx      error JSON via app.respondWithError.
 //
+//	201 Created  { "role_id": "<uuid>" }
+//	206 Partial  same body + "audit_error" if audit logging failed
+//	4xx/5xx      error JSON via app.respondWithError.
 func (app *Application) CreateRoleHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("CreateRoleHandler")
 
@@ -339,7 +337,6 @@ func (app *Application) CreateRoleHandler(w http.ResponseWriter, r *http.Request
 	})
 }
 
-
 // UpdateRoleHandler handles partially updating via PATCH a user's role in the system.
 // It uses structured logging, context management, and audit logging to ensure traceability and scalability.
 func (app *Application) UpdateRoleHandler(w http.ResponseWriter, r *http.Request) {
@@ -372,7 +369,6 @@ func (app *Application) UpdateRoleHandler(w http.ResponseWriter, r *http.Request
 
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
-
 
 	role := &data.Role{
 		ID: roleUUID,
@@ -430,7 +426,6 @@ func (app *Application) UpdateRoleHandler(w http.ResponseWriter, r *http.Request
 		}{userUUID, roleUUID},
 	})
 }
-
 
 // DeleteRoleHandler performs the normal lifecycle removal of a role.
 //
@@ -561,15 +556,14 @@ func (app *Application) DeleteRoleHandler(
 	)
 }
 
-
 // AssignRoleToUserHandler assigns a role to a user.
 //
-// • Validates input JSON (user_id, role, is_primary).  
-// • Looks up the role; blocks if caller tries to assign an internal role
-//   without being an internal user.  
-// • Delegates to RoleModel.AssignRoleToUser().  
-// • Dynamically resolves (or creates) action/entity‑type rows for audit logging.  
-// • Emits structured logs and JSON responses consistent with the project.
+//   - Validates input JSON (user_id, role, is_primary).
+//   - Looks up the role; blocks if caller tries to assign an internal role
+//     without being an internal user.
+//   - Delegates to RoleModel.AssignRoleToUser().
+//   - Dynamically resolves (or creates) action/entity‑type rows for audit logging.
+//   - Emits structured logs and JSON responses consistent with the project.
 func (app *Application) AssignRoleToUserHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("AssignRoleToUserHandler")
 
@@ -681,7 +675,6 @@ func (app *Application) AssignRoleToUserHandler(w http.ResponseWriter, r *http.R
 		}{targetUserID, role.ID, role.Name, in.IsPrimary},
 	})
 }
-
 
 // RevokeRoleFromUserHandler revokes one current role assignment from a user.
 //
@@ -832,7 +825,6 @@ func (app *Application) RevokeRoleFromUserHandler(
 		},
 	)
 }
-
 
 // GetRolesForUserHandler retrieves all roles assigned to the currently authenticated user.
 func (app *Application) GetRolesForUserHandler(w http.ResponseWriter, r *http.Request) {

@@ -5,30 +5,32 @@
 // sdworkspace/sdbackend/internal/services/user_wallets_async.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User-wallet async orchestration supports future rewards, points, balance,
-//     and ledger-backed incentive automation, but it is not required for the
-//     initial Platform release spine. It remains deferred until reward
-//     qualification, confirmation, reversal, expiry, and incentive automation
-//     are activated as production product behavior.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User-wallet async orchestration supports future rewards, points, balance,
+//	  and ledger-backed incentive automation, but it is not required for the
+//	  initial Platform release spine. It remains deferred until reward
+//	  qualification, confirmation, reversal, expiry, and incentive automation
+//	  are activated as production product behavior.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve delegation to canonical internal wallet services.
-//   Preserve NUMERIC-safe decimal string behavior.
-//   Preserve pending -> confirmed ledger lifecycle behavior.
-//   Preserve transactional reward reversal behavior.
-//   Preserve bounded background execution.
-//   Preserve panic containment.
-//   Do not introduce direct balance mutation.
-//   Do not use float32 or float64 for wallet amounts.
-//   Do not duplicate data-layer transaction logic.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve delegation to canonical internal wallet services.
+//	Preserve NUMERIC-safe decimal string behavior.
+//	Preserve pending -> confirmed ledger lifecycle behavior.
+//	Preserve transactional reward reversal behavior.
+//	Preserve bounded background execution.
+//	Preserve panic containment.
+//	Do not introduce direct balance mutation.
+//	Do not use float32 or float64 for wallet amounts.
+//	Do not duplicate data-layer transaction logic.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package services
 
 import (

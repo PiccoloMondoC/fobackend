@@ -5,23 +5,25 @@
 // sdworkspace/sdbackend/internal/services/user_favorites_internal.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User favorites are deferred affinity and personalization infrastructure.
-//     They support consumer engagement intelligence, offer-affinity signals,
-//     personalization, and cleanup automation, but they are not part of the
-//     Future Offering v1 release spine.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User favorites are deferred affinity and personalization infrastructure.
+//	  They support consumer engagement intelligence, offer-affinity signals,
+//	  personalization, and cleanup automation, but they are not part of the
+//	  Future Offering v1 release spine.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve active-favorite retrieval.
-//   Preserve personalized-offer retrieval.
-//   Preserve soft-delete cleanup behavior.
-//   Preserve purge behavior for deleted favorites.
-//   Preserve DB-owned lifecycle timestamp behavior through the data layer.
-//   This file must not drive v1 routes, UI expansion, or release blocking.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve active-favorite retrieval.
+//	Preserve personalized-offer retrieval.
+//	Preserve soft-delete cleanup behavior.
+//	Preserve purge behavior for deleted favorites.
+//	Preserve DB-owned lifecycle timestamp behavior through the data layer.
+//	This file must not drive v1 routes, UI expansion, or release blocking.
 package services
 
 import (

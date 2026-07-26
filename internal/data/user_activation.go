@@ -3,24 +3,26 @@
 // sdworkspace/sdbackend/internal/data/user_activation.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     User activation is release-critical identity infrastructure. It protects
-//     account activation, activation-token generation, token-hash persistence,
-//     activation status reads, atomic user activation, and expired-token cleanup
-//     required by v1 account lifecycle behavior.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User activation is release-critical identity infrastructure. It protects
+//	  account activation, activation-token generation, token-hash persistence,
+//	  activation status reads, atomic user activation, and expired-token cleanup
+//	  required by v1 account lifecycle behavior.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve plaintext-token boundary handling only at controlled outputs/inputs.
-//   Preserve token_hash persistence and no raw-token JSON/log exposure.
-//   Preserve atomic activation transaction behavior.
-//   Preserve DB-owned activation-token expiry and lifecycle timestamp behavior.
-//   Preserve hard deletion for transient expired activation-token material.
-//   Block deployment if this file breaks build, activation-token generation,
-//   user activation, token cleanup, or account lifecycle integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve plaintext-token boundary handling only at controlled outputs/inputs.
+//	Preserve token_hash persistence and no raw-token JSON/log exposure.
+//	Preserve atomic activation transaction behavior.
+//	Preserve DB-owned activation-token expiry and lifecycle timestamp behavior.
+//	Preserve hard deletion for transient expired activation-token material.
+//	Block deployment if this file breaks build, activation-token generation,
+//	user activation, token cleanup, or account lifecycle integrity.
 package data
 
 import (

@@ -3,24 +3,26 @@
 // File: sdworkspace/sdbackend/internal/data/offer_price_history.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer price history and price-drop subscriptions are release-critical
-//     catalog/value infrastructure. They preserve immutable offer price history,
-//     support price-drop discovery, enable user price-drop intent, and provide
-//     the pricing evidence needed for trust-first public offer behavior.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer price history and price-drop subscriptions are release-critical
+//	  catalog/value infrastructure. They preserve immutable offer price history,
+//	  support price-drop discovery, enable user price-drop intent, and provide
+//	  the pricing evidence needed for trust-first public offer behavior.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve immutable price-history semantics.
-//   Preserve NUMERIC-safe decimal string behavior.
-//   Preserve DB-owned id and recorded_at lifecycle behavior.
-//   Preserve price-drop subscription persistence.
-//   Preserve anomaly routing through offer_flags.
-//   Block deployment if this file breaks build, price history persistence,
-//   price-drop support, subscription behavior, or catalog pricing integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve immutable price-history semantics.
+//	Preserve NUMERIC-safe decimal string behavior.
+//	Preserve DB-owned id and recorded_at lifecycle behavior.
+//	Preserve price-drop subscription persistence.
+//	Preserve anomaly routing through offer_flags.
+//	Block deployment if this file breaks build, price history persistence,
+//	price-drop support, subscription behavior, or catalog pricing integrity.
 package data
 
 import (
@@ -668,7 +670,6 @@ func (m *OfferPriceHistoryModel) GetOffersWithSignificantPriceDrops(ctx context.
 func (m *OfferPriceHistoryModel) MonitorPriceChanges(_ context.Context) error {
 	return errors.New("MonitorPriceChanges belongs in the service layer, not the data layer")
 }
-
 
 // GetSubscribersForPriceDrop returns subscriptions for an offer whose configured
 // threshold is met by the current price.

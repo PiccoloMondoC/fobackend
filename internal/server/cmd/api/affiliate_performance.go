@@ -58,15 +58,15 @@ const (
 )
 
 type saveAffiliatePerformanceInput struct {
-	OfferID           string `json:"offer_id"`
-	TotalClicks       int    `json:"total_clicks"`
+	OfferID          string `json:"offer_id"`
+	TotalClicks      int    `json:"total_clicks"`
 	EstimatedRevenue string `json:"estimated_revenue"`
 	ConversionRate   string `json:"conversion_rate"`
 	AvgOrderValue    string `json:"avg_order_value"`
 }
 
 type updateAffiliatePerformanceMetricsInput struct {
-	TotalClicks       int    `json:"total_clicks"`
+	TotalClicks      int    `json:"total_clicks"`
 	EstimatedRevenue string `json:"estimated_revenue"`
 	ConversionRate   string `json:"conversion_rate"`
 	AvgOrderValue    string `json:"avg_order_value"`
@@ -129,8 +129,8 @@ func (app *Application) SaveAffiliatePerformanceHandler(
 	}
 
 	performance := &data.AffiliatePerformance{
-		OfferID:           offerID,
-		TotalClicks:       input.TotalClicks,
+		OfferID:          offerID,
+		TotalClicks:      input.TotalClicks,
 		EstimatedRevenue: input.EstimatedRevenue,
 		ConversionRate:   input.ConversionRate,
 		AvgOrderValue:    input.AvgOrderValue,

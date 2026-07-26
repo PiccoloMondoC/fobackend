@@ -54,9 +54,9 @@ import (
 //
 // Persisted lifecycle timestamps are DB-owned.
 type UserFavorite struct {
-	ID          uuid.UUID  `json:"id" db:"id"`
-	UserID      uuid.UUID  `json:"user_id" db:"user_id"`
-	OfferID     uuid.UUID  `json:"offer_id" db:"offer_id"`
+	ID      uuid.UUID `json:"id" db:"id"`
+	UserID  uuid.UUID `json:"user_id" db:"user_id"`
+	OfferID uuid.UUID `json:"offer_id" db:"offer_id"`
 	// FavoritedAt records the most recent time the offer was actively added
 	// to the user's stash. If a soft-deleted favorite is restored, FavoritedAt
 	// is refreshed to the restore time, because restore is treated as a new
@@ -347,7 +347,6 @@ func (m *UserFavoriteModel) SoftDelete(ctx context.Context, id uuid.UUID) error 
 	return nil
 }
 
-
 // UnsaveFavorite soft-deletes the active favorite identified by its natural
 // user/offer key.
 //
@@ -421,7 +420,6 @@ func (m *UserFavoriteModel) UnsaveFavorite(
 
 	return nil
 }
-
 
 // Delete permanently removes a user favorite from the database.
 func (m *UserFavoriteModel) Delete(ctx context.Context, id uuid.UUID) error {

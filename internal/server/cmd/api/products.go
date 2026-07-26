@@ -50,7 +50,6 @@ import (
 // Principles:
 // Always extract sensitive identifiers from a trusted context
 
-
 // CreateProductHandler handles the creation of a new product.
 // It enforces permission checks, extracts trusted identifiers from context,
 // parses the request payload, validates required fields, performs the insertion operation,
@@ -163,7 +162,6 @@ func (app *Application) CreateProductHandler(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-
 // GetProductByIDHandler handles retrieving a product by its ID.
 // It enforces permission checks, extracts the product ID from the context,
 // retrieves the product from the database, performs audit logging,
@@ -255,7 +253,6 @@ func (app *Application) GetProductByIDHandler(w http.ResponseWriter, r *http.Req
 	})
 }
 
-
 func (app *Application) GetAllProductsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("GetAllProductsHandler")
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
@@ -338,7 +335,6 @@ func (app *Application) GetAllProductsHandler(w http.ResponseWriter, r *http.Req
 		Data:    products,
 	})
 }
-
 
 // GetProductByUPCHandler handles retrieving a product by its UPC (Universal Product Code).
 // It enforces permission checks, extracts the UPC from a trusted context, queries the database,
@@ -430,7 +426,6 @@ func (app *Application) GetProductByUPCHandler(w http.ResponseWriter, r *http.Re
 	})
 }
 
-
 // UpdateProductHandler handles the update of an existing product.
 // It enforces permission checks, extracts trusted identifiers from context,
 // parses the request payload, validates required fields, performs the update operation,
@@ -453,7 +448,7 @@ func (app *Application) UpdateProductHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Fetch current record 
+	// Fetch current record
 	current, err := app.Models.Product.GetByID(ctx, *productID)
 	if err != nil {
 		app.respondWithError(w, fmt.Errorf("product not found: %w", err), http.StatusNotFound)
@@ -462,8 +457,8 @@ func (app *Application) UpdateProductHandler(w http.ResponseWriter, r *http.Requ
 
 	// Decode PATCH payload
 	var input struct {
-		Name        *string  `json:"name,omitempty"`        // Optional
-		Description *string  `json:"description,omitempty"` // Optional
+		Name        *string `json:"name,omitempty"`        // Optional
+		Description *string `json:"description,omitempty"` // Optional
 	}
 
 	if err := app.readJSON(w, r, &input); err != nil {
@@ -546,7 +541,6 @@ func (app *Application) UpdateProductHandler(w http.ResponseWriter, r *http.Requ
 		Data:    updated.ID,
 	})
 }
-
 
 // SoftDeleteProductHandler handles the soft deletion of a product.
 // It ensures permission enforcement, extracts trusted identifiers from context,
@@ -637,7 +631,6 @@ func (app *Application) SoftDeleteProductHandler(w http.ResponseWriter, r *http.
 		Data:    productID,
 	})
 }
-
 
 // Brand Handler Functions
 
@@ -752,7 +745,6 @@ func (app *Application) CreateBrandHandler(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-
 // GetBrandByIDHandler handles retrieving a brand by its ID.
 // It enforces permission checks, extracts the brand ID from the context,
 // retrieves the brand from the database, performs audit logging, and responds with the brand details.
@@ -842,7 +834,6 @@ func (app *Application) GetBrandByIDHandler(w http.ResponseWriter, r *http.Reque
 		Data:    brand,
 	})
 }
-
 
 // GetBrandByNameHandler handles retrieving a brand by its name.
 // It enforces permission checks, extracts the brand name from the context,
@@ -934,7 +925,6 @@ func (app *Application) GetBrandByNameHandler(w http.ResponseWriter, r *http.Req
 	})
 }
 
-
 // GetAllBrandsHandler handles retrieving all brands.
 // It enforces permission checks, retrieves brands from the database,
 // performs structured logging, and logs an audit record for traceability.
@@ -1020,7 +1010,6 @@ func (app *Application) GetAllBrandsHandler(w http.ResponseWriter, r *http.Reque
 		Data:    brands,
 	})
 }
-
 
 // UpdateBrandHandler handles the update of an existing brand.
 // It enforces permission checks, extracts trusted identifiers from context,
@@ -1131,7 +1120,6 @@ func (app *Application) UpdateBrandHandler(w http.ResponseWriter, r *http.Reques
 		Data:    brand.ID,
 	})
 }
-
 
 // SoftDeleteBrandHandler handles the soft deletion of a brand.
 // It enforces permission checks, extracts the brand ID from the trusted context,

@@ -3,28 +3,30 @@
 // File: sdworkspace/sdbackend/internal/data/user_profiles.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     User profiles are release-critical identity and account lifecycle
-//     infrastructure. They preserve canonical user profile data, user-handle
-//     validation, global handle reservation, profile moderation state,
-//     normalized social-link reads, notification-preference reads, and
-//     soft-delete lifecycle behavior required by the initial Platform
-//     release spine.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User profiles are release-critical identity and account lifecycle
+//	  infrastructure. They preserve canonical user profile data, user-handle
+//	  validation, global handle reservation, profile moderation state,
+//	  normalized social-link reads, notification-preference reads, and
+//	  soft-delete lifecycle behavior required by the initial Platform
+//	  release spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve user profile canonical row alignment.
-//   Preserve user-handle validation and reserved-handle behavior.
-//   Preserve global handle reservation/release transaction semantics.
-//   Preserve profile moderation state and moderation log behavior.
-//   Preserve normalized relation loading for social links and notification preferences.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Block deployment if this file breaks build, profile persistence,
-//   handle integrity, global handle reservation, profile moderation,
-//   or identity/account lifecycle integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve user profile canonical row alignment.
+//	Preserve user-handle validation and reserved-handle behavior.
+//	Preserve global handle reservation/release transaction semantics.
+//	Preserve profile moderation state and moderation log behavior.
+//	Preserve normalized relation loading for social links and notification preferences.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Block deployment if this file breaks build, profile persistence,
+//	handle integrity, global handle reservation, profile moderation,
+//	or identity/account lifecycle integrity.
 package data
 
 import (
@@ -1243,8 +1245,8 @@ func (m *UserProfileModel) ValidateUserHandle(ctx context.Context, handle string
 			WHERE handle = $1
 				AND type = 'user'
 		)
-	`, 
-	handle).Scan(&exists)
+	`,
+		handle).Scan(&exists)
 
 	if err != nil {
 		logger.Error("check handle availability failed", err, "user_handle", handle)

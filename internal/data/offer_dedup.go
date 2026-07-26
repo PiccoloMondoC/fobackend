@@ -3,23 +3,25 @@
 // File: sdworkspace/sdbackend/internal/data/offer_dedup.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Offer deduplication is release-critical catalog integrity infrastructure.
-//     It protects the canonical offers table from duplicate merchant offer
-//     ingestion, preserves offer quality, and supports clean public offer
-//     discovery before broader automation and provider ingestion scale up.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Offer deduplication is release-critical catalog integrity infrastructure.
+//	  It protects the canonical offers table from duplicate merchant offer
+//	  ingestion, preserves offer quality, and supports clean public offer
+//	  discovery before broader automation and provider ingestion scale up.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve OfferModel ownership.
-//   Preserve canonical offers table dependency.
-//   Preserve strict affiliate URL normalization.
-//   Preserve bounded duplicate lookback behavior.
-//   Block deployment if this file breaks build, offer persistence,
-//   duplicate detection, affiliate URL integrity, or catalog quality.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve OfferModel ownership.
+//	Preserve canonical offers table dependency.
+//	Preserve strict affiliate URL normalization.
+//	Preserve bounded duplicate lookback behavior.
+//	Block deployment if this file breaks build, offer persistence,
+//	duplicate detection, affiliate URL integrity, or catalog quality.
 package data
 
 import (

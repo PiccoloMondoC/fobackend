@@ -5,24 +5,26 @@
 // sdworkspace/sdbackend/internal/services/internal-services/offer_price_history_internal.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer price history internal automation is deferred until price monitoring,
-//     anomaly policy, subscription cleanup, and notification dispatch are fully
-//     stabilized. This file must compile and remain production-safe, but it is
-//     not a v1 release blocker.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer price history internal automation is deferred until price monitoring,
+//	  anomaly policy, subscription cleanup, and notification dispatch are fully
+//	  stabilized. This file must compile and remain production-safe, but it is
+//	  not a v1 release blocker.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep production-safe.
-//   Preserve existing internal automation boundaries.
-//   Preserve audit/logging behavior where already implemented.
-//   Do not treat price-history automation as a v1 release blocker.
-//   Do not expand price monitoring, anomaly policy, subscription cleanup,
-//   or notification dispatch scope until this file is promoted from DEFERRED.
-//   Block deployment only if this file breaks build, corrupts data,
-//   violates security policy, or creates unsafe runtime behavior.
+//
+//	Keep compiling.
+//	Keep production-safe.
+//	Preserve existing internal automation boundaries.
+//	Preserve audit/logging behavior where already implemented.
+//	Do not treat price-history automation as a v1 release blocker.
+//	Do not expand price monitoring, anomaly policy, subscription cleanup,
+//	or notification dispatch scope until this file is promoted from DEFERRED.
+//	Block deployment only if this file breaks build, corrupts data,
+//	violates security policy, or creates unsafe runtime behavior.
 package services
 
 import (

@@ -59,7 +59,6 @@ func (app *Application) writeJSON(w http.ResponseWriter, status int, data any, h
 	return nil
 }
 
-
 // respondWithJSON writes a structured JSON response using the jsonResponse format.
 // It ensures proper headers, error handling, and safe response writing.
 //
@@ -82,7 +81,6 @@ func (app *Application) respondWithJSON(w http.ResponseWriter, statusCode int, r
 		app.Logger.Error("Failed to write JSON response", "error", err)
 	}
 }
-
 
 // respondWithError wraps an error into the jsonResponse format and sends it as JSON.
 func (app *Application) respondWithError(w http.ResponseWriter, err error, statusCode int) {

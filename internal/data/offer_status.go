@@ -3,24 +3,26 @@
 // File: sdworkspace/sdbackend/internal/data/offer_status.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer statuses are release-critical catalog governance infrastructure.
-//     They define the canonical offer workflow vocabulary, support publication
-//     and review transitions, protect seeded pending_review behavior, and
-//     preserve referential integrity for offers.status_id.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer statuses are release-critical catalog governance infrastructure.
+//	  They define the canonical offer workflow vocabulary, support publication
+//	  and review transitions, protect seeded pending_review behavior, and
+//	  preserve referential integrity for offers.status_id.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve offer status reference-data semantics.
-//   Preserve active-status lookup behavior.
-//   Preserve pending_review seeded-status dependency.
-//   Preserve merchant-owned submit-for-review behavior.
-//   Preserve foreign-key protected delete behavior.
-//   Block deployment if this file breaks build, offer status resolution,
-//   review submission, publication workflow, or catalog governance integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve offer status reference-data semantics.
+//	Preserve active-status lookup behavior.
+//	Preserve pending_review seeded-status dependency.
+//	Preserve merchant-owned submit-for-review behavior.
+//	Preserve foreign-key protected delete behavior.
+//	Block deployment if this file breaks build, offer status resolution,
+//	review submission, publication workflow, or catalog governance integrity.
 package data
 
 import (

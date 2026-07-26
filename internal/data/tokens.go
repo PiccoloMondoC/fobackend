@@ -3,24 +3,26 @@
 // sdworkspace/sdbackend/internal/data/tokens.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     Tokens are release-critical authentication and session-security
-//     infrastructure. They protect refresh-token persistence, access-token
-//     validation, JWT revocation checks, logout/session invalidation, and
-//     retained security records required by v1 identity and access control.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Tokens are release-critical authentication and session-security
+//	  infrastructure. They protect refresh-token persistence, access-token
+//	  validation, JWT revocation checks, logout/session invalidation, and
+//	  retained security records required by v1 identity and access control.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve plaintext-token boundary handling only at controlled inputs.
-//   Preserve token_hash persistence and no raw-token JSON/log exposure.
-//   Preserve refresh-token revoked_at lifecycle semantics.
-//   Preserve access-token blacklist validation.
-//   Preserve JWT issuer/audience enforcement.
-//   Block deployment if this file breaks build, token validation,
-//   token revocation, session security, or authentication integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve plaintext-token boundary handling only at controlled inputs.
+//	Preserve token_hash persistence and no raw-token JSON/log exposure.
+//	Preserve refresh-token revoked_at lifecycle semantics.
+//	Preserve access-token blacklist validation.
+//	Preserve JWT issuer/audience enforcement.
+//	Block deployment if this file breaks build, token validation,
+//	token revocation, session security, or authentication integrity.
 package data
 
 import (

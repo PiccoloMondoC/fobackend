@@ -5,21 +5,23 @@
 // sdworkspace/sdbackend/internal/services/user_favorites_async.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User favorite async work is deferred cleanup and personalization support.
-//     It wraps the internal service contract for background execution without
-//     expanding the v1 release spine.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User favorite async work is deferred cleanup and personalization support.
+//	  It wraps the internal service contract for background execution without
+//	  expanding the v1 release spine.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve bounded async execution.
-//   Preserve panic-safe worker behavior.
-//   Preserve low-cardinality metrics labels.
-//   Preserve OpenTelemetry error recording.
-//   Do not expand routes, UI scope, or v1 release dependency from this file.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve bounded async execution.
+//	Preserve panic-safe worker behavior.
+//	Preserve low-cardinality metrics labels.
+//	Preserve OpenTelemetry error recording.
+//	Do not expand routes, UI scope, or v1 release dependency from this file.
 package services
 
 import (

@@ -51,7 +51,6 @@ import (
 // "super_admin" role has this specific permission.
 // That permission can be checked via a HasPermission() helper tied to  role/permission system.
 
-
 // SaveUserSettingsHandler handles the creation or update of user settings for a single user.
 // It enforces permission checks, extracts trusted identifiers from context, performs the database operation,
 // logs the action, and handles audit logging.
@@ -146,7 +145,6 @@ func (app *Application) SaveUserSettingsHandler(w http.ResponseWriter, r *http.R
 		Data:    settings.UserID,
 	})
 }
-
 
 // GetUserSettingsByIDHandler retrieves a user's settings by their UUID.
 // It enforces permission checks, extracts the settings ID from context,
@@ -250,7 +248,6 @@ func (app *Application) GetUserSettingsByIDHandler(w http.ResponseWriter, r *htt
 	})
 }
 
-
 // GetUserSettingsByUserIDHandler retrieves a user's settings based on the user ID extracted from the context.
 // It enforces permission checks, performs a database query, logs the action, and handles audit logging.
 func (app *Application) GetUserSettingsByUserIDHandler(w http.ResponseWriter, r *http.Request) {
@@ -352,7 +349,6 @@ func (app *Application) GetUserSettingsByUserIDHandler(w http.ResponseWriter, r 
 	})
 }
 
-
 // GetAllUserSettingsHandler retrieves a paginated list of all user settings records.
 // It enforces permission checks, parses pagination parameters, queries the database for matching results,
 // returns a list with total count, and logs the action with structured audit tracking.
@@ -375,7 +371,7 @@ func (app *Application) GetAllUserSettingsHandler(w http.ResponseWriter, r *http
 	start := (page - 1) * pageSize
 
 	// --- Fetch & slice ------------------------------------------------------
-	settings, err := app.Models.UserSettings.GetAll(ctx)   // now returns (slice, error)
+	settings, err := app.Models.UserSettings.GetAll(ctx) // now returns (slice, error)
 	if err != nil {
 		logger.Error("DB fetch failed", "error", err)
 		app.respondWithError(w, fmt.Errorf("failed to retrieve user settings: %w", err), http.StatusInternalServerError)
@@ -463,7 +459,6 @@ func (app *Application) GetAllUserSettingsHandler(w http.ResponseWriter, r *http
 		}{Data: settings, Total: total},
 	})
 }
-
 
 // UpdateUserSettingsHandler updates an active user's settings.
 //

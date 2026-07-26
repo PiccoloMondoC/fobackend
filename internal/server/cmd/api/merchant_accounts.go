@@ -50,19 +50,19 @@ import (
 const (
 	merchantAccountEntityType = "merchant_account"
 
-	actionCreateMerchantAccount              = "create_merchant_account"
-	actionReadMerchantAccount                = "read_merchant_account"
-	actionReadDeletedMerchantAccount         = "read_deleted_merchant_account"
-	actionReadMerchantAccountByMerchant      = "read_merchant_account_by_merchant"
-	actionReadDeletedAccountByMerchant       = "read_deleted_merchant_account_by_merchant"
-	actionListMerchantAccounts               = "list_merchant_accounts"
-	actionListDeletedMerchantAccounts        = "list_deleted_merchant_accounts"
-	actionActivateMerchantAccount            = "activate_merchant_account"
-	actionSuspendMerchantAccount             = "suspend_merchant_account"
-	actionCloseMerchantAccount               = "close_merchant_account"
-	actionSoftDeleteMerchantAccount          = "soft_delete_merchant_account"
-	actionRestoreMerchantAccount             = "restore_merchant_account"
-	actionHardDeleteMerchantAccount          = "hard_delete_merchant_account"
+	actionCreateMerchantAccount         = "create_merchant_account"
+	actionReadMerchantAccount           = "read_merchant_account"
+	actionReadDeletedMerchantAccount    = "read_deleted_merchant_account"
+	actionReadMerchantAccountByMerchant = "read_merchant_account_by_merchant"
+	actionReadDeletedAccountByMerchant  = "read_deleted_merchant_account_by_merchant"
+	actionListMerchantAccounts          = "list_merchant_accounts"
+	actionListDeletedMerchantAccounts   = "list_deleted_merchant_accounts"
+	actionActivateMerchantAccount       = "activate_merchant_account"
+	actionSuspendMerchantAccount        = "suspend_merchant_account"
+	actionCloseMerchantAccount          = "close_merchant_account"
+	actionSoftDeleteMerchantAccount     = "soft_delete_merchant_account"
+	actionRestoreMerchantAccount        = "restore_merchant_account"
+	actionHardDeleteMerchantAccount     = "hard_delete_merchant_account"
 )
 
 type createMerchantAccountInput struct {

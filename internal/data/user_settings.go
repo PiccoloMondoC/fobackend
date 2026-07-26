@@ -3,25 +3,27 @@
 // sdworkspace/sdbackend/internal/data/user_settings.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: SPINE
-//   Reason:
-//     User settings are release-critical account preference infrastructure.
-//     They preserve notification preferences, privacy data-sharing controls,
-//     preferred notification channel selection, structured preference storage,
-//     and soft-delete/restore lifecycle behavior required by the initial
-//     Platform release spine.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User settings are release-critical account preference infrastructure.
+//	  They preserve notification preferences, privacy data-sharing controls,
+//	  preferred notification channel selection, structured preference storage,
+//	  and soft-delete/restore lifecycle behavior required by the initial
+//	  Platform release spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve user-owned settings semantics.
-//   Preserve separation between notification decisions and contact data.
-//   Preserve preferred notification channel linkage.
-//   Preserve JSONB preferences marshal/unmarshal behavior.
-//   Preserve soft-delete, restore, and hard-delete distinction.
-//   Block deployment if this file breaks build, settings persistence,
-//   notification preference behavior, privacy controls, or account preference integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve user-owned settings semantics.
+//	Preserve separation between notification decisions and contact data.
+//	Preserve preferred notification channel linkage.
+//	Preserve JSONB preferences marshal/unmarshal behavior.
+//	Preserve soft-delete, restore, and hard-delete distinction.
+//	Block deployment if this file breaks build, settings persistence,
+//	notification preference behavior, privacy controls, or account preference integrity.
 package data
 
 import (
@@ -350,7 +352,6 @@ func (m *UserSettingsModel) Delete(ctx context.Context, userID uuid.UUID) error 
 	logger.Info("user settings hard deleted", "user_id", returnedUserID)
 	return nil
 }
-
 
 type userSettingsRowScanner interface {
 	Scan(dest ...any) error

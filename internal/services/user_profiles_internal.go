@@ -5,25 +5,27 @@
 // sdworkspace/sdbackend/internal/services/user_profiles_internal.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     User profile internal services are release-critical identity, trust,
-//     safety, and account lifecycle infrastructure. They preserve profile
-//     moderation, handle validation and normalization, profile ownership
-//     resolution, and audit visibility required by the v1 Future Offering
-//     release spine.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User profile internal services are release-critical identity, trust,
+//	  safety, and account lifecycle infrastructure. They preserve profile
+//	  moderation, handle validation and normalization, profile ownership
+//	  resolution, and audit visibility required by the v1 Future Offering
+//	  release spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve profile auto-flagging behavior.
-//   Preserve moderation audit trail behavior.
-//   Preserve handle validation and normalization parity with the data layer.
-//   Preserve profile ownership resolution correctness.
-//   Preserve normalized social-link moderation checks.
-//   Block deployment if this file breaks build, moderation,
-//   handle validation, ownership checks, or audit integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve profile auto-flagging behavior.
+//	Preserve moderation audit trail behavior.
+//	Preserve handle validation and normalization parity with the data layer.
+//	Preserve profile ownership resolution correctness.
+//	Preserve normalized social-link moderation checks.
+//	Block deployment if this file breaks build, moderation,
+//	handle validation, ownership checks, or audit integrity.
 package services
 
 import (

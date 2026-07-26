@@ -4,8 +4,6 @@
 **Status:** Living document — update as files are completed or reclassified
 **Purpose:** Authoritative record of which backend files are SPINE (required for v1) versus DEFERRED (explicitly out of scope for v1). This is the single source of truth for release scope decisions — do not let SPINE and DEFERRED status live in two places.
 
----
-
 ## Doctrine
 
 Engineering builds capabilities; operations exercises them through configuration rather than code changes.
@@ -23,8 +21,6 @@ Engineering builds capabilities; operations exercises them through configuration
 - Risk flags
 - Billing policies
 
----
-
 ## SPINE (v1 build)
 
 ### Phase 1 — Admin Control Plane Foundation
@@ -38,51 +34,77 @@ Engineering builds capabilities; operations exercises them through configuration
 A merchant must exist before anything else.
 - [x ] `merchant_accounts.go` — Done
 
-### Phase 4 — Commercial Foundation
+### Phase 4 — Commerce Architecture
 Everything needed to let the platform commercially operate, even if all fees are currently waived. Notice that billing ledger comes last — everything else generates financial activity; the ledger records it.
 - [x] `merchant_program_plans.go` — Done
 - [x] `merchant_program_entitlements.go` — Done
-- [x ] `merchant_program_fee_schedules.go` — Done
+- [x] `merchant_program_fee_schedules.go` — Done
 - [x] `merchant_program_subscriptions.go` — Done
-- [x ] `merchant_program_subscription_events.go` — Done
-- [ ] `merchant_payment_methods.go`
+- [x] `merchant_program_subscription_events.go` — Done
 - [ ] `merchant_platform_credit_accounts.go`
 - [ ] `merchant_platform_credit_eligible_fee_types.go`
+>            Merchant Intelligence Activation Fee
+>            Merchant Intelligence Fee
+>            Campaign Performance Fee     Launch Campaign only
+>            Subscription Fee             optional
 - [ ] `merchant_platform_credit_applications.go`
 - [ ] `merchant_billing_accounts.go`
 - [ ] `merchant_billable_events.go`
 - [ ] `merchant_fee_calculations.go`
 - [ ] `merchant_invoices.go`
-- [ ] `merchant_payments.go`
 - [ ] `merchant_billing_ledger_entries.go`
 
-### Phase 5 — Future Offering Core
+### Phase 5 — Merchant Payments Architecture
+#### Direct Payment Mode — SPINE — v1
+- [ ] `merchant_payment_methods.go`
+- [ ] `merchant_payment_method_provider_links.go`
+- [ ] `merchant_payments.go`
+- [ ] `platform_commercial_promotions.go`
+- [ ] `merchant_commercial_adjustments.go`
+
+### Phase 6 — Future Offering Core
 Now the merchant can actually publish.
 - [ ] `merchant_future_offerings.go`
 - [ ] `merchant_future_offerings_assets.go`
 - [ ] `merchant_future_offering_engagement_options.go`
+- [ ] `merchant_future_offering_goals.go`
+- [ ] `merchant_future_offering_billing_terms.go`
 - [ ] `merchant_future_offerings_events.go`
 
-### Phase 6 — Consumer Intelligence
+### Phase 7 — Merchant Intelligence
+- [ ] `merchant_intelligence_reports.go`
+- [ ] `merchant_intelligence_report_metrics.go`
+
+### Phase 8 — Consumer Intelligence
 Now consumers can interact.
 - [ ] `user_trend_engagements.go`
 - [ ] `user_trend_engagement_events.go`
 
-### Phase 7 — Trust & Intelligence
+### Phase 9 — Trust & Intelligence
 These protect the ecosystem.
 - [ ] `future_offering_trust_reviews.go`
 - [ ] `future_offering_trust_review_decisions.go`
 - [ ] `future_offering_risk_flags.go`
 - [ ] `future_offering_watch_density_snapshots.go`
 
-### Phase 8 — Infrastructure
+### Phase 10 — Infrastructure
 Everything needed for routing and observability.
 - [ ] `commerce_routes.go`
 - [ ] `commerce_route_events.go`
 
----
 
 ## DEFERRED (explicitly out of scope for v1)
+
+## Treasury Balance Mode — DEFERRED — post-v1
+- Marked for early post-v1 implementation.
+- `merchant_balances.go`
+- `merchant_ledger_entries.go`
+- `merchant_funding_transactions.go`
+- `merchant_funding_sources.go`
+- `merchant_funding_source_provider_links.go`
+- `merchant_withdrawals.go`
+
+## Commerce Architecture — DEFERRED — post-v1
 
 ### Enterprise collaboration
 - `merchant_account_roles.go`
@@ -100,8 +122,6 @@ Everything needed for routing and observability.
 - `merchant_postback_configs.go`
 - `merchant_postback_events.go`
 - `merchant_fee_reversals.go`
-
----
 
 ## Change Log
 

@@ -5,25 +5,27 @@
 // sdworkspace/sdbackend/internal/services/user_notifications_internal.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: SPINE
-//   Reason:
-//     User notification internal services are release-critical consumer
-//     communication infrastructure. They persist retained notification history,
-//     resolve notification type/channel metadata, link delivery channels, and
-//     record audit history for internal automation-triggered notifications.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User notification internal services are release-critical consumer
+//	  communication infrastructure. They persist retained notification history,
+//	  resolve notification type/channel metadata, link delivery channels, and
+//	  record audit history for internal automation-triggered notifications.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve notification persistence.
-//   Preserve notification type resolution.
-//   Preserve notification channel resolution.
-//   Preserve channel-link persistence.
-//   Preserve audit logging as non-fatal.
-//   Preserve DB-owned notification sent_at and lifecycle timestamps.
-//   Block deployment if this file breaks build, notification persistence,
-//   channel linking, or consumer communication integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve notification persistence.
+//	Preserve notification type resolution.
+//	Preserve notification channel resolution.
+//	Preserve channel-link persistence.
+//	Preserve audit logging as non-fatal.
+//	Preserve DB-owned notification sent_at and lifecycle timestamps.
+//	Block deployment if this file breaks build, notification persistence,
+//	channel linking, or consumer communication integrity.
 package services
 
 import (

@@ -50,7 +50,7 @@ import (
 )
 
 // default when preferred_contact not supplied
-const profilePrefContactFallback = "email" 
+const profilePrefContactFallback = "email"
 
 // Write User Profile Handlers
 
@@ -60,11 +60,10 @@ const profilePrefContactFallback = "email"
 //
 // Design notes
 // ------------
-// • NO calls to the services layer. Automation (e.g., auto‑flagging) is handled
-//   elsewhere by the services package listening for DB changes / events.
-// • Strict validation & normalisation occur synchronously via the model layer.
-// • Audit logging is best‑effort and must never block the main flow.
-//
+//   - NO calls to the services layer. Automation (e.g., auto‑flagging) is handled
+//     elsewhere by the services package listening for DB changes / events.
+//   - Strict validation & normalisation occur synchronously via the model layer.
+//   - Audit logging is best‑effort and must never block the main flow.
 func (app *Application) createUserProfileAfterRegistration(
 	ctx context.Context,
 	userID uuid.UUID,
@@ -155,7 +154,6 @@ func (app *Application) createUserProfileAfterRegistration(
 	return nil
 }
 
-
 // GetOwnUserProfileHandler retrieves the current authenticated user's profile.
 // It does NOT support accessing others' profiles — even as admin/operator.
 // - Requires authentication.
@@ -245,7 +243,6 @@ func (app *Application) GetOwnUserProfileHandler(w http.ResponseWriter, r *http.
 		Data:    profile,
 	})
 }
-
 
 // UpdateOwnUserProfileHandler updates the authenticated user's canonical
 // user_profiles row.
@@ -610,7 +607,6 @@ func (app *Application) UpdateUserProfileVisibilityHandler(w http.ResponseWriter
 
 // Read User Profile Handlers
 
-
 // GetUserProfileByUserIDHandler retrieves a user's profile by their ID.
 // - Public profiles are accessible to all (including guests).
 // - Private profiles are restricted to the user themselves or internal roles.
@@ -721,7 +717,6 @@ func (app *Application) GetUserProfileByUserIDHandler(w http.ResponseWriter, r *
 		Data:    profile,
 	})
 }
-
 
 // ListUserProfilesHandler returns a list of user profiles viewable by the current user.
 // - Enforces read_user_profiles permission.
@@ -835,7 +830,6 @@ func (app *Application) ListUserProfilesHandler(w http.ResponseWriter, r *http.R
 	})
 }
 
-
 // SearchUserProfilesHandler handles full-text search across public user profiles.
 // - Requires authentication to prevent abuse and tie activity to user identity.
 // - Supports query parameters: `q` (search term), `limit`, `offset`.
@@ -903,7 +897,7 @@ func (app *Application) SearchUserProfilesHandler(w http.ResponseWriter, r *http
 
 	// Audit log entry (non-fatal)
 	if action != nil && entityType != nil {
-		audit := data.AuditLog{	
+		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
 			ActionID:     action.ID,
@@ -931,20 +925,18 @@ func (app *Application) SearchUserProfilesHandler(w http.ResponseWriter, r *http
 	})
 }
 
-
 // Restricted or Internal User Profile Handlers
-
 
 // UpdateUserProfileHandler lets an *internal* operator (admin or moderator)
 // update another user’s profile.
 //
 // Security / Behaviour
 // --------------------
-// • Requires HasPermission(ctx,"update_user_profile") (route-level middleware).  
-// • Self‑updates are blocked – callers must use the “/self” endpoint.  
-// • Accepts a *partial* JSON payload; omitted fields remain unchanged.  
-// • Validates / normalises user_handle via the model layer.  
-// • Writes an audit record (action: update_user_profile, entity: user_profile).  
+// • Requires HasPermission(ctx,"update_user_profile") (route-level middleware).
+// • Self‑updates are blocked – callers must use the “/self” endpoint.
+// • Accepts a *partial* JSON payload; omitted fields remain unchanged.
+// • Validates / normalises user_handle via the model layer.
+// • Writes an audit record (action: update_user_profile, entity: user_profile).
 // • 200 on success, 400 on bad input, 401/403 on auth failures, 500 on DB errors.
 func (app *Application) UpdateUserProfileHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("UpdateUserProfileHandler")
@@ -957,7 +949,7 @@ func (app *Application) UpdateUserProfileHandler(w http.ResponseWriter, r *http.
 	 * 1. Extract & validate trusted context IDs                             *
 	 * --------------------------------------------------------------------- */
 	requesterID := app.getUserIDFromContext(ctx)
-	targetID    := app.getTargetUserIDFromContext(ctx)
+	targetID := app.getTargetUserIDFromContext(ctx)
 
 	if requesterID == nil || targetID == nil {
 		logger.Warn("context IDs missing")
@@ -996,7 +988,7 @@ func (app *Application) UpdateUserProfileHandler(w http.ResponseWriter, r *http.
 	/* --------------------------------------------------------------------- *
 	 * 4. Persist update                                                     *
 	 * --------------------------------------------------------------------- */
-	input.UserID    = *targetID
+	input.UserID = *targetID
 	input.UpdatedAt = time.Now().UTC()
 
 	if err := app.Models.UserProfile.Update(ctx, &input); err != nil {
@@ -1056,7 +1048,6 @@ func (app *Application) UpdateUserProfileHandler(w http.ResponseWriter, r *http.
 		Data:    targetID,
 	})
 }
-
 
 // ModerateUserProfileHandler allows internal operators to flag or unflag a user profile with notes.
 // - Requires "moderate_user_profile" permission.
@@ -1150,7 +1141,6 @@ func (app *Application) ModerateUserProfileHandler(w http.ResponseWriter, r *htt
 		Data:    targetID,
 	})
 }
-
 
 // GetReservedHandlesHandler returns all reserved or claimed user handles for validation UI.
 //

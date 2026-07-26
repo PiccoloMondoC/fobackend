@@ -3,21 +3,23 @@
 // sdworkspace/sdbackend/internal/data/database_health.go
 //
 // GTM:
-//   Layer: 2.1 Database / Governance Foundation
-//   Release Class: SPINE
-//   Reason:
-//     Database health checking is release-critical infrastructure. It verifies
-//     that the canonical Models database pool is initialized, reachable, and
-//     observable before the application is treated as ready.
+//
+//	Layer: 2.1 Database / Governance Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Database health checking is release-critical infrastructure. It verifies
+//	  that the canonical Models database pool is initialized, reachable, and
+//	  observable before the application is treated as ready.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve Models.DB as the canonical pool source.
-//   Preserve logger initialization validation.
-//   Preserve context timeout protection.
-//   Block deployment if this file breaks build, readiness checks,
-//   database observability, or pool reachability verification.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve Models.DB as the canonical pool source.
+//	Preserve logger initialization validation.
+//	Preserve context timeout protection.
+//	Block deployment if this file breaks build, readiness checks,
+//	database observability, or pool reachability verification.
 package data
 
 import (

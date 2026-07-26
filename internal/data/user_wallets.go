@@ -3,27 +3,29 @@
 // sdworkspace/sdbackend/internal/data/user_wallets.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User wallets and wallet ledger entries are valid future rewards,
-//     points, balance, and internal ledger infrastructure, but they are not
-//     required for the initial Platform release spine. The v1 spine
-//     requires account identity, user settings, notifications, favorites/stash,
-//     merchant follows, canonical offers, click tracking, and price history
-//     before expanding into rewards wallets and ledger-backed incentive flows.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User wallets and wallet ledger entries are valid future rewards,
+//	  points, balance, and internal ledger infrastructure, but they are not
+//	  required for the initial Platform release spine. The v1 spine
+//	  requires account identity, user settings, notifications, favorites/stash,
+//	  merchant follows, canonical offers, click tracking, and price history
+//	  before expanding into rewards wallets and ledger-backed incentive flows.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve NUMERIC-safe decimal string behavior.
-//   Preserve immutable wallet ledger-entry semantics.
-//   Preserve reward-wallet creation semantics.
-//   Preserve pending -> confirmed ledger lifecycle behavior.
-//   Preserve wallet soft-delete and hard-delete distinction.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve NUMERIC-safe decimal string behavior.
+//	Preserve immutable wallet ledger-entry semantics.
+//	Preserve reward-wallet creation semantics.
+//	Preserve pending -> confirmed ledger lifecycle behavior.
+//	Preserve wallet soft-delete and hard-delete distinction.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (

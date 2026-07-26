@@ -3,24 +3,26 @@
 // sdworkspace/sdbackend/internal/data/user_external_identity.go
 //
 // GTM:
-//   Layer: 2.2.a External OAuth Login Consumption
-//   Release Class: SPINE
-//   Reason:
-//     External identity linking is release-critical identity infrastructure for
-//     v1 OAuth login consumption. It preserves provider-subject uniqueness,
-//     account-link integrity, provider allowlisting, safe avatar URL handling,
-//     soft unlink behavior, and DB-owned lifecycle timestamps.
+//
+//	Layer: 2.2.a External OAuth Login Consumption
+//	Release Class: SPINE
+//	Reason:
+//	  External identity linking is release-critical identity infrastructure for
+//	  v1 OAuth login consumption. It preserves provider-subject uniqueness,
+//	  account-link integrity, provider allowlisting, safe avatar URL handling,
+//	  soft unlink behavior, and DB-owned lifecycle timestamps.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve external identity ownership integrity.
-//   Preserve provider-subject uniqueness.
-//   Preserve Google, Apple, and Facebook provider support.
-//   Preserve safe URL validation.
-//   Preserve soft unlink lifecycle behavior.
-//   Block deployment if this file breaks build, OAuth login linking,
-//   external identity lookup, or account ownership integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve external identity ownership integrity.
+//	Preserve provider-subject uniqueness.
+//	Preserve Google, Apple, and Facebook provider support.
+//	Preserve safe URL validation.
+//	Preserve soft unlink lifecycle behavior.
+//	Block deployment if this file breaks build, OAuth login linking,
+//	external identity lookup, or account ownership integrity.
 package data
 
 import (
@@ -49,11 +51,11 @@ type UserExternalIdentity struct {
 	EmailVerified   bool       `json:"email_verified" db:"email_verified"`
 	DisplayName     *string    `json:"display_name,omitempty" db:"display_name"`
 	AvatarURL       *string    `json:"avatar_url,omitempty" db:"avatar_url"`
-	LinkedAt         time.Time  `json:"linked_at" db:"linked_at"`
-	LastLoginAt      *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
-	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at" db:"updated_at"`
-	DeletedAt        *time.Time `json:"-" db:"deleted_at"`
+	LinkedAt        time.Time  `json:"linked_at" db:"linked_at"`
+	LastLoginAt     *time.Time `json:"last_login_at,omitempty" db:"last_login_at"`
+	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
+	DeletedAt       *time.Time `json:"-" db:"deleted_at"`
 }
 
 // UserExternalIdentityModel owns persistence for user_external_identities.

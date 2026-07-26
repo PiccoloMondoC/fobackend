@@ -3,22 +3,24 @@
 // sdworkspace/sdbackend/internal/data/category_lookups.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Category-to-department lookup is release-critical because the platform persists
-//     only the leaf category_id on offers while the frontend remains
-//     department-first. This helper preserves the canonical offer contract by
-//     resolving the root department from the category tree.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Category-to-department lookup is release-critical because the platform persists
+//	  only the leaf category_id on offers while the frontend remains
+//	  department-first. This helper preserves the canonical offer contract by
+//	  resolving the root department from the category tree.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve leaf-category persistence with department-first resolution.
-//   Preserve category soft-delete filtering.
-//   Preserve typed ErrCategoryNotFound behavior.
-//   Block deployment if this file breaks build, offer hydration,
-//   department-first routing/rendering, or category integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve leaf-category persistence with department-first resolution.
+//	Preserve category soft-delete filtering.
+//	Preserve typed ErrCategoryNotFound behavior.
+//	Block deployment if this file breaks build, offer hydration,
+//	department-first routing/rendering, or category integrity.
 package data
 
 import (

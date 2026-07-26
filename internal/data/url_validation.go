@@ -3,24 +3,26 @@
 // sdworkspace/sdbackend/internal/data/url_validation.go
 //
 // GTM:
-//   Layer: 2.1 Database / Governance Foundation
-//   Release Class: SPINE
-//   Reason:
-//     Shared URL validation is release-critical data-layer safety
-//     infrastructure. It protects persisted URL fields across model files by
-//     enforcing absolute HTTP/HTTPS URLs, rejecting embedded user-info, and
-//     blocking decoded path traversal segments before unsafe values can enter
-//     persistence.
+//
+//	Layer: 2.1 Database / Governance Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Shared URL validation is release-critical data-layer safety
+//	  infrastructure. It protects persisted URL fields across model files by
+//	  enforcing absolute HTTP/HTTPS URLs, rejecting embedded user-info, and
+//	  blocking decoded path traversal segments before unsafe values can enter
+//	  persistence.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve canonical validated-value return behavior.
-//   Preserve HTTP/HTTPS-only validation.
-//   Preserve user-info rejection.
-//   Preserve decoded path traversal rejection.
-//   Block deployment if this file breaks build, URL validation,
-//   persistence safety, or shared data-layer input integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve canonical validated-value return behavior.
+//	Preserve HTTP/HTTPS-only validation.
+//	Preserve user-info rejection.
+//	Preserve decoded path traversal rejection.
+//	Block deployment if this file breaks build, URL validation,
+//	persistence safety, or shared data-layer input integrity.
 package data
 
 import (
@@ -71,7 +73,6 @@ func validateHTTPURL(raw string) (string, error) {
 
 	return u.String(), nil
 }
-
 
 // hasPathTraversal reports whether the already-parsed URL path contains a
 // decoded traversal segment.

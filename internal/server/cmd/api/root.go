@@ -22,21 +22,20 @@ type rootResp struct {
 
 // RootHandler uses the live snapshot
 func (app *Application) RootHandler(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Content-Type", "application/json")
-    resp := rootResp{
-        Service: "platform",
-        Status:  "ok",
-        Time:    time.Now().UTC().Format(time.RFC3339),
-        Endpoints: app.publicRoutes.listWithEnsure(
-            "GET /", "GET /healthz", "GET /readyz", "GET /metrics",
-        ),
-    }
-    if err := json.NewEncoder(w).Encode(resp); err != nil {
-        http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-        return
-    }
+	w.Header().Set("Content-Type", "application/json")
+	resp := rootResp{
+		Service: "platform",
+		Status:  "ok",
+		Time:    time.Now().UTC().Format(time.RFC3339),
+		Endpoints: app.publicRoutes.listWithEnsure(
+			"GET /", "GET /healthz", "GET /readyz", "GET /metrics",
+		),
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
 }
-
 
 // NotFoundHandler provides a consistent JSON error for unknown routes.
 // Register it with r.NotFound(app.NotFoundHandler) in routes.go.

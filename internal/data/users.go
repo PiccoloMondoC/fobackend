@@ -3,29 +3,31 @@
 // sdworkspace/sdbackend/internal/data/users.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     Users are release-critical identity and account lifecycle infrastructure.
-//     This file owns canonical user persistence, registration, authentication,
-//     OAuth account linking, password hashing, password reset, primary role
-//     assignment, contact-info lookup, active-state control, and account
-//     soft-delete cascade behavior required by the initial Platform release
-//     spine.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Users are release-critical identity and account lifecycle infrastructure.
+//	  This file owns canonical user persistence, registration, authentication,
+//	  OAuth account linking, password hashing, password reset, primary role
+//	  assignment, contact-info lookup, active-state control, and account
+//	  soft-delete cascade behavior required by the initial Platform release
+//	  spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve canonical users table alignment.
-//   Preserve exactly-one registration method enforcement.
-//   Preserve password hashing and protected reset-token persistence.
-//   Preserve OAuth account-linking integrity.
-//   Preserve primary-role assignment through user_role_assignments.
-//   Preserve soft-delete cascade behavior for user-owned records.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Block deployment if this file breaks build, user registration,
-//   authentication, password reset, OAuth linking, role assignment,
-//   account lifecycle, or identity integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve canonical users table alignment.
+//	Preserve exactly-one registration method enforcement.
+//	Preserve password hashing and protected reset-token persistence.
+//	Preserve OAuth account-linking integrity.
+//	Preserve primary-role assignment through user_role_assignments.
+//	Preserve soft-delete cascade behavior for user-owned records.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Block deployment if this file breaks build, user registration,
+//	authentication, password reset, OAuth linking, role assignment,
+//	account lifecycle, or identity integrity.
 package data
 
 import (

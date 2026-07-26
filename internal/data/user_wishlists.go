@@ -3,25 +3,27 @@
 // sdworkspace/sdbackend/internal/data/user_wishlists.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User wishlists are release-critical consumer purchase-intent
-//     infrastructure. They support saved offers, My Stash behavior, return
-//     visits, consumer personalization, gifting intent, and price-alert-adjacent
-//     purchase planning required by the initial Platform release spine.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User wishlists are release-critical consumer purchase-intent
+//	  infrastructure. They support saved offers, My Stash behavior, return
+//	  visits, consumer personalization, gifting intent, and price-alert-adjacent
+//	  purchase planning required by the initial Platform release spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve consumer-owned wishlist semantics.
-//   Preserve saved-offer and purchase-intent behavior.
-//   Preserve soft-delete lifecycle behavior.
-//   Preserve canonical list-name normalization.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Block deployment if this file breaks build, wishlist persistence,
-//   saved-offer behavior, purchase-intent tracking, or consumer engagement
-//   integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve consumer-owned wishlist semantics.
+//	Preserve saved-offer and purchase-intent behavior.
+//	Preserve soft-delete lifecycle behavior.
+//	Preserve canonical list-name normalization.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Block deployment if this file breaks build, wishlist persistence,
+//	saved-offer behavior, purchase-intent tracking, or consumer engagement
+//	integrity.
 package data
 
 import (

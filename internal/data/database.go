@@ -3924,43 +3924,76 @@ CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
 	-- ===============================================================
+
 	CREATE TABLE IF NOT EXISTS merchant_payment_methods (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-		payment_method_type TEXT NOT NULL CHECK (payment_method_type IN (
-			'card',
-			'bank_account',
-			'wire',
-			'manual_invoice',
-			'payment_processor'
-		)),
+		payment_method_type TEXT NOT NULL
+			CHECK (payment_method_type IN (
+				'card',
+				'bank_account',
+				'wire',
+				'manual_invoice'
+			)),
 
-		processor_name TEXT,
-		processor_payment_method_id TEXT,
+		display_label TEXT
+			CHECK (
+				display_label IS NULL
+				OR char_length(display_label) <= 255
+			),
 
-		display_label TEXT,
-		last_four TEXT CHECK (last_four IS NULL OR last_four ~ '^[0-9]{4}$'),
+		last_four TEXT
+			CHECK (
+				last_four IS NULL
+				OR last_four ~ '^[0-9]{4}$'
+			),
 
 		status TEXT NOT NULL DEFAULT 'active'
-			CHECK (status IN ('active', 'inactive', 'expired', 'revoked')),
+			CHECK (status IN (
+				'active',
+				'inactive',
+				'expired',
+				'revoked'
+			)),
 
 		is_default BOOLEAN NOT NULL DEFAULT FALSE,
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
+		deleted_at TIMESTAMPTZ,
+
+		CONSTRAINT ck_merchant_payment_methods_expired_card_only
+			CHECK (
+				status <> 'expired'
+				OR payment_method_type = 'card'
+			),
+
+		CONSTRAINT ck_merchant_payment_methods_default_operational
+			CHECK (
+				is_default = FALSE
+				OR (
+					status = 'active'
+					AND deleted_at IS NULL
+				)
+			)
 	);
 
 	CREATE UNIQUE INDEX IF NOT EXISTS ux_merchant_payment_methods_default
 		ON merchant_payment_methods(merchant_id)
 		WHERE is_default = TRUE
-		  AND deleted_at IS NULL
-		  AND status = 'active';
+		AND deleted_at IS NULL
+		AND status = 'active';
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_payment_methods_merchant
 		ON merchant_payment_methods(merchant_id)
+		WHERE deleted_at IS NULL;
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_payment_methods_merchant_status
+		ON merchant_payment_methods(merchant_id, status)
 		WHERE deleted_at IS NULL;
 
 

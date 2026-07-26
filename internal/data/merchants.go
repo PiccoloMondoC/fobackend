@@ -3,27 +3,29 @@
 // sdworkspace/sdbackend/internal/data/merchants.go
 //
 // GTM:
-//   Layer: 2.4 Merchant / Affiliate Domain
-//   Release Class: SPINE
-//   Reason:
-//     Merchants, merchant types, merchant-affiliate program relationships, and
-//     platforms are release-critical merchant/catalog infrastructure. They
-//     support merchant identity, merchant classification, affiliate-program
-//     linkage, platform lookup, offer ownership, and monetization routing for
-//     the initial Platform release spine.
+//
+//	Layer: 2.4 Merchant / Affiliate Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Merchants, merchant types, merchant-affiliate program relationships, and
+//	  platforms are release-critical merchant/catalog infrastructure. They
+//	  support merchant identity, merchant classification, affiliate-program
+//	  linkage, platform lookup, offer ownership, and monetization routing for
+//	  the initial Platform release spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve merchant identity and slug behavior.
-//   Preserve merchant type classification.
-//   Preserve merchant-affiliate program relationship integrity.
-//   Preserve public-safe affiliate program summary reads.
-//   Preserve platform lookup behavior.
-//   Preserve soft-delete lifecycle semantics.
-//   Block deployment if this file breaks build, merchant persistence,
-//   offer ownership, affiliate-program linkage, platform lookup,
-//   or merchant/catalog integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve merchant identity and slug behavior.
+//	Preserve merchant type classification.
+//	Preserve merchant-affiliate program relationship integrity.
+//	Preserve public-safe affiliate program summary reads.
+//	Preserve platform lookup behavior.
+//	Preserve soft-delete lifecycle semantics.
+//	Block deployment if this file breaks build, merchant persistence,
+//	offer ownership, affiliate-program linkage, platform lookup,
+//	or merchant/catalog integrity.
 package data
 
 import (
@@ -117,7 +119,6 @@ type PlatformModel struct {
 	DB     *pgxpool.Pool
 	Logger *logging.Logger
 }
-
 
 // MerchantModel CRUD Functions
 
@@ -240,7 +241,6 @@ func (m *MerchantModel) Insert(ctx context.Context, merchant *Merchant) error {
 	return nil
 }
 
-
 // GetByID retrieves an merchant by ID from the database.
 func (m *MerchantModel) GetByID(ctx context.Context, id uuid.UUID) (*Merchant, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -273,7 +273,6 @@ func (m *MerchantModel) GetByID(ctx context.Context, id uuid.UUID) (*Merchant, e
 	logger.Info("Retrieved merchant", "merchant_id", id)
 	return &merchant, nil
 }
-
 
 // GetByName retrieves an merchant by name from the database.
 func (m *MerchantModel) GetByName(ctx context.Context, name string) (*Merchant, error) {
@@ -385,7 +384,6 @@ func (m *MerchantModel) GetByOfferID(ctx context.Context, offerID uuid.UUID) (*M
 	return &merchant, nil
 }
 
-
 // GetByProductID retrieves all merchants associated with a given product ID.
 func (m *MerchantModel) GetByProductID(ctx context.Context, productID uuid.UUID) ([]*Merchant, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -433,7 +431,6 @@ func (m *MerchantModel) GetByProductID(ctx context.Context, productID uuid.UUID)
 	logger.Info("Retrieved merchants by product", "product_id", productID, "count", len(merchants))
 	return merchants, nil
 }
-
 
 // GetByBrandID returns all merchants associated with products under the given brand ID.
 func (m *MerchantModel) GetByBrandID(ctx context.Context, brandID uuid.UUID) ([]*Merchant, error) {
@@ -486,7 +483,6 @@ func (m *MerchantModel) GetByBrandID(ctx context.Context, brandID uuid.UUID) ([]
 	return merchants, nil
 }
 
-
 // GetByProductLine returns all merchants associated with products in the given product line.
 func (m *MerchantModel) GetByProductLine(ctx context.Context, productLine string) ([]*Merchant, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -538,7 +534,6 @@ func (m *MerchantModel) GetByProductLine(ctx context.Context, productLine string
 	return merchants, nil
 }
 
-
 // GetByWebsite retrieves an merchant by their website URL.
 func (m *MerchantModel) GetByWebsite(ctx context.Context, website string) (*Merchant, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -574,7 +569,6 @@ func (m *MerchantModel) GetByWebsite(ctx context.Context, website string) (*Merc
 	logger.Info("Get merchant by website successful", "merchant_id", merchant.ID)
 	return &merchant, nil
 }
-
 
 // GetByPlatform retrieves all merchants associated with a specific platform ID.
 func (m *MerchantModel) GetByPlatform(ctx context.Context, platformID uuid.UUID) ([]*Merchant, error) {
@@ -623,7 +617,6 @@ func (m *MerchantModel) GetByPlatform(ctx context.Context, platformID uuid.UUID)
 	return merchants, nil
 }
 
-
 // GetByMerchantType retrieves all merchants matching a specific merchant_type_id.
 func (m *MerchantModel) GetByMerchantType(ctx context.Context, merchantTypeID uuid.UUID) ([]*Merchant, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -671,7 +664,6 @@ func (m *MerchantModel) GetByMerchantType(ctx context.Context, merchantTypeID uu
 	return merchants, nil
 }
 
-
 // Count returns the total number of non-deleted merchants in the database.
 // If merchantTypeID is not uuid.Nil, it filters by that type.
 func (m *MerchantModel) Count(ctx context.Context, merchantTypeID uuid.UUID) (int, error) {
@@ -703,7 +695,6 @@ func (m *MerchantModel) Count(ctx context.Context, merchantTypeID uuid.UUID) (in
 	return count, nil
 }
 
-
 // Exists checks whether an merchant with the given ID exists and is not deleted.
 func (m *MerchantModel) Exists(ctx context.Context, merchantID uuid.UUID) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -734,7 +725,6 @@ func (m *MerchantModel) Exists(ctx context.Context, merchantID uuid.UUID) (bool,
 	logger.Info("Exists check successful", "merchant_id", merchantID, "exists", exists)
 	return exists, nil
 }
-
 
 // GetAll retrieves a paginated list of active merchants from the database,
 // optionally filtered by merchant_type_id.
@@ -794,7 +784,6 @@ func (m *MerchantModel) GetAll(ctx context.Context, merchantTypeID *uuid.UUID, l
 	logger.Info("GetAll merchants successful", "count", len(merchants))
 	return merchants, nil
 }
-
 
 // Update partially updates via PATCH an existing merchant in the database.
 func (m *MerchantModel) Update(ctx context.Context, merchant *Merchant) error {
@@ -880,7 +869,6 @@ func (m *MerchantModel) Update(ctx context.Context, merchant *Merchant) error {
 	return nil
 }
 
-
 // SoftDelete marks an merchant as deleted by setting deleted_at = NOW().
 func (m *MerchantModel) SoftDelete(ctx context.Context, merchantID uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -918,7 +906,6 @@ func (m *MerchantModel) SoftDelete(ctx context.Context, merchantID uuid.UUID) er
 	return nil
 }
 
-
 // Restore restores a soft deleted merchant by setting deleted_at = NULL.
 func (m *MerchantModel) Restore(ctx context.Context, merchantID uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -953,7 +940,6 @@ func (m *MerchantModel) Restore(ctx context.Context, merchantID uuid.UUID) error
 	logger.Info("Restore merchant successful", "merchant_id", merchantID)
 	return nil
 }
-
 
 // Delete permanently removes a merchant from the database.
 //
@@ -992,7 +978,6 @@ func (m *MerchantModel) Delete(ctx context.Context, merchantID uuid.UUID) error 
 	logger.Info("Permanent delete merchant successful", "merchant_id", deletedID)
 	return nil
 }
-
 
 // MerchantTypeModel CRUD Functions
 
@@ -1042,7 +1027,6 @@ func (m *MerchantTypeModel) Insert(ctx context.Context, merchantType *MerchantTy
 	return nil
 }
 
-
 // GetByID retrieves an merchant type by its ID.
 func (m *MerchantTypeModel) GetByID(ctx context.Context, id uuid.UUID) (*MerchantType, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -1086,7 +1070,6 @@ func (m *MerchantTypeModel) GetByID(ctx context.Context, id uuid.UUID) (*Merchan
 	return &merchantType, nil
 }
 
-
 func (m *MerchantTypeModel) GetByName(ctx context.Context, name string) (*MerchantType, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
@@ -1128,7 +1111,6 @@ func (m *MerchantTypeModel) GetByName(ctx context.Context, name string) (*Mercha
 	logger.Info("Merchant type retrieved", "merchant_type_id", at.ID)
 	return &at, nil
 }
-
 
 // GetAll retrieves merchant types from the database using explicit pagination
 // and an optional affiliate-program filter.
@@ -1212,7 +1194,6 @@ func (m *MerchantTypeModel) GetAll(ctx context.Context, limit, offset int, affil
 	return merchantTypes, nil
 }
 
-
 // Update partially updates via PATCH an existing merchant type in the database.
 func (m *MerchantTypeModel) Update(ctx context.Context, merchantType *MerchantType) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -1257,7 +1238,6 @@ func (m *MerchantTypeModel) Update(ctx context.Context, merchantType *MerchantTy
 	return nil
 }
 
-
 // SoftDelete performs a soft delete on a merchant type.
 func (m *MerchantTypeModel) SoftDelete(ctx context.Context, id uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -1292,7 +1272,6 @@ func (m *MerchantTypeModel) SoftDelete(ctx context.Context, id uuid.UUID) error 
 	logger.Info("Soft delete merchant type successful", "merchant_type_id", id)
 	return nil
 }
-
 
 // MerchantAffiliateProgramModel CRUD Functions
 
@@ -1751,7 +1730,6 @@ func (m *MerchantAffiliateProgramModel) SoftDeleteByAffiliateProgramID(ctx conte
 		"affiliate_program_id", affiliateProgramID, "rows_affected", cmdTag.RowsAffected())
 	return nil
 }
-
 
 // PlatformModel CRUD Functions
 func (m *PlatformModel) Insert(ctx context.Context, platform *Platform) error {

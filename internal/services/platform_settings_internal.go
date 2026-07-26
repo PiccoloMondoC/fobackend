@@ -42,10 +42,10 @@ import (
 )
 
 const (
-	platformSettingFutureOfferingEnabled                 = "future_offering_enabled"
-	platformSettingAdminEnabled                          = "platform_settings_admin_enabled"
-	platformSettingHardDeleteEnabled                     = "platform_settings_hard_delete_enabled"
-	platformSettingMerchantDebitCardRequiredAtOnboarding = "merchant_debit_card_required_at_onboarding"
+	platformSettingFutureOfferingEnabled                         = "future_offering_enabled"
+	platformSettingAdminEnabled                                  = "platform_settings_admin_enabled"
+	platformSettingHardDeleteEnabled                             = "platform_settings_hard_delete_enabled"
+	platformSettingMerchantDebitCardRequiredAtOnboarding         = "merchant_debit_card_required_at_onboarding"
 	platformSettingMerchantDebitCardRequiredForFutureOfferingFee = "merchant_debit_card_required_for_future_offering_fee"
 )
 

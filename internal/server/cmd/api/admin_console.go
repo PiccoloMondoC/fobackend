@@ -96,6 +96,7 @@ type adminConsoleDomains struct {
 	MerchantProgramEntitlements  bool `json:"merchant_program_entitlements"`
 	MerchantProgramFeeSchedules  bool `json:"merchant_program_fee_schedules"`
 	MerchantProgramSubscriptions bool `json:"merchant_program_subscriptions"`
+	MerchantPaymentMethods       bool `json:"merchant_payment_methods"`
 }
 
 // adminConsoleOverviewResponse is the stable presentation DTO returned by the
@@ -291,6 +292,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			MerchantProgramEntitlements:  true,
 			MerchantProgramFeeSchedules:  true,
 			MerchantProgramSubscriptions: true,
+			MerchantPaymentMethods:       true,
 		},
 	}
 

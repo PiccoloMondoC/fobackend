@@ -52,7 +52,7 @@ import (
 )
 
 const (
-	platformSettingEntityType = "platform_setting"
+	platformSettingEntityType            = "platform_setting"
 	platformSettingsHardDeleteEnabledKey = "platform_settings_hard_delete_enabled"
 
 	actionCreatePlatformSetting      = "create_platform_setting"

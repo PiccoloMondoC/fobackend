@@ -246,7 +246,7 @@ func (s *Service) RecordMerchantProgramSubscriptionEventTxInternal(
 				event,
 			); err != nil {
 		logFields := []any{
-		    "error",
+			"error",
 			err,
 			"subscription_id",
 			canonicalInput.SubscriptionID,

@@ -45,7 +45,7 @@ import (
 	"strings"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/security" 
+	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/security"
 
 	"github.com/google/uuid"
 )
@@ -53,7 +53,6 @@ import (
 type setPasswordInput struct {
 	NewPassword string `json:"new_password"`
 }
-
 
 // RegisterUserHandler handles new user registration.
 // It supports secure role assignment (only "consumer" or "merchant"),
@@ -64,10 +63,10 @@ func (app *Application) RegisterUserHandler(w http.ResponseWriter, r *http.Reque
 
 	// --- Decode Request Payload ---
 	var input struct {
-		Email            string          `json:"email"`
-		Password         string          `json:"password"`
-		RequestedRole    string          `json:"requested_role,omitempty"`
-		UserHandle       *string         `json:"user_handle,omitempty"` // Optional: passed to auto-create profile
+		Email         string  `json:"email"`
+		Password      string  `json:"password"`
+		RequestedRole string  `json:"requested_role,omitempty"`
+		UserHandle    *string `json:"user_handle,omitempty"` // Optional: passed to auto-create profile
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		logger.Warn("Invalid registration payload", "error", err)
@@ -178,7 +177,7 @@ func (app *Application) RegisterUserHandler(w http.ResponseWriter, r *http.Reque
 	app.SendActivationLinkHandler(w, rWithUserID)
 
 	if w.Header().Get("Content-Type") != "" {
-		return	// Activation handler already responded
+		return // Activation handler already responded
 	}
 
 	// --- Final response (206 if audit failed, else 201) ---
@@ -197,7 +196,6 @@ func (app *Application) RegisterUserHandler(w http.ResponseWriter, r *http.Reque
 		Data:    userID,
 	})
 }
-
 
 // LoginHandler authenticates a user via email/password or social login,
 // issues access + refresh tokens, and logs the login event in the audit trail.
@@ -340,7 +338,7 @@ func (app *Application) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate & persist tokens 
+	// Generate & persist tokens
 	access, refresh, err := app.TokenService.GenerateTokensPair(ctx, user.ID)
 	if err != nil {
 		logger.Error("token generation failed", "user_id", user.ID, "err", err)
@@ -412,13 +410,11 @@ func (app *Application) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 // LinkOAuthAccountInput represents the expected input for linking an OAuth account.
 type LinkOAuthAccountInput struct {
-	Provider string `json:"provider"`         // "google" or "facebook"
-	OAuthID  string `json:"oauth_id"`         // Google "sub" or Facebook user_id
+	Provider string `json:"provider"` // "google" or "facebook"
+	OAuthID  string `json:"oauth_id"` // Google "sub" or Facebook user_id
 }
-
 
 // LinkOAuthAccountHandler allows a user to link a Google or Facebook ID to their account.
 func (app *Application) LinkOAuthAccountHandler(w http.ResponseWriter, r *http.Request) {
@@ -534,16 +530,15 @@ func (app *Application) LinkOAuthAccountHandler(w http.ResponseWriter, r *http.R
 	})
 }
 
-
 // SetPasswordHandler – lets an OAuth‑only user add a traditional password.
 //
 // Behaviour
 // ----------
-// • Caller must be authenticated (user ID in context).  
-// • Accepts tiny JSON payload `{ "new_password": "•••" }`.  
-// • Enforces a minimum 8‑character length (extend later if you want complexity rules).  
-// • Writes an **inline** audit record (action: set_password, entity: user).  
-// • 200 on success, 4xx/5xx on errors (fails “loudly” except for audit log insert).  
+// • Caller must be authenticated (user ID in context).
+// • Accepts tiny JSON payload `{ "new_password": "•••" }`.
+// • Enforces a minimum 8‑character length (extend later if you want complexity rules).
+// • Writes an **inline** audit record (action: set_password, entity: user).
+// • 200 on success, 4xx/5xx on errors (fails “loudly” except for audit log insert).
 // -----------------------------------------------------------------------------
 func (app *Application) SetPasswordHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("SetPasswordHandler")
@@ -644,14 +639,13 @@ func (app *Application) SetPasswordHandler(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-
 // RefreshTokenHandler exchanges a valid refresh‑token for a fresh access/refresh pair.
 //
 // Behaviour
 // ----------
-// • Any caller with a *valid* refresh‑token receives a new JWT + rotated refresh token.  
-// • Old refresh‑token is revoked immediately (rotation).  
-// • Inline audit log (`jwt_refresh_token`, entity `user_tokens`).  
+// • Any caller with a *valid* refresh‑token receives a new JWT + rotated refresh token.
+// • Old refresh‑token is revoked immediately (rotation).
+// • Inline audit log (`jwt_refresh_token`, entity `user_tokens`).
 // • 200 on success, 400/401/500 as appropriate.
 func (app *Application) RefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("RefreshTokenHandler")
@@ -794,7 +788,6 @@ func (app *Application) RefreshTokenHandler(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-
 // LogoutHandler handles user logout by deleting the refresh token and writing an audit log.
 func (app *Application) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("LogoutHandler")
@@ -897,7 +890,6 @@ func (app *Application) LogoutHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 // DeleteMeHandler handles a user's request to soft-delete their own account.
 // It enforces permission checks, performs a soft delete with cascade, and logs the action in the audit trail.
 func (app *Application) DeleteMeHandler(w http.ResponseWriter, r *http.Request) {
@@ -989,7 +981,6 @@ func (app *Application) DeleteMeHandler(w http.ResponseWriter, r *http.Request) 
 		},
 	})
 }
-
 
 // AdminDeleteUserHandler soft-deletes a user by an admin.
 // It performs validation, cascades deletion, and records an audit log.

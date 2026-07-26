@@ -62,7 +62,7 @@ type createCategoryInput struct {
 	DepartmentID string  `json:"department_id"`
 	ParentID     *string `json:"parent_id,omitempty"`
 	SortOrder    int     `json:"sort_order"`
-	Description *string `json:"description,omitempty"`
+	Description  *string `json:"description,omitempty"`
 }
 
 type updateCategoryInput struct {

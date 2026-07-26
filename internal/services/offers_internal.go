@@ -5,25 +5,27 @@
 // sdworkspace/sdbackend/internal/services/offers_internal.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Owns internal service-layer business logic for the canonical offer
-//     lifecycle: curated-offer intake, editorial approval/rejection, AI
-//     description generation, fraud detection, expiration and removal,
-//     personalized suggestion generation, status transitions, flagging, and
-//     blacklisting. These operations mutate the SPINE-tier offers table and
-//     drive audit-logged catalog integrity for Platform.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Owns internal service-layer business logic for the canonical offer
+//	  lifecycle: curated-offer intake, editorial approval/rejection, AI
+//	  description generation, fraud detection, expiration and removal,
+//	  personalized suggestion generation, status transitions, flagging, and
+//	  blacklisting. These operations mutate the SPINE-tier offers table and
+//	  drive audit-logged catalog integrity for Platform.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve offer lifecycle state transitions.
-//   Preserve audit logging on every mutating operation.
-//   Preserve editorial-approval gating before catalog exposure.
-//   Preserve duplicate-detection and fraud-heuristic integrity.
-//   Block deployment if this file breaks build, offer lifecycle correctness,
-//   audit traceability, or catalog integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve offer lifecycle state transitions.
+//	Preserve audit logging on every mutating operation.
+//	Preserve editorial-approval gating before catalog exposure.
+//	Preserve duplicate-detection and fraud-heuristic integrity.
+//	Block deployment if this file breaks build, offer lifecycle correctness,
+//	audit traceability, or catalog integrity.
 package services
 
 import (
@@ -303,9 +305,9 @@ func (s *Service) DetectFraudulentOffersInternal(ctx context.Context) error {
 	logger := s.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("DetectFraudulentOffersInternal")
 
 	offers, err := s.Models.Offer.GetAll(ctx, map[string]any{
-		"is_active":              true,
-		"is_editorial_approved":  true,
-		"include_soft_deleted":   false,
+		"is_active":             true,
+		"is_editorial_approved": true,
+		"include_soft_deleted":  false,
 	}, 100, 0)
 	if err != nil {
 		return err

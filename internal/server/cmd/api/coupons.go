@@ -71,11 +71,11 @@ const (
 )
 
 type createCouponInput struct {
-	OfferID            *uuid.UUID `json:"offer_id"`
-	CouponStatusID     *uuid.UUID `json:"coupon_status_id,omitempty"`
-	Code               string     `json:"code"`
-	DiscountType       string     `json:"discount_type"`
-	DiscountValue      string     `json:"discount_value"`
+	OfferID           *uuid.UUID `json:"offer_id"`
+	CouponStatusID    *uuid.UUID `json:"coupon_status_id,omitempty"`
+	Code              string     `json:"code"`
+	DiscountType      string     `json:"discount_type"`
+	DiscountValue     string     `json:"discount_value"`
 	MinPurchaseAmount string     `json:"min_purchase_amount"`
 	StartDate         time.Time  `json:"start_date"`
 	EndDate           *time.Time `json:"end_date,omitempty"`
@@ -83,11 +83,11 @@ type createCouponInput struct {
 }
 
 type updateCouponInput struct {
-	OfferID            *uuid.UUID `json:"offer_id"`
-	CouponStatusID     *uuid.UUID `json:"coupon_status_id,omitempty"`
-	Code               string     `json:"code"`
-	DiscountType       string     `json:"discount_type"`
-	DiscountValue      string     `json:"discount_value"`
+	OfferID           *uuid.UUID `json:"offer_id"`
+	CouponStatusID    *uuid.UUID `json:"coupon_status_id,omitempty"`
+	Code              string     `json:"code"`
+	DiscountType      string     `json:"discount_type"`
+	DiscountValue     string     `json:"discount_value"`
 	MinPurchaseAmount string     `json:"min_purchase_amount"`
 	StartDate         time.Time  `json:"start_date"`
 	EndDate           *time.Time `json:"end_date,omitempty"`

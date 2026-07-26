@@ -3,24 +3,26 @@
 // File: sdworkspace/sdbackend/internal/data/offer_flags.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer flags are release-critical moderation and catalog-quality
-//     infrastructure. They support user/internal flagging, unresolved-flag
-//     review queues, price-anomaly moderation, and public catalog integrity over
-//     the canonical offers table.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer flags are release-critical moderation and catalog-quality
+//	  infrastructure. They support user/internal flagging, unresolved-flag
+//	  review queues, price-anomaly moderation, and public catalog integrity over
+//	  the canonical offers table.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve OfferFlagModel ownership.
-//   Preserve canonical offers table dependency.
-//   Preserve unresolved flag workflow.
-//   Preserve resolution status semantics.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Block deployment if this file breaks build, offer moderation,
-//   flag persistence, anomaly flagging, or catalog-quality integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve OfferFlagModel ownership.
+//	Preserve canonical offers table dependency.
+//	Preserve unresolved flag workflow.
+//	Preserve resolution status semantics.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Block deployment if this file breaks build, offer moderation,
+//	flag persistence, anomaly flagging, or catalog-quality integrity.
 package data
 
 import (

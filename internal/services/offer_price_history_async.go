@@ -5,27 +5,29 @@
 // sdworkspace/sdbackend/internal/services/async/offer_price_history_async.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer price history async automation is deferred until external price
-//     monitoring, anomaly policy, subscription cleanup, and notification
-//     dispatch behavior are fully stabilized. This file must compile and remain
-//     production-safe, but it is not a v1 release blocker.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer price history async automation is deferred until external price
+//	  monitoring, anomaly policy, subscription cleanup, and notification
+//	  dispatch behavior are fully stabilized. This file must compile and remain
+//	  production-safe, but it is not a v1 release blocker.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep production-safe.
-//   Preserve non-blocking fire-and-forget dispatch semantics.
-//   Preserve context timeout and panic recovery on every goroutine.
-//   Preserve existing metrics, tracing, and structured logging.
-//   Preserve delegation-only contract (no direct business logic in this file).
-//   Do not expand external price monitoring, anomaly policy,
-//   subscription cleanup, or notification dispatch scope until this
-//   file is promoted from DEFERRED.
-//   Block deployment only if this file breaks build, violates async
-//   reliability guarantees, compromises observability, or creates
-//   unsafe runtime behavior.
+//
+//	Keep compiling.
+//	Keep production-safe.
+//	Preserve non-blocking fire-and-forget dispatch semantics.
+//	Preserve context timeout and panic recovery on every goroutine.
+//	Preserve existing metrics, tracing, and structured logging.
+//	Preserve delegation-only contract (no direct business logic in this file).
+//	Do not expand external price monitoring, anomaly policy,
+//	subscription cleanup, or notification dispatch scope until this
+//	file is promoted from DEFERRED.
+//	Block deployment only if this file breaks build, violates async
+//	reliability guarantees, compromises observability, or creates
+//	unsafe runtime behavior.
 package services
 
 import (

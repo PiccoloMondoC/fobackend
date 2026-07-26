@@ -153,25 +153,25 @@ const merchantProgramFeeScheduleSelectColumns = `
 // precision is never converted through binary floating point. Pointer fields
 // preserve the distinction between SQL NULL and numeric zero.
 type MerchantProgramFeeSchedule struct {
-	ID                uuid.UUID                   `json:"id" db:"id"`
+	ID                uuid.UUID                    `json:"id" db:"id"`
 	FeeScope          MerchantFeeScope             `json:"fee_scope" db:"fee_scope"`
-	PlanID            *uuid.UUID                  `json:"plan_id,omitempty" db:"plan_id"`
+	PlanID            *uuid.UUID                   `json:"plan_id,omitempty" db:"plan_id"`
 	FeeType           MerchantFeeType              `json:"fee_type" db:"fee_type"`
 	BillingInterval   MerchantBillingInterval      `json:"billing_interval" db:"billing_interval"`
 	CalculationMethod MerchantFeeCalculationMethod `json:"calculation_method" db:"calculation_method"`
-	FlatAmount        *string                     `json:"flat_amount,omitempty" db:"flat_amount"`
-	PercentageRate    *string                     `json:"percentage_rate,omitempty" db:"percentage_rate"`
-	MinimumFee        *string                     `json:"minimum_fee,omitempty" db:"minimum_fee"`
-	MaximumFee        *string                     `json:"maximum_fee,omitempty" db:"maximum_fee"`
-	IncludedSeats     int                         `json:"included_seats" db:"included_seats"`
-	ExtraSeatFee      *string                     `json:"extra_seat_fee,omitempty" db:"extra_seat_fee"`
-	Currency          string                      `json:"currency" db:"currency"`
-	IsActive          bool                        `json:"is_active" db:"is_active"`
-	EffectiveFrom     time.Time                   `json:"effective_from" db:"effective_from"`
-	EffectiveTo       *time.Time                  `json:"effective_to,omitempty" db:"effective_to"`
-	CreatedAt         time.Time                   `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time                   `json:"updated_at" db:"updated_at"`
-	DeletedAt         *time.Time                  `json:"deleted_at,omitempty" db:"deleted_at"`
+	FlatAmount        *string                      `json:"flat_amount,omitempty" db:"flat_amount"`
+	PercentageRate    *string                      `json:"percentage_rate,omitempty" db:"percentage_rate"`
+	MinimumFee        *string                      `json:"minimum_fee,omitempty" db:"minimum_fee"`
+	MaximumFee        *string                      `json:"maximum_fee,omitempty" db:"maximum_fee"`
+	IncludedSeats     int                          `json:"included_seats" db:"included_seats"`
+	ExtraSeatFee      *string                      `json:"extra_seat_fee,omitempty" db:"extra_seat_fee"`
+	Currency          string                       `json:"currency" db:"currency"`
+	IsActive          bool                         `json:"is_active" db:"is_active"`
+	EffectiveFrom     time.Time                    `json:"effective_from" db:"effective_from"`
+	EffectiveTo       *time.Time                   `json:"effective_to,omitempty" db:"effective_to"`
+	CreatedAt         time.Time                    `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time                    `json:"updated_at" db:"updated_at"`
+	DeletedAt         *time.Time                   `json:"deleted_at,omitempty" db:"deleted_at"`
 }
 
 // MerchantProgramFeeScheduleModel owns persistence for merchant program fee

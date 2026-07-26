@@ -59,7 +59,7 @@ var canonicalMerchantProgramEntitlementDefaults = []struct {
 // MerchantProgramEntitlementReadiness reports entitlement readiness for the
 // canonical merchant program plans.
 type MerchantProgramEntitlementReadiness struct {
-	AllDefaultsPresent bool                    `json:"all_defaults_present"`
+	AllDefaultsPresent bool                                       `json:"all_defaults_present"`
 	MissingDefaults    []MerchantProgramEntitlementMissingDefault `json:"missing_defaults,omitempty"`
 }
 

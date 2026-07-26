@@ -5,7 +5,8 @@
 // sdworkspace/sdbackend/internal/services/internal-services/helpers.go
 
 // CE, during your review, please consider splitting this file into
-// ssdworkspace/sdbackendd/internal/services/internal-services/service.go
+// ssdworkspace/sdbackendd/internal/services/internal-services/container.go
+// ssdworkspace/sdbackendd/internal/services/internal-services/decimals.go
 // sdworkspace/sdbackend/internal/services/internal-services/offer-description.go
 // sdworkspace/sdbackend/internal/services/internal-services/offer-fraud.go
 // sdworkspace/sdbackend/internal/services/internal-services/status-resolution.go
@@ -13,22 +14,24 @@
 // sdworkspace/sdbackend/internal/services/internal-services/notification-jobs.go
 //
 // GTM:
-//   Layer: 2.6 Internal Services / Automation Foundation
-//   Release Class: SPINE
-//   Reason:
-//     Internal service helpers support moderation, offer lifecycle resolution,
-//     pagination safety, and internal automation paths. These helpers are
-//     load-bearing for production service behavior and must preserve canonical
-//     decimal-string handling for offer monetary and percentage fields.
+//
+//	Layer: 2.6 Internal Services / Automation Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Internal service helpers support moderation, offer lifecycle resolution,
+//	  pagination safety, and internal automation paths. These helpers are
+//	  load-bearing for production service behavior and must preserve canonical
+//	  decimal-string handling for offer monetary and percentage fields.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Preserve canonical decimal string handling via exact rational parsing.
-//   Do not cast offer price or discount fields to float64.
-//   Preserve bounded pagination defaults.
-//   Preserve offer moderation safety checks.
-//   Preserve DB-timeout behavior for status resolution.
-//   Block deployment if this file breaks build.
+//
+//	Keep compiling.
+//	Preserve canonical decimal string handling via exact rational parsing.
+//	Do not cast offer price or discount fields to float64.
+//	Preserve bounded pagination defaults.
+//	Preserve offer moderation safety checks.
+//	Preserve DB-timeout behavior for status resolution.
+//	Block deployment if this file breaks build.
 package services
 
 import (
@@ -47,7 +50,7 @@ import (
 
 // Constants used in fraud heuristics and internal pagination.
 const (
-	minTitleLength          = 5   // Minimum acceptable title length
+	minTitleLength          = 5 // Minimum acceptable title length
 	defaultBatchSize        = 100
 	autoValidationThreshold = 0.2 // 20% deviation
 )
@@ -308,10 +311,10 @@ func SendSystemMaintenanceNotificationAsync(ctx context.Context, svc *Service) {
 
 	ev := NotifyUserEvent{
 		UserID:         adminID,                     // recipient
-		Type:           "system_maintenance_notice",  // resolves NotificationType
+		Type:           "system_maintenance_notice", // resolves NotificationType
 		Message:        "Platform maintenance at 02:00 UTC. Expect brief downtime.",
-		DeliveryMethod: "email",                      // resolves NotificationChannel
-		CreatedBy:      adminID,                       // actor (system)
+		DeliveryMethod: "email", // resolves NotificationChannel
+		CreatedBy:      adminID, // actor (system)
 	}
 
 	// Fire-and-forget insert.

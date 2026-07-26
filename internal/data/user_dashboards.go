@@ -3,26 +3,28 @@
 // sdworkspace/sdbackend/internal/data/user_dashboards.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User dashboards, dashboard reports, and dashboard templates are valid
-//     future personalization and reporting infrastructure, but they are not
-//     required for the initial Platform release spine. The v1 spine
-//     requires account identity, notifications, favorites/stash, merchant
-//     follows, and core offer behavior before expanding into rich dashboard
-//     configuration and reporting.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User dashboards, dashboard reports, and dashboard templates are valid
+//	  future personalization and reporting infrastructure, but they are not
+//	  required for the initial Platform release spine. The v1 spine
+//	  requires account identity, notifications, favorites/stash, merchant
+//	  follows, and core offer behavior before expanding into rich dashboard
+//	  configuration and reporting.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve dashboard owner-type validation.
-//   Preserve persisted dashboard/report/template shape.
-//   Preserve bounded report listing behavior.
-//   Preserve idempotent template assignment behavior.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve dashboard owner-type validation.
+//	Preserve persisted dashboard/report/template shape.
+//	Preserve bounded report listing behavior.
+//	Preserve idempotent template assignment behavior.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (

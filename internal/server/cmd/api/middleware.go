@@ -22,7 +22,8 @@ const ctxActionID ctxKey = "actionID"
 const ctxAdminID ctxKey = "adminID"
 const ctxAffiliatePerformanceID ctxKey = "affiliatePerformanceID"
 const ctxAffiliateProgramID ctxKey = "affiliateProgramID"
-//const ctxArchivedTimeRange ctxKey = "archivedTimeRange"
+
+// const ctxArchivedTimeRange ctxKey = "archivedTimeRange"
 const ctxAuditLogID ctxKey = "auditLogID"
 const ctxBrandID ctxKey = "brandID"
 const ctxBrandName ctxKey = "brandName"
@@ -57,13 +58,13 @@ const ctxUserDashboardID ctxKey = "userDashboardID"
 const ctxUserOfferPurchaseHistoryID ctxKey = "userOfferPurchaseHistoryID"
 const ctxUserFavoriteID ctxKey = "userFavoriteID"
 const ctxUserID ctxKey = "userID"
+
 // ctxKeyUserID is an alias so any new code compiles without edits elsewhere.
-//const ctxKeyUserID = ctxUserID
+// const ctxKeyUserID = ctxUserID
 const ctxUserNotificationID ctxKey = "userNotificationID"
 const ctxUserSettingsID ctxKey = "userSettingsID"
 const ctxSourceUserID ctxKey = "sourceUserID"
 const ctxTargetUserID ctxKey = "targetUserID"
-
 
 // RateLimiterStore holds per-user or per-IP limiters
 var (
@@ -74,37 +75,33 @@ var (
 	failedAttempts sync.Map // Tracks failed activation attempts per IP/User
 )
 
-
 // NewLimiter creates a rate limiter (1 request per second, burst of 5)
 func NewLimiter() *rate.Limiter {
 	return rate.NewLimiter(1, 5)
 }
-
 
 // Track failed attempts
 func trackFailedAttempt(identifier string) int {
 	count, _ := failedAttempts.LoadOrStore(identifier, 0)
 	newCount := count.(int) + 1
 	failedAttempts.Store(identifier, newCount)
-	
+
 	// Increment Prometheus metric
 	failedActivations.WithLabelValues(identifier).Inc()
 
 	return newCount
 }
 
-
 // Reset failed attempts after successful activation
 func resetFailedAttempts(identifier string) {
 	failedAttempts.Delete(identifier)
 }
 
-
 // Pagination and filter context keys
 const (
-	ctxPaginationLimit        ctxKey = "limit"
-	ctxPaginationOffset       ctxKey = "offset"
-	ctxIncludeDeleted         ctxKey = "include_deleted"
+	ctxPaginationLimit  ctxKey = "limit"
+	ctxPaginationOffset ctxKey = "offset"
+	ctxIncludeDeleted   ctxKey = "include_deleted"
 )
 
 // PaginationAndFilterMiddleware parses optional query parameters (limit, offset, include_deleted)
@@ -132,7 +129,6 @@ func (app *Application) PaginationAndFilterMiddleware(next http.Handler) http.Ha
 	})
 }
 
-
 // RateLimitMiddleware throttles by *user* when authenticated, otherwise by IP.
 //
 // • Uses uuid.UUID from ctxUserID (set by AuthMiddleware) → String() for key.
@@ -155,7 +151,6 @@ func (app *Application) RateLimitMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
 
 // AuthMiddleware validates Bearer‑JWT, injects uuid.UUID + role info.
 func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
@@ -189,8 +184,8 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		// 4️⃣  Enrich context
-		ctx := context.WithValue(r.Context(), ctxUserID, userID)      // uuid.UUID
-		ctx = context.WithValue(ctx, ctxRoleID, role.ID.String())     // string
+		ctx := context.WithValue(r.Context(), ctxUserID, userID)  // uuid.UUID
+		ctx = context.WithValue(ctx, ctxRoleID, role.ID.String()) // string
 		if role.Name != "admin" && role.Name != "internal_operator" {
 			ctx = context.WithValue(ctx, ctxTargetUserID, userID)
 		}
@@ -199,7 +194,6 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
 
 func (app *Application) RequirePermission(permission string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -217,7 +211,7 @@ func (app *Application) RequirePermission(permission string) func(http.Handler) 
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			
+
 			user, err := app.Models.User.GetByID(r.Context(), id)
 			if err != nil {
 				app.Logger.Warn("User not found", "userID", userID)
@@ -231,14 +225,14 @@ func (app *Application) RequirePermission(permission string) func(http.Handler) 
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
-			
+
 			hasPerm, err := app.Models.RolePermission.RoleHasPermission(r.Context(), role.ID.String(), permission)
 			if err != nil || !hasPerm {
 				app.Logger.Warn("Access denied", "userID", userID, "role", role.Name, "missing_permission", permission, "error", err)
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
-			
+
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -272,7 +266,7 @@ func (app *Application) RequireMinimumRole(minRole string) func(http.Handler) ht
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
-			
+
 			requiredRole, err := app.Models.Role.GetRoleByName(r.Context(), minRole)
 			if err != nil {
 				app.Logger.Warn("Required role not found", "requiredRole", minRole)
@@ -290,7 +284,6 @@ func (app *Application) RequireMinimumRole(minRole string) func(http.Handler) ht
 		})
 	}
 }
-
 
 // InjectApplicationContextMiddleware extracts trusted application-level identifiers
 // (e.g., merchant_id, affiliate_program_id, client_id, brand_id, etc.)
@@ -389,21 +382,19 @@ func (app *Application) InjectApplicationContextMiddleware(next http.Handler) ht
 	})
 }
 
-
-
 // TODO: Remove DevFallbackContextMiddleware before production.
 //       This middleware injects dummy UUIDs for local development.
 //       Trusted IDs should come from a secure upstream (e.g., API Gateway).
 
 // DevFallbackContextMiddleware injects placeholder UUIDs during local development.
 //
-// **DO NOT** enable this in production.  
+// **DO NOT** enable this in production.
 // It exists solely to make local/Postman testing easier when an upstream
 // gateway or another middleware would normally populate these context keys.
 //
 // Behaviour:
-//   • Active only when GO_ENV is "dev" or "development".  
-//   • If a required ID is missing from context, a hard‑coded UUID is injected
+//   - Active only when GO_ENV is "dev" or "development".
+//   - If a required ID is missing from context, a hard‑coded UUID is injected
 //     and a warning is written to the structured logger.
 func (app *Application) DevFallbackContextMiddleware(next http.Handler) http.Handler {
 	// Helper for clean injection + logging.
@@ -432,14 +423,13 @@ func (app *Application) DevFallbackContextMiddleware(next http.Handler) http.Han
 		}
 
 		ctx := r.Context()
-		ctx = ensureUUID(ctx, ctxMerchantID,         "00000000-0000-0000-0000-000000000001")
+		ctx = ensureUUID(ctx, ctxMerchantID, "00000000-0000-0000-0000-000000000001")
 		ctx = ensureUUID(ctx, ctxAffiliateProgramID, "00000000-0000-0000-0000-000000000002")
-		ctx = ensureUUID(ctx, ctxBrandID,            "00000000-0000-0000-0000-000000000003")
+		ctx = ensureUUID(ctx, ctxBrandID, "00000000-0000-0000-0000-000000000003")
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
 
 // GuestSessionMiddleware injects a synthetic guest user ID into the context
 // for unauthenticated requests using a session ID stored in a secure cookie.
@@ -475,14 +465,12 @@ func (app *Application) GuestSessionMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-
-
 // RequireInternalRole grants access only to *internal* staff
 // (i.e. users whose primary role is **admin** or **internal_operator**).
 //
 // It is a convenience wrapper so routes can use:
 //
-//     .With(app.RequireInternalRole, app.RequirePermission("…"))
+//	.With(app.RequireInternalRole, app.RequirePermission("…"))
 //
 // instead of spelling out `app.RequireRole("admin","internal_operator")`
 // everywhere.
@@ -493,7 +481,6 @@ func (app *Application) RequireInternalRole(next http.Handler) http.Handler {
 	// Re‑use the existing role‑based middleware generator.
 	return app.RequireRole("admin", "internal_operator")(next)
 }
-
 
 // RequireRole ensures that only users with one of the allowed roles can access the endpoint.
 // It supports fast lookup and structured logging, with a fallback to the database if needed.
@@ -547,7 +534,6 @@ func (app *Application) RequireRole(allowedRoles ...string) func(http.Handler) h
 		})
 	}
 }
-
 
 // RequirePermissionOrRole grants access if the user has the required permission or is in one of the allowed roles.
 // It includes fallback role resolution and structured logging for security visibility.
@@ -608,7 +594,6 @@ func (app *Application) RequirePermissionOrRole(permission string, allowedRoles 
 	}
 }
 
-
 // RequireAuthenticatedUser ensures that the request has a valid user ID in context.
 // This middleware assumes AuthMiddleware has already validated the token and injected ctxUserID.
 // It is used to block unauthenticated users from accessing user-specific endpoints.
@@ -634,13 +619,13 @@ func (app *Application) RequireAuthenticatedUser(next http.Handler) http.Handler
 	})
 }
 
-
 // RequireSelfOrPrivileged blocks the request unless the caller is either:
-//   • the owner of the resource (requesterID == targetID), OR
-//   • an internal user (admin | internal_operator) **and** already holds the
+//   - the owner of the resource (requesterID == targetID), OR
+//   - an internal user (admin | internal_operator) **and** already holds the
 //     supplied permission string.
 //
 // Usage:
+//
 //	router.With(app.RequireSelfOrPrivileged("update_users")).Put("/users/{id}", h)
 func (app *Application) RequireSelfOrPrivileged(permission string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -648,8 +633,8 @@ func (app *Application) RequireSelfOrPrivileged(permission string) func(http.Han
 			logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("RequireSelfOrPrivileged")
 			ctx := r.Context()
 
-			requesterID := app.getUserIDFromContext(ctx)     // injected by AuthMiddleware
-			targetID    := app.getTargetUserIDFromContext(ctx) // set earlier in the chain (e.g. param middleware)
+			requesterID := app.getUserIDFromContext(ctx)    // injected by AuthMiddleware
+			targetID := app.getTargetUserIDFromContext(ctx) // set earlier in the chain (e.g. param middleware)
 
 			if requesterID == nil || targetID == nil {
 				logger.Warn("missing requester/target IDs in context")
@@ -664,7 +649,7 @@ func (app *Application) RequireSelfOrPrivileged(permission string) func(http.Han
 			}
 
 			// Internal role check.
-			isAdmin,   _ := app.HasRole(ctx, "admin")
+			isAdmin, _ := app.HasRole(ctx, "admin")
 			isOperator, _ := app.HasRole(ctx, "internal_operator")
 			if !(isAdmin || isOperator) {
 				logger.Warn("caller not privileged", "requester_id", *requesterID)
@@ -684,7 +669,6 @@ func (app *Application) RequireSelfOrPrivileged(permission string) func(http.Han
 		})
 	}
 }
-
 
 // InjectTargetUserID pulls {userID} from the URL (or X‑Target-User-ID header)
 // validates it as a UUID, then stores it under ctxTargetUserID so downstream

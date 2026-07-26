@@ -3,8 +3,10 @@
 // and internal system workflows, not exposed via public API routes.
 //
 // sdworkspace/sdbackend/internal/services/internal-services/coupons_internal.go
-//   Release Class: DEFERRED
+//
+//	Release Class: DEFERRED
 package services
+
 /*
 import (
 	"context"
@@ -22,10 +24,10 @@ func (s *Service) UpdateCouponStatus() {
 			logger.Error("Coupon status update failed", "coupon_id", couponID, "error", err)
 			app.respondWithError(w, fmt.Errorf("failed to update coupon status: %w", err), http.StatusInternalServerError)
 			return
-		}	
+		}
 }
 
-// PATCH 
+// PATCH
 func (s *Service) AutoExpireCoupons()
 
 func (s *Service) TrackCouponUsage()

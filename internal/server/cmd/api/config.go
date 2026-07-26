@@ -4,38 +4,40 @@
 // sdworkspace/sdbackend/internal/server/cmd/api/config.go
 //
 // GTM:
-//   Layer: 3.1 API Server / Application Bootstrap
-//   Release Class: SPINE
-//   Reason:
-//     API configuration is release-critical server infrastructure. It defines
-//     the application dependency container and the canonical runtime
-//     configuration required to initialize database access, authentication,
-//     routing, logging, bootstrap behavior, OAuth integration, and outbound
-//     email and SMS services before HTTP traffic is accepted.
+//
+//	Layer: 3.1 API Server / Application Bootstrap
+//	Release Class: SPINE
+//	Reason:
+//	  API configuration is release-critical server infrastructure. It defines
+//	  the application dependency container and the canonical runtime
+//	  configuration required to initialize database access, authentication,
+//	  routing, logging, bootstrap behavior, OAuth integration, and outbound
+//	  email and SMS services before HTTP traffic is accepted.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve explicit application dependency wiring.
-//   Preserve canonical database and model injection.
-//   Preserve authentication token-service wiring.
-//   Preserve email and SMS service wiring through the root
-//   notification_services EmailSender / SMSSender interfaces only — never
-//   through concrete channel packages (notification_services/email,
-//   notification_services/sms).
-//   Preserve bootstrap configuration availability.
-//   Preserve bounded database-operation timeout configuration.
-//   Preserve OAuth credential separation by provider.
-//   Preserve secret-value opacity in logs and errors.
-//   Preserve vendor-neutral language in this file: which notification
-//   provider is active is governed configuration, not something the
-//   Application container's shape should imply.
-//   Do not introduce package-global mutable application dependencies.
-//   Do not allow the HTTP server to start with incomplete critical
-//   configuration.
-//   Block deployment if this file breaks build, dependency construction,
-//   authentication initialization, notification-service initialization,
-//   database connectivity, or API startup safety.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve explicit application dependency wiring.
+//	Preserve canonical database and model injection.
+//	Preserve authentication token-service wiring.
+//	Preserve email and SMS service wiring through the root
+//	notification_services EmailSender / SMSSender interfaces only — never
+//	through concrete channel packages (notification_services/email,
+//	notification_services/sms).
+//	Preserve bootstrap configuration availability.
+//	Preserve bounded database-operation timeout configuration.
+//	Preserve OAuth credential separation by provider.
+//	Preserve secret-value opacity in logs and errors.
+//	Preserve vendor-neutral language in this file: which notification
+//	provider is active is governed configuration, not something the
+//	Application container's shape should imply.
+//	Do not introduce package-global mutable application dependencies.
+//	Do not allow the HTTP server to start with incomplete critical
+//	configuration.
+//	Block deployment if this file breaks build, dependency construction,
+//	authentication initialization, notification-service initialization,
+//	database connectivity, or API startup safety.
 package main
 
 import (

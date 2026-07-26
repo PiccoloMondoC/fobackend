@@ -23,7 +23,6 @@ import (
 
 // Use helper methods to enforce principle of pulling all trusted data from context only
 
-
 // HasRole checks whether the authenticated user in ctx holds roleName.
 // It delegates to RoleModel.HasRole and logs (never panics) on DB failure.
 func (app *Application) HasRole(ctx context.Context, roleName string) (bool, error) {
@@ -39,7 +38,6 @@ func (app *Application) HasRole(ctx context.Context, roleName string) (bool, err
 	}
 	return ok, err
 }
-
 
 // HasAnyRole checks if the current user has at least one of the specified roles.
 //
@@ -66,7 +64,6 @@ func (app *Application) HasAnyRole(ctx context.Context, roles ...string) bool {
 
 	return false
 }
-
 
 // getRoleFromContextOrDB retrieves the user role name from context if available,
 // or loads it from the database as a fallback. Returns role name and any error encountered.
@@ -99,7 +96,6 @@ func (app *Application) getRoleFromContextOrDB(ctx context.Context) (string, err
 	return roleModel.Name, nil
 }
 
-
 // getRoleFromContext retrieves the role name from the context.
 // Returns empty string if not found or invalid.
 func getRoleFromContext(ctx context.Context) string {
@@ -121,7 +117,6 @@ func (app *Application) getUserIDFromContext(ctx context.Context) (*uuid.UUID, e
 	return &id, nil
 }*/
 
-
 // getUserIDFromContext returns *uuid.UUID or nil if absent.
 func (app *Application) getUserIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxUserID).(uuid.UUID) // <- keeps existing ctxUserID key
@@ -139,7 +134,6 @@ func (app *Application) mustUserID(ctx context.Context) (*uuid.UUID, error) {
 	return nil, errors.New("user ID missing from context")
 }*/
 
-
 func (app *Application) getTargetUserIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxTargetUserID).(uuid.UUID)
 	if !ok {
@@ -147,6 +141,7 @@ func (app *Application) getTargetUserIDFromContext(ctx context.Context) *uuid.UU
 	}
 	return &val
 }
+
 /*
 // getAdminUserIDForNotifications returns a hardcoded or config-driven admin user ID.
 // You may later replace this with a real lookup or broadcast logic.
@@ -159,7 +154,6 @@ func (app *Application) getAdminUserIDForNotifications(ctx context.Context) *uui
 	return &adminID
 }*/
 
-
 // getGuestUserIDFromContext retrieves the guest user ID from context.
 // Returns nil if not found or invalid.
 func (app *Application) getGuestUserIDFromContext(ctx context.Context) *uuid.UUID {
@@ -169,7 +163,6 @@ func (app *Application) getGuestUserIDFromContext(ctx context.Context) *uuid.UUI
 	}
 	return nil
 }
-
 
 // getRoleIDFromContext extracts the role ID from the context using the ctxRoleID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -199,7 +192,6 @@ func (app *Application) getDashboardIDFromContext(ctx context.Context) *uuid.UUI
 	return &id
 }
 
-
 // getDashboardTemplateIDFromContext extracts the dashboard template ID from context using ctxDashboardTemplateID.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getDashboardTemplateIDFromContext(ctx context.Context) *uuid.UUID {
@@ -214,8 +206,7 @@ func (app *Application) getDashboardTemplateIDFromContext(ctx context.Context) *
 	return &id
 }
 
-
-// getMerchantApplicationIDFromContext extracts the merchant application ID from the context 
+// getMerchantApplicationIDFromContext extracts the merchant application ID from the context
 // using the ctxMerchantApplicationID key. Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getMerchantApplicationIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxMerchantApplicationID).(string)
@@ -228,7 +219,6 @@ func (app *Application) getMerchantApplicationIDFromContext(ctx context.Context)
 	}
 	return &id
 }
-
 
 // getAffiliatePerformanceIDFromContext extracts the affiliate performance ID from the context
 // using the ctxAffiliatePerformanceID key. Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -244,7 +234,6 @@ func (app *Application) getAffiliatePerformanceIDFromContext(ctx context.Context
 	return &id
 }
 
-
 // getAffiliateProgramIDFromContext extracts the affiliate program ID from the context using the ctxAffiliateProgramID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getAffiliateProgramIDFromContext(ctx context.Context) *uuid.UUID {
@@ -258,7 +247,6 @@ func (app *Application) getAffiliateProgramIDFromContext(ctx context.Context) *u
 	}
 	return &id
 }
-
 
 // getMerchantIDFromContext extracts the merchant ID from the context
 // using the ctxMerchantID key. Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -274,7 +262,6 @@ func (app *Application) getMerchantIDFromContext(ctx context.Context) *uuid.UUID
 	return &id
 }
 
-
 // getStatusIDFromContext extracts the merchant application status ID from context.
 // Returns a pointer to uuid.UUID or nil if not found or invalid.
 func (app *Application) getStatusIDFromContext(ctx context.Context) *uuid.UUID {
@@ -288,7 +275,6 @@ func (app *Application) getStatusIDFromContext(ctx context.Context) *uuid.UUID {
 	}
 	return &id
 }
-
 
 // getOfferIDFromContext extracts the offer ID from context using ctxOfferID.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -339,7 +325,6 @@ func (app *Application) getProductIDFromContext(ctx context.Context) *uuid.UUID 
 	return &id
 }
 
-
 // getBrandIDFromContext extracts the brand ID from the context using the ctxBrandID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getBrandIDFromContext(ctx context.Context) *uuid.UUID {
@@ -354,7 +339,6 @@ func (app *Application) getBrandIDFromContext(ctx context.Context) *uuid.UUID {
 	return &id
 }
 
-
 // getUPCFromContext extracts the UPC (Universal Product Code) from the context using the ctxUPC key.
 // Returns the string value or an empty string if not present or invalid.
 func (app *Application) getUPCFromContext(ctx context.Context) string {
@@ -365,7 +349,6 @@ func (app *Application) getUPCFromContext(ctx context.Context) string {
 	return val
 }
 
-
 // getProductLineFromContext extracts the product line string from context.
 func (app *Application) getProductLineFromContext(ctx context.Context) string {
 	val, ok := ctx.Value(ctxProductLine).(string)
@@ -374,7 +357,6 @@ func (app *Application) getProductLineFromContext(ctx context.Context) string {
 	}
 	return val
 }
-
 
 // getPlatformIDFromContext extracts the platform ID from context.
 func (app *Application) getPlatformIDFromContext(ctx context.Context) *uuid.UUID {
@@ -389,7 +371,6 @@ func (app *Application) getPlatformIDFromContext(ctx context.Context) *uuid.UUID
 	return &id
 }
 
-
 // getContextValueAsString retrieves a string value from context using the provided key.
 func (app *Application) getContextValueAsString(ctx context.Context, key ctxKey) string {
 	val, ok := ctx.Value(key).(string)
@@ -398,7 +379,6 @@ func (app *Application) getContextValueAsString(ctx context.Context, key ctxKey)
 	}
 	return val
 }
-
 
 // getAuditLogIDFromContext extracts the audit log ID from context.
 // Returns a pointer to uuid.UUID or nil if missing or invalid.
@@ -414,7 +394,6 @@ func (app *Application) getAuditLogIDFromContext(ctx context.Context) *uuid.UUID
 	return &id
 }
 
-
 // getEntityTypeIDFromContext extracts the entity type ID from the context using the ctxEntityTypeID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getEntityTypeIDFromContext(ctx context.Context) *uuid.UUID {
@@ -428,7 +407,6 @@ func (app *Application) getEntityTypeIDFromContext(ctx context.Context) *uuid.UU
 	}
 	return &id
 }
-
 
 // getActionIDFromContext extracts the action ID from the context using the ctxActionID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -444,7 +422,6 @@ func (app *Application) getActionIDFromContext(ctx context.Context) *uuid.UUID {
 	return &id
 }
 
-
 // getCategoryIDFromContext extracts the category ID from context using the ctxCategoryID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getCategoryIDFromContext(ctx context.Context) *uuid.UUID {
@@ -458,7 +435,6 @@ func (app *Application) getCategoryIDFromContext(ctx context.Context) *uuid.UUID
 	}
 	return &id
 }
-
 
 // getContextValueAsUUID retrieves a UUID value from context using the provided ctxKey.
 // Returns a pointer to uuid.UUID or nil if missing or invalid.
@@ -474,7 +450,6 @@ func (app *Application) getContextValueAsUUID(ctx context.Context, key ctxKey) *
 	return &id
 }
 
-
 // getCouponIDFromContext extracts the coupon ID from the context using the ctxCouponID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getCouponIDFromContext(ctx context.Context) *uuid.UUID {
@@ -489,7 +464,6 @@ func (app *Application) getCouponIDFromContext(ctx context.Context) *uuid.UUID {
 	return &id
 }
 
-
 // getOfferPriceHistoryIDFromContext extracts offer_price_history_id from context
 func (app *Application) getOfferPriceHistoryIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxOfferPriceHistoryID).(string)
@@ -502,7 +476,6 @@ func (app *Application) getOfferPriceHistoryIDFromContext(ctx context.Context) *
 	}
 	return &id
 }
-
 
 // getPriceDropThresholdFromContext extracts a price drop threshold (float64) from the context
 // using the ctxPriceDropThreshold key. Returns a pointer to float64 or nil if not present or invalid.
@@ -518,7 +491,6 @@ func (app *Application) getPriceDropThresholdFromContext(ctx context.Context) *f
 	return &threshold
 }
 
-
 // getPromotionIDFromContext extracts the promotion ID from the context.
 func (app *Application) getPromotionIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxPromotionID).(string)
@@ -531,7 +503,6 @@ func (app *Application) getPromotionIDFromContext(ctx context.Context) *uuid.UUI
 	}
 	return &id
 }
-
 
 // getMerchantPromotionIDFromContext extracts the merchant promotion ID from the context using the ctxMerchantPromotionID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -547,7 +518,6 @@ func (app *Application) getMerchantPromotionIDFromContext(ctx context.Context) *
 	return &id
 }
 
-
 // getOfferRatingIDFromContext extracts the offer rating ID from the context using the ctxOfferRatingID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getOfferRatingIDFromContext(ctx context.Context) *uuid.UUID {
@@ -561,7 +531,6 @@ func (app *Application) getOfferRatingIDFromContext(ctx context.Context) *uuid.U
 	}
 	return &id
 }
-
 
 // getOfferSponsorshipIDFromContext extracts the offer sponsorship ID from the context using the ctxOfferSponsorshipID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -577,7 +546,6 @@ func (app *Application) getOfferSponsorshipIDFromContext(ctx context.Context) *u
 	return &id
 }
 
-
 // getOfferStatusIDFromContext extracts the offer status ID from the context using the ctxOfferStatusID key.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
 func (app *Application) getOfferStatusIDFromContext(ctx context.Context) *uuid.UUID {
@@ -591,7 +559,6 @@ func (app *Application) getOfferStatusIDFromContext(ctx context.Context) *uuid.U
 	}
 	return &id
 }
-
 
 // getAdminIDFromContext extracts the admin ID from context using ctxAdminID.
 func (app *Application) getAdminIDFromContext(ctx context.Context) *uuid.UUID {
@@ -630,7 +597,6 @@ func (app *Application) getArchivedTimeRangeFromContext(ctx context.Context) str
 	}
 	return val
 }*/
-
 
 // getBrandNameFromContext extracts the brand name from context using ctxBrandName.
 // Returns the string value or empty string if not present.
@@ -712,7 +678,6 @@ func (app *Application) getUserOfferPurchaseHistoryIDFromContext(ctx context.Con
 	return &id
 }*/
 
-
 // getUserFavoriteIDFromContext extracts the user favorite ID from context.
 func (app *Application) getUserFavoriteIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxUserFavoriteID).(string)
@@ -740,13 +705,13 @@ func (app *Application) getSourceUserIDFromContext(ctx context.Context) *uuid.UU
 	return &id
 }*/
 
-
 // parseLimitOffset parses pagination parameters from the request query string.
 // It returns sanitized limit and offset values, defaulting to limit=50 and offset=0.
 // It returns an error if either value is present but invalid.
 //
 // Usage Example:
-//   limit, offset, err := app.parseLimitOffset(r)
+//
+//	limit, offset, err := app.parseLimitOffset(r)
 func (app *Application) parseLimitOffset(r *http.Request) (int, int, error) {
 	q := r.URL.Query()
 
@@ -777,7 +742,6 @@ func (app *Application) parseLimitOffset(r *http.Request) (int, int, error) {
 	return limit, offset, nil
 }
 
-
 // parsePaginationParams returns a 1‑based page number and page size.
 // Defaults: page=1, page_size=50. Rejects non‑positive values.
 func (app *Application) parsePaginationParams(r *http.Request) (int, int, error) {
@@ -789,7 +753,7 @@ func (app *Application) parsePaginationParams(r *http.Request) (int, int, error)
 		maxPageSize     = 500
 	)
 
-	page     := defaultPage
+	page := defaultPage
 	pageSize := defaultPageSize
 
 	if raw := q.Get("page"); raw != "" {
@@ -826,7 +790,6 @@ func (app *Application) extractUUIDFromURL(url string) uuid.UUID {
 	return id
 }*/
 
-
 // getUUIDOrNil safely returns the UUID value if the pointer is non-nil; otherwise, returns uuid.Nil.
 func getUUIDOrNil(id *uuid.UUID) uuid.UUID {
 	if id == nil {
@@ -834,7 +797,6 @@ func getUUIDOrNil(id *uuid.UUID) uuid.UUID {
 	}
 	return *id
 }
-
 
 // HasPermission checks if the user’s current role (from context) has the specified permission.
 //
@@ -868,7 +830,6 @@ func (app *Application) HasPermission(ctx context.Context, permissionName string
 	return ok
 }
 
-
 // RequireInternalPermission checks whether the current actor has the specified permission
 // AND is an internal role (admin or internal_operator). Returns true if both conditions are met.
 //
@@ -888,8 +849,6 @@ func (app *Application) RequireInternalPermission(ctx context.Context, permissio
 	return app.HasPermission(ctx, permission)
 }
 
-
-
 // IsInternalUser returns true if the caller’s role is one of your trusted
 // internal roles.  This replaces the missing app.IsInternalUser() referenced in
 // earlier drafts.
@@ -903,10 +862,11 @@ func (app *Application) IsInternalUser(ctx context.Context) bool {
 	}
 }
 
-
 // ───────────────────────────────────────────────────────────────────────────────
 // helper: isInternalRole  – true when the supplied role name is one of your
-//                           trusted “internal” roles.
+//
+//	trusted “internal” roles.
+//
 // ───────────────────────────────────────────────────────────────────────────────
 func isInternalRole(roleName string) bool {
 	switch strings.ToLower(roleName) {
@@ -916,7 +876,6 @@ func isInternalRole(roleName string) bool {
 		return false
 	}
 }
-
 
 // retryActivationTokenWithBackoff attempts the provided operation with exponential backoff and jitter.
 //
@@ -975,7 +934,6 @@ func parseOptionalInt(s string) *int {
 	return &n
 }*/
 
-
 // parseIntOrDefault parses a string into an int, returning the result if successful.
 // Returns the provided default value if the input is invalid or cannot be parsed.
 func parseIntOrDefault(s string, def int) int {
@@ -985,7 +943,6 @@ func parseIntOrDefault(s string, def int) int {
 	}
 	return n
 }
-
 
 // helper: fall back to default when pointer is nil
 func derefOr(def string, v *string) string {

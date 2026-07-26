@@ -3,24 +3,26 @@
 // File: sdworkspace/sdbackend/internal/data/offer_discovery.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Offer discovery is release-critical public catalog infrastructure. It
-//     powers recent, top-rated, category, popular, and trending offer reads
-//     while enforcing the shared public-offer visibility contract over the
-//     canonical offers table.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Offer discovery is release-critical public catalog infrastructure. It
+//	  powers recent, top-rated, category, popular, and trending offer reads
+//	  while enforcing the shared public-offer visibility contract over the
+//	  canonical offers table.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve OfferModel ownership.
-//   Preserve canonical offers table dependency.
-//   Preserve public visibility filtering.
-//   Preserve bounded pagination behavior.
-//   Preserve click-based popularity/trending ranking.
-//   Block deployment if this file breaks build, public offer discovery,
-//   publication visibility, category browsing, or catalog integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve OfferModel ownership.
+//	Preserve canonical offers table dependency.
+//	Preserve public visibility filtering.
+//	Preserve bounded pagination behavior.
+//	Preserve click-based popularity/trending ranking.
+//	Block deployment if this file breaks build, public offer discovery,
+//	publication visibility, category browsing, or catalog integrity.
 package data
 
 import (

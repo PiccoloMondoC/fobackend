@@ -498,8 +498,8 @@ Actor foreign keys may use `ON DELETE SET NULL` only as a safety valve for excep
 18.1 **Business policy must not be hard-coded**
 Engineering must not encode operational business decisions directly in source code when those decisions can reasonably be represented as configurable data.
 
-18.2 **Capabilities are permanent; policies are variable**
-Engineering builds platform capabilities. Operations determines when and how those capabilities are exercised.
+**18.2 Capabilities are permanent; policies are variable**
+Engineering builds platform capabilities. Administration determines when, how, and under what policy those capabilities are exercised through governed configuration rather than code changes.
 
 18.3 **Separate capability from configuration**
 The existence of a feature must not be coupled to whether it is currently enabled, charged, required, or waived.
@@ -513,13 +513,25 @@ Avoid source-code constants for operational values. Prefer database configuratio
 18.6 **Engineering boundary**
 Engineers implement business capabilities. Product, Operations, Finance, Trust & Safety, and Support exercise those capabilities through administrative configuration.
 
+18.6A **Operational capability doctrine**
+
+Engineering is responsible for implementing complete operational capabilities together with the extension points required to support future evolution. Administrative operation of those capabilities belongs outside the code.
+
+**Engineering must:**
+* implement the complete operational capability;
+* expose governed configuration and extension points where operational variation is expected;
+* avoid hard-coded commercial, operational, or policy decisions that can reasonably be represented as configurable data;
+* ensure supported operational changes can be performed through administrative configuration without source-code modification, recompilation, or redeployment;
+* preserve safe defaults, validation, and guardrails; and
+* keep provider selection, policy selection, and implementation composition outside canonical domain contracts whenever practical.
+
+**Administration is responsible for enabling, disabling, configuring, and operating those capabilities through approved administrative mechanisms.**
+
 18.7 **Waiver-does-not-remove-capability rule**
 The absence of a charge is not the absence of a charging capability. A temporary business decision to waive, discount, or defer a fee must never remove or weaken the platform capability that supports it.
 
 18.8 **Examples of variable policy domains**
 This doctrine applies to pricing, fees, credits, promotional programs, onboarding requirements, trust policies, platform operating rules, billing requirements, invoice generation, payment collection, and similar operational business controls.
-
----
 
 ### 19. Services, Transactions, and Workflow Doctrine
 

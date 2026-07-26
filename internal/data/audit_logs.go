@@ -3,22 +3,24 @@
 // sdworkspace/sdbackend/internal/data/audit_logs.go
 //
 // GTM:
-//   Layer: 2.1 Database / Governance Foundation
-//   Release Class: SPINE
-//   Reason:
-//     Audit logs, entity types, and actions are release-critical governance
-//     infrastructure. They support audit trail integrity, compliance review,
-//     administrative accountability, and dynamic action/entity resolution across
-//     the backend. This file must remain production-ready for v1.
+//
+//	Layer: 2.1 Database / Governance Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Audit logs, entity types, and actions are release-critical governance
+//	  infrastructure. They support audit trail integrity, compliance review,
+//	  administrative accountability, and dynamic action/entity resolution across
+//	  the backend. This file must remain production-ready for v1.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve immutable audit-log semantics.
-//   Preserve append -> archive -> retention purge lifecycle behavior.
-//   Preserve dynamic audit action/entity metadata lookup.
-//   Block deployment if this file breaks build, persistence, audit integrity,
-//   metadata resolution, archival lifecycle, or governance observability.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve immutable audit-log semantics.
+//	Preserve append -> archive -> retention purge lifecycle behavior.
+//	Preserve dynamic audit action/entity metadata lookup.
+//	Block deployment if this file breaks build, persistence, audit integrity,
+//	metadata resolution, archival lifecycle, or governance observability.
 package data
 
 import (

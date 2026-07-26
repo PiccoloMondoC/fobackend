@@ -1,5 +1,6 @@
 // sdworkspace/sdbackend/internal/server/cmd/api/offer_status.go
-//   Release Class: DEFERRED
+//
+//	Release Class: DEFERRED
 package main
 
 import (
@@ -17,111 +18,109 @@ import (
 // Principles:
 // Always extract sensitive identifiers from a trusted context
 
-
 // CreateOfferStatusHandler handles the creation of a new offer status.
 // It enforces permission checks, extracts trusted identifiers from context,
 // validates input, performs the creation operation, logs the action, and
 // inserts an audit log entry.
 func (app *Application) CreateOfferStatusHandler(w http.ResponseWriter, r *http.Request) {
-    // Initialize logger with function context
-    logger := app.Logger.WithFunctionName("CreateOfferStatusHandler")
+	// Initialize logger with function context
+	logger := app.Logger.WithFunctionName("CreateOfferStatusHandler")
 
-    // Set a timeout for the request context
-    ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-    defer cancel()
+	// Set a timeout for the request context
+	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
+	defer cancel()
 
-    // Permission enforcement
-    if !app.HasPermission(ctx, "create_offer_status") {
-        app.respondWithError(w, errors.New("forbidden: insufficient permissions"), http.StatusForbidden)
-        return
-    }
+	// Permission enforcement
+	if !app.HasPermission(ctx, "create_offer_status") {
+		app.respondWithError(w, errors.New("forbidden: insufficient permissions"), http.StatusForbidden)
+		return
+	}
 
-    // Parse request body
-    var input struct {
-        Name        string `json:"name"`        // Mandatory
-        Description string `json:"description"` // Mandatory
-    }
-    if err := app.readJSON(w, r, &input); err != nil {
-        app.respondWithError(w, fmt.Errorf("invalid JSON input: %w", err), http.StatusBadRequest)
-        return
-    }
+	// Parse request body
+	var input struct {
+		Name        string `json:"name"`        // Mandatory
+		Description string `json:"description"` // Mandatory
+	}
+	if err := app.readJSON(w, r, &input); err != nil {
+		app.respondWithError(w, fmt.Errorf("invalid JSON input: %w", err), http.StatusBadRequest)
+		return
+	}
 
-    // Validate input
-    if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.Description) == "" {
-        app.respondWithError(w, errors.New("name and description are required"), http.StatusBadRequest)
-        return
-    }
+	// Validate input
+	if strings.TrimSpace(input.Name) == "" || strings.TrimSpace(input.Description) == "" {
+		app.respondWithError(w, errors.New("name and description are required"), http.StatusBadRequest)
+		return
+	}
 
-    // Create OfferStatus object
-    offerStatus := &data.OfferStatus{
-        Name:        input.Name,
-        Description: input.Description,
-    }
+	// Create OfferStatus object
+	offerStatus := &data.OfferStatus{
+		Name:        input.Name,
+		Description: input.Description,
+	}
 
-    // Insert OfferStatus into the database
-    if err := app.Models.OfferStatus.Insert(ctx, offerStatus); err != nil {
-        logger.Error("Failed to insert offer status", "error", err)
-        app.respondWithError(w, fmt.Errorf("failed to create offer status: %w", err), http.StatusInternalServerError)
-        return
-    }
+	// Insert OfferStatus into the database
+	if err := app.Models.OfferStatus.Insert(ctx, offerStatus); err != nil {
+		logger.Error("Failed to insert offer status", "error", err)
+		app.respondWithError(w, fmt.Errorf("failed to create offer status: %w", err), http.StatusInternalServerError)
+		return
+	}
 
-    // Resolve Audit Action
-    action, err := app.Models.Action.GetByName(ctx, "create_offer_status")
-    if err != nil || action == nil {
-        logger.Warn("Audit action 'create_offer_status' not found, attempting to create...", "error", err)
-        actionID, createErr := app.Models.Action.CreateIfNotExists(ctx, "create_offer_status", "Create a new offer status")
-        if createErr != nil {
-            logger.Error("Failed to create missing audit action", "error", createErr)
+	// Resolve Audit Action
+	action, err := app.Models.Action.GetByName(ctx, "create_offer_status")
+	if err != nil || action == nil {
+		logger.Warn("Audit action 'create_offer_status' not found, attempting to create...", "error", err)
+		actionID, createErr := app.Models.Action.CreateIfNotExists(ctx, "create_offer_status", "Create a new offer status")
+		if createErr != nil {
+			logger.Error("Failed to create missing audit action", "error", createErr)
 			// Allow main operation to proceed
-        } else {
-            action = &data.Action{ID: actionID}
-        }
-    }
+		} else {
+			action = &data.Action{ID: actionID}
+		}
+	}
 
-    // Resolve Audit Entity Type
-    entityType, err := app.Models.EntityType.GetByName(ctx, "offer_status")
-    if err != nil || entityType == nil {
-        logger.Warn("Audit entity type 'offer_status' not found, attempting to create...", "error", err)
-        entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(ctx, "offer_status", "Status of a offer")
-        if createErr != nil {
-            logger.Error("Failed to create missing entity type", "error", createErr)
+	// Resolve Audit Entity Type
+	entityType, err := app.Models.EntityType.GetByName(ctx, "offer_status")
+	if err != nil || entityType == nil {
+		logger.Warn("Audit entity type 'offer_status' not found, attempting to create...", "error", err)
+		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(ctx, "offer_status", "Status of a offer")
+		if createErr != nil {
+			logger.Error("Failed to create missing entity type", "error", createErr)
 			// Allow main operation to proceed
-        } else {
-            entityType = &data.EntityType{ID: entityTypeID}
-        }
-    }
+		} else {
+			entityType = &data.EntityType{ID: entityTypeID}
+		}
+	}
 
-    // Insert Audit Log (fail gracefully if fails)
-    userID := app.getUserIDFromContext(ctx)
-    if userID != nil && action != nil && entityType != nil {
-        audit := data.AuditLog{
-            ID:           uuid.New(),
-            UserID:       userID,
-            ActionID:     action.ID,
-            EntityTypeID: entityType.ID,
-            EntityID:     offerStatus.ID.String(),
-        }
-        if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
+	// Insert Audit Log (fail gracefully if fails)
+	userID := app.getUserIDFromContext(ctx)
+	if userID != nil && action != nil && entityType != nil {
+		audit := data.AuditLog{
+			ID:           uuid.New(),
+			UserID:       userID,
+			ActionID:     action.ID,
+			EntityTypeID: entityType.ID,
+			EntityID:     offerStatus.ID.String(),
+		}
+		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
 			// Audit logging failed (partial success)
-            logger.Warn("Audit logging failed", "ctxOfferStatusID", offerStatus.ID, "error", err)
+			logger.Warn("Audit logging failed", "ctxOfferStatusID", offerStatus.ID, "error", err)
 			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
 				Error:   false,
 				Message: "Offer status created, but audit logging failed",
 				Data:    offerStatus.ID,
 			})
 			return
-        }
-    }
+		}
+	}
 
-    // Respond success
-    logger.Info("Offer status created successfully", "ctxOfferStatusID", offerStatus.ID)
+	// Respond success
+	logger.Info("Offer status created successfully", "ctxOfferStatusID", offerStatus.ID)
 	app.respondWithJSON(w, http.StatusCreated, jsonResponse{
 		Error:   false,
 		Message: "Offer status created successfully",
 		Data:    offerStatus.ID,
 	})
 }
-
 
 // GetOfferStatusByIDHandler handles retrieving the status of a offer by its ID.
 // It enforces permission checks, extracts the offer ID from trusted context,
@@ -200,7 +199,7 @@ func (app *Application) GetOfferStatusByIDHandler(w http.ResponseWriter, r *http
 				Error:   false,
 				Message: "Offer status retrieved, but audit logging failed",
 				Data: struct {
-					OfferID     uuid.UUID        `json:"ctxOfferID"`
+					OfferID     uuid.UUID         `json:"ctxOfferID"`
 					OfferStatus *data.OfferStatus `json:"offer_status"`
 				}{
 					OfferID:     *offerID,
@@ -217,7 +216,7 @@ func (app *Application) GetOfferStatusByIDHandler(w http.ResponseWriter, r *http
 		Error:   false,
 		Message: "Offer status retrieved successfully",
 		Data: struct {
-			OfferID     uuid.UUID        `json:"ctxOfferID"`
+			OfferID     uuid.UUID         `json:"ctxOfferID"`
 			OfferStatus *data.OfferStatus `json:"offer_status"`
 		}{
 			OfferID:     *offerID,
@@ -225,7 +224,6 @@ func (app *Application) GetOfferStatusByIDHandler(w http.ResponseWriter, r *http
 		},
 	})
 }
-
 
 // GetAllOfferStatusesHandler retrieves all offer statuses from the database.
 // It enforces permission checks, extracts trusted identifiers from context,
@@ -313,7 +311,6 @@ func (app *Application) GetAllOfferStatusesHandler(w http.ResponseWriter, r *htt
 		},
 	})
 }
-
 
 // UpdateOfferStatusHandler handles updating the name/status of an existing offer status entry.
 // It enforces permission checks, extracts identifiers from trusted context, validates input,
@@ -404,10 +401,10 @@ func (app *Application) UpdateOfferStatusHandler(w http.ResponseWriter, r *http.
 				Message: "Offer status updated, but audit logging failed",
 				Data: struct {
 					OfferStatusID uuid.UUID `json:"offer_status_id"`
-					Status       string    `json:"status"`
+					Status        string    `json:"status"`
 				}{
 					OfferStatusID: *offerStatusID,
-					Status:       input.Status,
+					Status:        input.Status,
 				},
 			})
 			return
@@ -421,14 +418,13 @@ func (app *Application) UpdateOfferStatusHandler(w http.ResponseWriter, r *http.
 		Message: "Offer status updated successfully",
 		Data: struct {
 			OfferStatusID uuid.UUID `json:"offer_status_id"`
-			Status       string    `json:"status"`
+			Status        string    `json:"status"`
 		}{
 			OfferStatusID: *offerStatusID,
-			Status:       input.Status,
+			Status:        input.Status,
 		},
 	})
 }
-
 
 // DeleteOfferStatusHandler handles the deletion of a offer status.
 // It ensures permission checks, extracts trusted identifiers from context,
@@ -436,7 +432,7 @@ func (app *Application) UpdateOfferStatusHandler(w http.ResponseWriter, r *http.
 func (app *Application) DeleteOfferStatusHandler(w http.ResponseWriter, r *http.Request) {
 	// Initialize logger with function context for structured logging
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("DeleteOfferStatusHandler")
-	
+
 	// Set a timeout for the request context to ensure timely execution
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
@@ -529,7 +525,6 @@ func (app *Application) DeleteOfferStatusHandler(w http.ResponseWriter, r *http.
 		},
 	})
 }
-
 
 // SubmitOfferStatusForReviewHandler handles submitting a offer status for review.
 // It ensures permission enforcement, extracts identifiers from the context, performs the business operation,

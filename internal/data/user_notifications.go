@@ -3,28 +3,30 @@
 // File: sdworkspace/sdbackend/internal/data/user_notifications.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: SPINE
-//   Reason:
-//     User notifications, notification types, notification channels, and
-//     notification-channel links are release-critical consumer communication
-//     infrastructure. They support retained notification history, price-drop
-//     and offer-related alerts, active notification lookup, dismissal behavior,
-//     and dynamic notification type/channel resolution required by the initial
-//     Platform release spine.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User notifications, notification types, notification channels, and
+//	  notification-channel links are release-critical consumer communication
+//	  infrastructure. They support retained notification history, price-drop
+//	  and offer-related alerts, active notification lookup, dismissal behavior,
+//	  and dynamic notification type/channel resolution required by the initial
+//	  Platform release spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve immutable notification delivery/history semantics.
-//   Preserve active notification type/channel lookup behavior.
-//   Preserve dynamic notification type/channel resolution.
-//   Preserve channel-link persistence.
-//   Preserve DB-owned sent_at and lifecycle timestamp behavior.
-//   Preserve soft-delete dismissal behavior.
-//   Block deployment if this file breaks build, notification persistence,
-//   notification lookup, type/channel resolution, channel linking,
-//   or consumer communication integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve immutable notification delivery/history semantics.
+//	Preserve active notification type/channel lookup behavior.
+//	Preserve dynamic notification type/channel resolution.
+//	Preserve channel-link persistence.
+//	Preserve DB-owned sent_at and lifecycle timestamp behavior.
+//	Preserve soft-delete dismissal behavior.
+//	Block deployment if this file breaks build, notification persistence,
+//	notification lookup, type/channel resolution, channel linking,
+//	or consumer communication integrity.
 package data
 
 import (

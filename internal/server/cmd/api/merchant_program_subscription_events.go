@@ -60,20 +60,15 @@ import (
 )
 
 const (
-	merchantProgramSubscriptionEventEntityType =
-		"merchant_program_subscription_event"
+	merchantProgramSubscriptionEventEntityType = "merchant_program_subscription_event"
 
-	merchantProgramSubscriptionEventEntityTypeDescription =
-		"Immutable merchant program subscription lifecycle event entity"
+	merchantProgramSubscriptionEventEntityTypeDescription = "Immutable merchant program subscription lifecycle event entity"
 
-	actionReadMerchantProgramSubscriptionEvent =
-		"read_merchant_program_subscription_event"
+	actionReadMerchantProgramSubscriptionEvent = "read_merchant_program_subscription_event"
 
-	actionListMerchantProgramSubscriptionEvents =
-		"list_merchant_program_subscription_events"
+	actionListMerchantProgramSubscriptionEvents = "list_merchant_program_subscription_events"
 
-	actionReadLatestMerchantProgramSubscriptionEvent =
-		"read_latest_merchant_program_subscription_event"
+	actionReadLatestMerchantProgramSubscriptionEvent = "read_latest_merchant_program_subscription_event"
 
 	defaultMerchantProgramSubscriptionEventLimit = 50
 	maxMerchantProgramSubscriptionEventLimit     = 100

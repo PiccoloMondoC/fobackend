@@ -3,22 +3,24 @@
 // sdworkspace/sdbackend/internal/data/commons.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Global handles are release-critical because they reserve scarce public
-//     identity names across user, brand, and merchant surfaces. This file
-//     protects identity-handle integrity while keeping catalog slugs and
-//     offer keys governed by their own canonical tables.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Global handles are release-critical because they reserve scarce public
+//	  identity names across user, brand, and merchant surfaces. This file
+//	  protects identity-handle integrity while keeping catalog slugs and
+//	  offer keys governed by their own canonical tables.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve global handle uniqueness.
-//   Preserve user/brand/merchant-only entity scope.
-//   Preserve hard-delete reservation semantics.
-//   Block deployment if this file breaks build, identity-handle reservation,
-//   collision protection, or canonical public identity integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve global handle uniqueness.
+//	Preserve user/brand/merchant-only entity scope.
+//	Preserve hard-delete reservation semantics.
+//	Block deployment if this file breaks build, identity-handle reservation,
+//	collision protection, or canonical public identity integrity.
 package data
 
 import (

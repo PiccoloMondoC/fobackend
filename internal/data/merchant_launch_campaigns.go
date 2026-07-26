@@ -3,6 +3,7 @@
 //
 // sdworkspace/sdbackend/internal/data/merchant_launch_campaigns.go
 // GTM:
-//   Layer: 2.4 Merchant / 
-//   Release Class: DEFERRED
+//
+//	Layer: 2.4 Merchant /
+//	Release Class: DEFERRED
 package data

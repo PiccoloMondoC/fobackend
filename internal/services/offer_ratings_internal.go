@@ -3,5 +3,6 @@
 // and internal system workflows, not exposed via public API routes.
 //
 // sdworkspace/sdbackend/internal/services/internal-services/offer_ratings_internal.go
-//   Release Class: DEFERRED
+//
+//	Release Class: DEFERRED
 package services

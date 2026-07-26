@@ -4,6 +4,7 @@
 //
 // sdworkspace/sdbackend/internal/services/internal-services/user_activation_internal.go
 package services
+
 /*
 func (s *Service) DeleteExpiredActivationTokensInternal()
 */

@@ -3,25 +3,27 @@
 // sdworkspace/sdbackend/internal/data/oauth_login_state.go
 //
 // GTM:
-//   Layer: 2.2.a External OAuth Login Consumption
-//   Release Class: SPINE
-//   Reason:
-//     OAuth login state is release-critical identity security infrastructure for
-//     v1 external login consumption. It preserves CSRF state validation, provider
-//     allowlisting, protected derived-value persistence, one-time state
-//     consumption, expiration enforcement, and cleanup of consumed/expired state.
+//
+//	Layer: 2.2.a External OAuth Login Consumption
+//	Release Class: SPINE
+//	Reason:
+//	  OAuth login state is release-critical identity security infrastructure for
+//	  v1 external login consumption. It preserves CSRF state validation, provider
+//	  allowlisting, protected derived-value persistence, one-time state
+//	  consumption, expiration enforcement, and cleanup of consumed/expired state.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve state hashing.
-//   Preserve PKCE verifier hashing.
-//   Preserve nonce hashing.
-//   Preserve one-time consumption semantics.
-//   Preserve expired-state rejection.
-//   Preserve cleanup of consumed and expired state.
-//   Block deployment if this file breaks build, OAuth callback validation,
-//   state replay protection, or external-login integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve state hashing.
+//	Preserve PKCE verifier hashing.
+//	Preserve nonce hashing.
+//	Preserve one-time consumption semantics.
+//	Preserve expired-state rejection.
+//	Preserve cleanup of consumed and expired state.
+//	Block deployment if this file breaks build, OAuth callback validation,
+//	state replay protection, or external-login integrity.
 package data
 
 import (

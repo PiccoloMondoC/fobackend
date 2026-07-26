@@ -61,7 +61,6 @@ const (
 	actionRestoreMerchantProgramSubscription         = "restore_merchant_program_subscription"
 )
 
-
 // merchantProgramSubscriptionHTTPStatus maps data-layer validation and lifecycle
 // errors to HTTP status codes. Keep data-layer not-found wording aligned with
 // this mapper unless/until merchant program subscription sentinels are added.
@@ -235,13 +234,13 @@ func (app *Application) CreateMerchantProgramSubscriptionHandler(w http.Response
 	defer cancel()
 
 	var input struct {
-		MerchantID    uuid.UUID                                      `json:"merchant_id"`
-		PlanID        uuid.UUID                                      `json:"plan_id"`
-		Status        data.MerchantProgramSubscriptionStatus         `json:"status,omitempty"`
-		BillingPeriod data.MerchantProgramSubscriptionBillingPeriod  `json:"billing_period,omitempty"`
-		StartedAt     string                                         `json:"started_at,omitempty"`
-		ExpiresAt     string                                         `json:"expires_at,omitempty"`
-		CancelledAt   string                                         `json:"cancelled_at,omitempty"`
+		MerchantID    uuid.UUID                                     `json:"merchant_id"`
+		PlanID        uuid.UUID                                     `json:"plan_id"`
+		Status        data.MerchantProgramSubscriptionStatus        `json:"status,omitempty"`
+		BillingPeriod data.MerchantProgramSubscriptionBillingPeriod `json:"billing_period,omitempty"`
+		StartedAt     string                                        `json:"started_at,omitempty"`
+		ExpiresAt     string                                        `json:"expires_at,omitempty"`
+		CancelledAt   string                                        `json:"cancelled_at,omitempty"`
 	}
 
 	if err := app.readJSON(w, r, &input); err != nil {
@@ -352,7 +351,6 @@ func (app *Application) GetMerchantProgramSubscriptionByIDHandler(w http.Respons
 	})
 }
 
-
 // GetCurrentMerchantProgramSubscriptionByMerchantIDHandler retrieves the current subscription for a merchant.
 func (app *Application) GetCurrentMerchantProgramSubscriptionByMerchantIDHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("GetCurrentMerchantProgramSubscriptionByMerchantIDHandler")
@@ -411,7 +409,6 @@ func (app *Application) GetCurrentMerchantProgramSubscriptionByMerchantIDHandler
 	})
 }
 
-
 // GetActiveMerchantProgramSubscriptionByMerchantIDHandler retrieves the active subscription for a merchant.
 func (app *Application) GetActiveMerchantProgramSubscriptionByMerchantIDHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("GetActiveMerchantProgramSubscriptionByMerchantIDHandler")
@@ -469,7 +466,6 @@ func (app *Application) GetActiveMerchantProgramSubscriptionByMerchantIDHandler(
 		Data:    subscription,
 	})
 }
-
 
 // ListMerchantProgramSubscriptionsByMerchantIDHandler lists subscriptions for one merchant.
 func (app *Application) ListMerchantProgramSubscriptionsByMerchantIDHandler(w http.ResponseWriter, r *http.Request) {
@@ -592,7 +588,6 @@ func (app *Application) ListMerchantProgramSubscriptionsByPlanAndStatusHandler(w
 		Data:    subscriptions,
 	})
 }
-
 
 // UpdateMerchantProgramSubscriptionPlanHandler updates a subscription's plan.
 func (app *Application) UpdateMerchantProgramSubscriptionPlanHandler(w http.ResponseWriter, r *http.Request) {

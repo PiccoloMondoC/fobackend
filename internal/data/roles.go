@@ -3,24 +3,26 @@
 // sdworkspace/sdbackend/internal/data/roles.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     Roles and user role assignments are release-critical authorization
-//     infrastructure. They define role identity, hierarchy, internal/user-facing
-//     role boundaries, signup assignability, approval requirements, active-state
-//     behavior, and user-role membership needed by v1 access control.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Roles and user role assignments are release-critical authorization
+//	  infrastructure. They define role identity, hierarchy, internal/user-facing
+//	  role boundaries, signup assignability, approval requirements, active-state
+//	  behavior, and user-role membership needed by v1 access control.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve role hierarchy semantics.
-//   Preserve active vs deleted lifecycle behavior.
-//   Preserve user role assignment integrity.
-//   Preserve primary-role behavior.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Block deployment if this file breaks build, role lookup,
-//   role assignment, hierarchy checks, or authorization integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve role hierarchy semantics.
+//	Preserve active vs deleted lifecycle behavior.
+//	Preserve user role assignment integrity.
+//	Preserve primary-role behavior.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Block deployment if this file breaks build, role lookup,
+//	role assignment, hierarchy checks, or authorization integrity.
 package data
 
 import (
@@ -778,7 +780,6 @@ func (m *RoleModel) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UU
 	return nil
 }
 
-
 // RevokeRole soft-deletes a specific current role assignment for a user.
 //
 // A user may hold multiple roles concurrently, so both userID and roleID are
@@ -928,7 +929,6 @@ func (m *RoleModel) RevokeRole(
 
 	return nil
 }
-
 
 // HasRole returns true if the user currently holds the named active role.
 func (m *RoleModel) HasRole(ctx context.Context, userID uuid.UUID, roleName string) (bool, error) {

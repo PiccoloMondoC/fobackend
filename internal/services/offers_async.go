@@ -5,23 +5,25 @@
 // sdworkspace/sdbackend/internal/services/offers_async.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Owns the asynchronous, fire-and-forget dispatch layer for the canonical
-//     offer lifecycle operations defined in offers_internal.go. Provides the
-//     production resilience contract that background workers and event consumers
-//     depend on.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Owns the asynchronous, fire-and-forget dispatch layer for the canonical
+//	  offer lifecycle operations defined in offers_internal.go. Provides the
+//	  production resilience contract that background workers and event consumers
+//	  depend on.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve non-blocking fire-and-forget dispatch semantics.
-//   Preserve 10s context timeout and panic recovery on every goroutine.
-//   Preserve Prometheus metrics and OpenTelemetry span coverage per operation.
-//   Preserve delegation-only contract.
-//   Block deployment if this file breaks build, async dispatch reliability,
-//   observability coverage, or catalog integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve non-blocking fire-and-forget dispatch semantics.
+//	Preserve 10s context timeout and panic recovery on every goroutine.
+//	Preserve Prometheus metrics and OpenTelemetry span coverage per operation.
+//	Preserve delegation-only contract.
+//	Block deployment if this file breaks build, async dispatch reliability,
+//	observability coverage, or catalog integrity.
 package services
 
 import (
@@ -33,7 +35,7 @@ import (
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/shared/models"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"           // Optional observability
+	"go.opentelemetry.io/otel" // Optional observability
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -45,14 +47,14 @@ type CuratedOfferEvent struct {
 // ApproveOfferEvent encapsulates the offer approval event payload.
 // This is used to approve a curated offer asynchronously.
 type ApproveOfferEvent struct {
-	OfferID     string // UUID string of the offer to approve
+	OfferID    string // UUID string of the offer to approve
 	ApprovedBy string // UUID string of the editor/user performing the approval
 }
 
 // RejectOfferEvent encapsulates the offer rejection event payload.
 // This is used to reject a curated offer asynchronously.
 type RejectOfferEvent struct {
-	OfferID     string // UUID string of the offer to reject
+	OfferID    string // UUID string of the offer to reject
 	RejectedBy string // UUID string of the moderator/user performing the rejection
 }
 
@@ -60,32 +62,30 @@ type RejectOfferEvent struct {
 type UpdateOfferStatusEvent struct {
 	OfferID   string // UUID string of the offer
 	NewStatus string // New status to apply ("approved", "expired", etc.)
-	ActorID  string // UUID string of the user/system making the update
+	ActorID   string // UUID string of the user/system making the update
 }
 
 // FlagOfferEvent represents the payload to flag a offer for internal review.
 type FlagOfferEvent struct {
-	OfferID    string  // UUID of the offer to flag
+	OfferID   string  // UUID of the offer to flag
 	FlaggedBy *string // Optional UUID of the user (nil = system flag)
 	Reason    string  // Reason for flagging
 }
 
 // BlacklistOfferEvent encapsulates the payload for offer blacklisting.
 type BlacklistOfferEvent struct {
-	OfferID        string // UUID string of the offer to blacklist
+	OfferID       string // UUID string of the offer to blacklist
 	BlacklistedBy string // UUID string of the user blacklisting the offer
 }
-
 
 // InsertCuratedOfferAsync persists a curated offer in the background.
 //
 // Key guarantees
 // --------------
-// • Non‑blocking: fires a goroutine and returns immediately.  
-// • Resilient: 10 s timeout, panic‑safe, metrics, tracing, structured logs.  
-// • Self‑healing: on any error the offer is added to a retry queue.  
+// • Non‑blocking: fires a goroutine and returns immediately.
+// • Resilient: 10 s timeout, panic‑safe, metrics, tracing, structured logs.
+// • Self‑healing: on any error the offer is added to a retry queue.
 // • Side‑effects: kicks off GenerateOfferDescriptionAsync if the insert succeeds.
-//
 func InsertCuratedOfferAsync(parentCtx context.Context, svc *Service, ev CuratedOfferEvent) {
 	go func() {
 		start := time.Now()
@@ -155,21 +155,20 @@ func InsertCuratedOfferAsync(parentCtx context.Context, svc *Service, ev Curated
 	}()
 }
 
-
 // ApproveCuratedOfferAsync performs offer approval in a background goroutine.
 //
 // Production‑grade features
 // -------------------------
-// • Context timeout + panic‑safe defer guard                       (resilient)  
-// • OpenTelemetry span with error recording                        (tracing)  
-// • Prometheus counter + histogram for result + latency            (observability)  
-// • Strict UUID / payload validation                               (defence in depth)  
+// • Context timeout + panic‑safe defer guard                       (resilient)
+// • OpenTelemetry span with error recording                        (tracing)
+// • Prometheus counter + histogram for result + latency            (observability)
+// • Strict UUID / payload validation                               (defence in depth)
 // • Zero direct DB access – delegates to service.ApproveCuratedOfferInternal()
 // • Placeholder for exponential‑back‑off retry                     (future‑safe)
 func ApproveCuratedOfferAsync(ctx context.Context, service *Service, ev ApproveOfferEvent) {
 	go func() {
-		start := time.Now()                                   // latency timer
-		defer func() {                                         // always record duration
+		start := time.Now() // latency timer
+		defer func() {      // always record duration
 			metrics.OfferOperationDuration.
 				WithLabelValues("approve").
 				Observe(time.Since(start).Seconds())
@@ -232,22 +231,21 @@ func ApproveCuratedOfferAsync(ctx context.Context, service *Service, ev ApproveO
 	}()
 }
 
-
 // RejectCuratedOfferAsync rejects a curated offer in the background.
 //
 // It is **fire‑and‑forget**: the caller never waits for completion.
 // Safety measures included:
-//   • hard 10 s context‑timeout  
-//   • panic‑recovery so one bad offer can’t crash the worker pool  
-//   • Prometheus duration + result metrics  
-//   • OpenTelemetry span for distributed‑trace correlation  
+//   - hard 10 s context‑timeout
+//   - panic‑recovery so one bad offer can’t crash the worker pool
+//   - Prometheus duration + result metrics
+//   - OpenTelemetry span for distributed‑trace correlation
 //
 // Errors are reported via structured logs and metrics only – the
 // goroutine has no caller to reply to.
 func RejectCuratedOfferAsync(
 	parentCtx context.Context,
-	service   *Service,
-	event     RejectOfferEvent,
+	service *Service,
+	event RejectOfferEvent,
 ) {
 	go func() { // <‑‑ detach from the request / caller
 		start := time.Now()
@@ -285,7 +283,7 @@ func RejectCuratedOfferAsync(
 		if err1 != nil || err2 != nil {
 			logger.Error(
 				"invalid UUIDs in RejectOfferEvent",
-				"offer_id",  event.OfferID,
+				"offer_id", event.OfferID,
 				"rejected_by", event.RejectedBy,
 				"err1", err1, "err2", err2,
 			)
@@ -372,15 +370,14 @@ func AnalyzeMerchantPricingPatternsAsync(ctx context.Context, service *Service) 
 	}()
 }*/
 
-
 // GenerateOfferDescriptionAsync produces an AI description for a curated offer.
 //
 // Guarantees
 // ----------
-// • Non‑blocking (runs in its own goroutine).  
-// • 10 s timeout, panic‑safe.  
-// • Prometheus: metrics.OfferOperationDuration & metrics.OfferDescriptionResult.  
-// • OpenTelemetry span + error recording.  
+// • Non‑blocking (runs in its own goroutine).
+// • 10 s timeout, panic‑safe.
+// • Prometheus: metrics.OfferOperationDuration & metrics.OfferDescriptionResult.
+// • OpenTelemetry span + error recording.
 // • Automatic retry queueing on any failure.
 func GenerateOfferDescriptionAsync(parentCtx context.Context, svc *Service, dl *models.OfferLite) {
 	go func() {
@@ -449,7 +446,6 @@ func GenerateOfferDescriptionAsync(parentCtx context.Context, svc *Service, dl *
 	}()
 }
 
-
 // DetectFraudulentOffersAsync launches a non‑blocking goroutine that runs our
 // curated‑offer fraud scan.  It follows the exact resilience pattern used by
 // InsertCuratedOfferAsync (timeout, panic‑safety, tracing, Prometheus).
@@ -497,15 +493,13 @@ func DetectFraudulentOffersAsync(parentCtx context.Context, svc *Service) {
 	}()
 }
 
-
 // AutoExpireOffersAsync marks expired offers as inactive in the background.
 //
 // Guarantees
 // ----------
-// • Non‑blocking: spawns a goroutine and returns immediately.  
-// • Resilient: 10 s timeout, panic‑safe, metrics, tracing, structured logs.  
+// • Non‑blocking: spawns a goroutine and returns immediately.
+// • Resilient: 10 s timeout, panic‑safe, metrics, tracing, structured logs.
 // • Self‑healing: any error is surfaced to Prometheus and recorded on the span.
-//
 func AutoExpireOffersAsync(parentCtx context.Context, svc *Service) {
 	go func() {
 		start := time.Now() // latency tracking
@@ -549,20 +543,18 @@ func AutoExpireOffersAsync(parentCtx context.Context, svc *Service) {
 	}()
 }
 
-
 // RemoveExpiredOffersAsync deletes offers whose EndDate has passed in a
 // non‑blocking, observability‑rich background goroutine.
 //
 // Guarantees
 // ----------
-// • Fire‑and‑forget: never blocks the caller.  
-// • Safe: 10 s timeout, panic recovery.  
-// • Transparent: Prometheus metrics + OpenTelemetry span.  
+// • Fire‑and‑forget: never blocks the caller.
+// • Safe: 10 s timeout, panic recovery.
+// • Transparent: Prometheus metrics + OpenTelemetry span.
 // • Self‑describing: structured logs with function scope.
-//
 func RemoveExpiredOffersAsync(parentCtx context.Context, svc *Service) {
 	go func() {
-		start := time.Now()                                   // ── metrics timer
+		start := time.Now() // ── metrics timer
 		ctx, cancel := context.WithTimeout(parentCtx, 10*time.Second)
 		defer cancel()
 
@@ -603,21 +595,19 @@ func RemoveExpiredOffersAsync(parentCtx context.Context, svc *Service) {
 	}()
 }
 
-
 // SuggestOffersForUserAsync personalises offers for <userID> in the background.
 //
 // Key guarantees
 // --------------
-// • Fire‑and‑forget goroutine (non‑blocking for callers).  
-// • 10 s hard timeout → no worker runaway.  
-// • Panic‑safe with structured logging, OpenTelemetry span & Prometheus metrics.  
+// • Fire‑and‑forget goroutine (non‑blocking for callers).
+// • 10 s hard timeout → no worker runaway.
+// • Panic‑safe with structured logging, OpenTelemetry span & Prometheus metrics.
 // • Self‑healing: on error callers can decide to enqueue a retry (left to svc‑layer).
 //
 // Metrics
 // -------
-// • OfferOperationDuration{operation="suggest"}  – latency histogram.  
+// • OfferOperationDuration{operation="suggest"}  – latency histogram.
 // • OfferSuggestionResult{result, user_id}       – success|failure counter.
-//
 func SuggestOffersForUserAsync(parentCtx context.Context, svc *Service, userID uuid.UUID) {
 	go func() {
 		const fallbackThreshold = 3 // trigger extra recommender if we return < 3 suggestions
@@ -697,16 +687,15 @@ func SuggestOffersForUserAsync(parentCtx context.Context, svc *Service, userID u
 	}()
 }
 
-
 // ListEligibleUsersForSuggestionsAsync fetches users who should receive
 // personalised offer suggestions and kicks off SuggestOffersForUserAsync
 // for each of them.
 //
 // Guarantees
 // ──────────
-// • Non‑blocking – launches a goroutine and returns immediately.  
-// • Resilient – 10 s timeout, panic‑safe, tracing, structured logs, metrics.  
-// • Self‑healing – on failure marks the batch in metrics for visibility.  
+// • Non‑blocking – launches a goroutine and returns immediately.
+// • Resilient – 10 s timeout, panic‑safe, tracing, structured logs, metrics.
+// • Self‑healing – on failure marks the batch in metrics for visibility.
 // • Side‑effects – triggers SuggestOffersForUserAsync (fire‑and‑forget).
 func ListEligibleUsersForSuggestionsAsync(parentCtx context.Context, svc *Service) {
 	go func() {
@@ -760,7 +749,6 @@ func ListEligibleUsersForSuggestionsAsync(parentCtx context.Context, svc *Servic
 		}
 	}()
 }
-
 
 // UpdateOfferStatusAsync updates a offer's status in the background.
 //
@@ -826,20 +814,18 @@ func UpdateOfferStatusAsync(parentCtx context.Context, svc *Service, ev UpdateOf
 	}()
 }
 
-
 // FlagOfferAsync flags a offer for internal review in a fire‑and‑forget goroutine.
 //
 // Guarantees
 // ----------
-// • Non‑blocking: returns immediately after spawning the goroutine.  
-// • Resilient: 10 s timeout, panic‑safe, structured logs, tracing, Prometheus metrics.  
-// • Self‑healing: enqueue to retry queue on failure (if you implement one).  
+// • Non‑blocking: returns immediately after spawning the goroutine.
+// • Resilient: 10 s timeout, panic‑safe, structured logs, tracing, Prometheus metrics.
+// • Self‑healing: enqueue to retry queue on failure (if you implement one).
 //
 // Metrics
 // -------
-// • metrics.OfferOperationDuration{operation="flag"} — latency histogram.  
-// • metrics.OfferFlagResult{result, offer_id}        — success|failure counter.  
-//
+// • metrics.OfferOperationDuration{operation="flag"} — latency histogram.
+// • metrics.OfferFlagResult{result, offer_id}        — success|failure counter.
 func FlagOfferAsync(parentCtx context.Context, svc *Service, ev FlagOfferEvent) {
 	go func() {
 		start := time.Now()
@@ -902,20 +888,19 @@ func FlagOfferAsync(parentCtx context.Context, svc *Service, ev FlagOfferEvent) 
 	}()
 }
 
-
 // ListOffersToAutoFlagAsync scans for offers that match the auto‑flag
 // heuristics (excessive discount, invalid price, duplicates, …) and
 // queues each offender for FlagOfferAsync.
 //
 // Behaviour & guarantees
 // ----------------------
-// • Fire‑and‑forget goroutine – never blocks the caller.  
-// • 10 s context timeout (configurable centrally later).  
-// • Panic‑safe; all panics are logged & recorded to the span.  
-// • Prometheus: duration + success|failure counter.  
-// • OpenTelemetry tracing with useful attributes.  
-// • Resilient – any internal failures are surfaced via metrics & logs
-//   without crashing the worker.
+//   - Fire‑and‑forget goroutine – never blocks the caller.
+//   - 10 s context timeout (configurable centrally later).
+//   - Panic‑safe; all panics are logged & recorded to the span.
+//   - Prometheus: duration + success|failure counter.
+//   - OpenTelemetry tracing with useful attributes.
+//   - Resilient – any internal failures are surfaced via metrics & logs
+//     without crashing the worker.
 func ListOffersToAutoFlagAsync(parentCtx context.Context, svc *Service) {
 	go func() {
 		start := time.Now()
@@ -964,7 +949,7 @@ func ListOffersToAutoFlagAsync(parentCtx context.Context, svc *Service) {
 		// ─── Queue each offer for flagging ────────────────────────────────
 		for _, id := range offerIDs {
 			FlagOfferAsync(ctx, svc, FlagOfferEvent{
-				OfferID:    id.String(),
+				OfferID:   id.String(),
 				FlaggedBy: nil,                    // system
 				Reason:    "automated‑heuristics", // audit trail
 			})
@@ -976,16 +961,15 @@ func ListOffersToAutoFlagAsync(parentCtx context.Context, svc *Service) {
 	}()
 }
 
-
 // BlacklistOfferAsync blacklists a offer in the background.
 //
 // Guarantees
 // ----------
-// • **Non‑blocking** – returns immediately; work runs in a goroutine.  
-// • **Resilient**    – 10 s timeout, panic‑safe, retry‑ready hook.  
-// • **Observable**   – structured logs, OTEL span, Prometheus metrics.  
+// • **Non‑blocking** – returns immediately; work runs in a goroutine.
+// • **Resilient**    – 10 s timeout, panic‑safe, retry‑ready hook.
+// • **Observable**   – structured logs, OTEL span, Prometheus metrics.
 // • **Self‑healing** – on any failure we increment failure counters; your
-//   retry strategy (e.g. a dead‑letter queue) can hook in afterwards.
+//    retry strategy (e.g. a dead‑letter queue) can hook in afterwards.
 func BlacklistOfferAsync(parentCtx context.Context, svc *Service, ev BlacklistOfferEvent) {
 	go func() {
 		start := time.Now()

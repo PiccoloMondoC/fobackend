@@ -101,7 +101,7 @@ var (
 	// ErrAccessTokenRevoked is data-layer-owned only when produced by the
 	// persisted access-token blacklist/revocation query path.
 	ErrAccessTokenRevoked = errors.New("access token revoked")
-	ErrAccessTokenInvalid     = errors.New("access token invalid")
+	ErrAccessTokenInvalid = errors.New("access token invalid")
 
 	// ErrAlreadyRevoked reports an idempotent lifecycle condition where the
 	// persistence row already records revocation. Callers should treat this as a
@@ -141,6 +141,11 @@ var (
 	ErrMerchantApplicationStatusAlreadyInactive = errors.New("merchant application status already inactive")
 	ErrMerchantPromotionNotFound                = errors.New("merchant promotion not found")
 	ErrMerchantFollowNotFound                   = errors.New("merchant follow not found")
+	// Merchant payment methods.
+	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")
+	ErrMerchantPaymentMethodAlreadyExists   = errors.New("merchant payment method already exists")
+	ErrMerchantPaymentMethodInvalidState    = errors.New("invalid merchant payment method state")
+	ErrMerchantPaymentMethodDefaultConflict = errors.New("merchant payment method default assignment conflict")
 
 	// Affiliate programs and performance.
 	ErrAffiliatePerformanceNotFound   = errors.New("affiliate performance not found")

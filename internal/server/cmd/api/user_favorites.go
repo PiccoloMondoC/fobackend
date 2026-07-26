@@ -81,7 +81,7 @@ func (app *Application) CreateUserFavoriteHandler(w http.ResponseWriter, r *http
 
 	// Build the UserFavorite object
 	userFavorite := &data.UserFavorite{
-		UserID: *userID,
+		UserID:  *userID,
 		OfferID: *offerID,
 	}
 
@@ -147,7 +147,6 @@ func (app *Application) CreateUserFavoriteHandler(w http.ResponseWriter, r *http
 		Data:    userFavorite.ID,
 	})
 }
-
 
 // GetUserFavoriteByIDHandler retrieves a single user favorite by its ID.
 func (app *Application) GetUserFavoriteByIDHandler(w http.ResponseWriter, r *http.Request) {
@@ -236,7 +235,6 @@ func (app *Application) GetUserFavoriteByIDHandler(w http.ResponseWriter, r *htt
 		Data:    userFavorite,
 	})
 }
-
 
 // GetUserFavoriteByUserIDHandler handles retrieving a user's favorite items by their user ID.
 // It enforces permission checks, extracts the user ID from the context, retrieves the favorite items from the database,
@@ -334,7 +332,6 @@ func (app *Application) GetUserFavoriteByUserIDHandler(w http.ResponseWriter, r 
 		},
 	})
 }
-
 
 /*
 // GetActiveUserFavoritesByUserIDHandler retrieves all active favorites for a specific user.
@@ -564,8 +561,8 @@ func (app *Application) UnsaveUserFavoriteHandler(
 		logger.Error(
 			"Failed to unsave user favorite",
 			"error", err,
-		"user_id", *userID,
-		"offer_id", *offerID,
+			"user_id", *userID,
+			"offer_id", *offerID,
 		)
 
 		app.respondWithError(

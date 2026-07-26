@@ -1,5 +1,6 @@
 // sdworkspace/sdbackend/internal/server/cmd/api/oauth_clients.go
-//   Release Class: DEFERRED
+//
+//	Release Class: DEFERRED
 package main
 
 import (
@@ -24,13 +25,12 @@ type envelope map[string]any
 //
 // Flow
 // ──────────────────────────────────────────────────────────────────────
-// 1️ Caller already authenticated (uuid.UUID stored under ctxUserID).  
-// 2️ Decode & validate JSON payload.  
-// 3️ Hash client_secret (SHA‑256 + pepper → bcrypt).  
-// 4️ Persist record; surface unique‑key violations as 409.  
-// 5️ Best‑effort inline audit log (dynamic Action & EntityType).  
+// 1️ Caller already authenticated (uuid.UUID stored under ctxUserID).
+// 2️ Decode & validate JSON payload.
+// 3️ Hash client_secret (SHA‑256 + pepper → bcrypt).
+// 4️ Persist record; surface unique‑key violations as 409.
+// 5️ Best‑effort inline audit log (dynamic Action & EntityType).
 // 6️ Return 201 Created with public client metadata.
-//
 func (app *Application) RegisterOauthClientHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("RegisterOauthClientHandler")
 
@@ -145,15 +145,14 @@ func (app *Application) RegisterOauthClientHandler(w http.ResponseWriter, r *htt
 	app.writeJSON(w, http.StatusOK, envelope{"oauth_client": client}, nil)
 }
 
-
 // GetOauthClientHandler retrieves an OAuth 2.0 client by its public UUID.
 //
 // Flow
 // ──────────────────────────────────────────────────────────────────────
-// 1️ Caller already authenticated (uuid.UUID stored under ctxUserID).  
+// 1️ Caller already authenticated (uuid.UUID stored under ctxUserID).
 // 2️ Extract client UUID from context (ctxClientID).                    // ← set by param‑binding middleware/router
-// 3️ Look up the client (404 on miss).  
-// 4️ Best‑effort inline audit log (dynamic Action & EntityType).  
+// 3️ Look up the client (404 on miss).
+// 4️ Best‑effort inline audit log (dynamic Action & EntityType).
 // 5️ Return 200 OK with client metadata.
 //
 // NOTE: No restructuring – follows the approach in RegisterOauthClientHandler.
@@ -230,7 +229,6 @@ func (app *Application) GetOauthClientHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-
 	// ─── 4. Dynamic audit‑log resolution (best‑effort) ───────────────────────
 	//
 	// 4a. Resolve / create audit‑action “get_oauth_client”.
@@ -284,7 +282,6 @@ func (app *Application) GetOauthClientHandler(w http.ResponseWriter, r *http.Req
 	app.writeJSON(w, http.StatusOK, envelope{"oauth_client": client}, nil)
 }
 
-
 // UpdateOauthClientHandler updates mutable fields of an existing OAuth 2.0 client.
 //
 // Flow
@@ -293,13 +290,13 @@ func (app *Application) GetOauthClientHandler(w http.ResponseWriter, r *http.Req
 // 2️  Decode JSON payload { id, client_secret?, is_active? }.                   │
 // 3️  Fetch target record (404 if missing).                                     │
 // 4️  Apply PATCH‑style mutations:                                              │
-//        • If client_secret present → hash (SHA‑256 + pepper → bcrypt).         │
-//        • If is_active present → toggle.                                      │
-//        • Abort early if no change.                                           │
+//   - If client_secret present → hash (SHA‑256 + pepper → bcrypt).         │
+//   - If is_active present → toggle.                                      │
+//   - Abort early if no change.                                           │
+//
 // 5️  Persist update; surface unique / FK errors as 409 / 400.                  │
 // 6️  Best‑effort inline audit log (“update_oauth_client”).                     │
 // 7️  Return 200 OK with updated public metadata.                               │
-//
 func (app *Application) UpdateOauthClientHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("UpdateOauthClientHandler")
 
@@ -447,16 +444,15 @@ func (app *Application) UpdateOauthClientHandler(w http.ResponseWriter, r *http.
 		envelope{"oauth_client": client}, nil)
 }
 
-
 // DeleteOauthClientHandler deactivates (soft‑deletes) an OAuth 2.0 client.
 //
 // Behaviour
 // ─────────
-// • Authenticated caller only – AuthMiddleware has already validated the JWT
-//   and injected the caller’s uuid.UUID under ctxUserID.
-// • Expects the public client‑ID (UUID string) in the query param ?id=.
-// • Responds 404 if the client does not exist or is already inactive.
-// • Emits an inline audit‑log entry (best‑effort; never blocks the main flow).
+//   - Authenticated caller only – AuthMiddleware has already validated the JWT
+//     and injected the caller’s uuid.UUID under ctxUserID.
+//   - Expects the public client‑ID (UUID string) in the query param ?id=.
+//   - Responds 404 if the client does not exist or is already inactive.
+//   - Emits an inline audit‑log entry (best‑effort; never blocks the main flow).
 func (app *Application) DeleteOauthClientHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.
 		GetLoggerWithContext(r).
@@ -505,7 +501,7 @@ func (app *Application) DeleteOauthClientHandler(w http.ResponseWriter, r *http.
 		app.serverErrorResponse(logger, w, r, err)
 		return
 	}
-	
+
 	//----------------------------------------------------------------------
 	// 4. Inline audit‑log (best effort – soft failure tolerated)
 	//----------------------------------------------------------------------
@@ -535,8 +531,8 @@ func (app *Application) DeleteOauthClientHandler(w http.ResponseWriter, r *http.
 			logger.Error("failed to create missing entity‑type", "error", createErr)
 		} else {
 			entityType = &data.EntityType{ID: entityTypeID}
-		} 
-		
+		}
+
 	}
 
 	// 4c. Insert Audit Log (fail gracefully if audit logging fails)
@@ -562,8 +558,8 @@ func (app *Application) DeleteOauthClientHandler(w http.ResponseWriter, r *http.
 		"client_id", rawClientID)
 
 	app.writeJSON(w, http.StatusOK, envelope{
-		"message":     "oauth client deleted",
-		"client_id":   rawClientID,
-		"deleted_at":  timeutil.Now(),
+		"message":    "oauth client deleted",
+		"client_id":  rawClientID,
+		"deleted_at": timeutil.Now(),
 	}, nil)
 }

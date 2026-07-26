@@ -4,32 +4,34 @@
 // File: sdworkspace/sdbackend/internal/data/models.go
 //
 // GTM:
-//   Layer: 2.1 Database / Governance Foundation
-//   Release Class: SPINE
-//   Reason:
-//     Models is the canonical data-layer aggregate and release-governance map.
-//     It wires the database pool, logger-backed model structs, Future Offering
-//     v1 SPINE domains, minimal foundation domains, and DEFERRED domains into
-//     the application surface.
+//
+//	Layer: 2.1 Database / Governance Foundation
+//	Release Class: SPINE
+//	Reason:
+//	  Models is the canonical data-layer aggregate and release-governance map.
+//	  It wires the database pool, logger-backed model structs, Future Offering
+//	  v1 SPINE domains, minimal foundation domains, and DEFERRED domains into
+//	  the application surface.
 //
 // Future Offering v1 Doctrine:
 //
-//   Platform v1 is not a deals platform.
-//   Platform v1 is a Future Offering anticipation platform.
+//	Platform v1 is not a deals platform.
+//	Platform v1 is a Future Offering anticipation platform.
 //
-//   SPINE means only what is required to let a merchant publish a Future
-//   Offering and let consumers discover, watch, and express future intent
-//   toward it.
+//	SPINE means only what is required to let a merchant publish a Future
+//	Offering and let consumers discover, watch, and express future intent
+//	toward it.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve Models as the canonical data-layer aggregate.
-//   Preserve SPINE vs DEFERRED governance annotations.
-//   Preserve dbTimeout.
-//   Preserve New() initialization consistency.
-//   Block deployment if this file breaks build, model wiring,
-//   data-layer availability, or Future Offering v1 governance integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve Models as the canonical data-layer aggregate.
+//	Preserve SPINE vs DEFERRED governance annotations.
+//	Preserve dbTimeout.
+//	Preserve New() initialization consistency.
+//	Block deployment if this file breaks build, model wiring,
+//	data-layer availability, or Future Offering v1 governance integrity.
 package data
 
 import (
@@ -66,10 +68,10 @@ type Models struct {
 	Logger *logging.Logger
 
 	// Layer 2.1 — Database / Governance Foundation / system configuration infrastructure
-	DBConnectionParams DBConnectionParamsModel // SPINE: minimal foundation — database connection configuration
-	AuditLog           AuditLogModel           // SPINE: minimal foundation — audit trail foundation
-	EntityType         EntityTypeModel         // SPINE: minimal foundation — audit/entity lookup governance
-	Action             ActionModel             // SPINE: minimal foundation — audit/action lookup governance
+	DBConnectionParams     DBConnectionParamsModel     // SPINE: minimal foundation — database connection configuration
+	AuditLog               AuditLogModel               // SPINE: minimal foundation — audit trail foundation
+	EntityType             EntityTypeModel             // SPINE: minimal foundation — audit/entity lookup governance
+	Action                 ActionModel                 // SPINE: minimal foundation — audit/action lookup governance
 	PlatformSetting        PlatformSettingModel        // SPINE: minimal foundation — system configuration infrastructure
 	PlatformSettingHistory PlatformSettingHistoryModel // SPINE: minimal foundation — immutable platform-setting value history
 
@@ -93,7 +95,7 @@ type Models struct {
 	OauthUserConsent       OauthUserConsentModel       // DEFERRED: OAuth2 user-consent lifecycle
 
 	// Layer 2.3 — Consumer Domain
-	UserProfile         UserProfileModel         // SPINE: minimal foundation — user profile
+	UserProfile UserProfileModel // SPINE: minimal foundation — user profile
 	//UserTrendEngagement UserTrendEngagementModel // SPINE: Future Offering v1 — consumer future-offering engagement / My Radar
 	UserNotification    UserNotificationModel    // SPINE: minimal foundation — user notification record
 	NotificationChannel NotificationChannelModel // SPINE: minimal foundation — notification channel lookup
@@ -109,13 +111,14 @@ type Models struct {
 	DashboardTemplate   DashboardTemplateModel   // DEFERRED: dashboard templates
 
 	// Layer 2.4 — Merchant / Future Offering Domain
-	Merchant            MerchantModel            // SPINE: Future Offering v1 — merchant identity
-	MerchantAccount     MerchantAccountModel     // SPINE: merchant platform-account lifecycle
-	MerchantType        MerchantTypeModel        // SPINE: minimal foundation — merchant classification lookup
-	MerchantProgramPlan         MerchantProgramPlanModel        // SPINE: Future Offering v1 — merchant program plan reference table
-	MerchantProgramFeeSchedule  MerchantProgramFeeScheduleModel // SPINE: Future Offering v1 — effective-dated merchant monetization policy
-	MerchantProgramEntitlement  MerchantProgramEntitlementModel // SPINE: Future Offering v1 — merchant program entitlement/capability gate
-	MerchantProgramSubscription MerchantProgramSubscriptionModel // SPINE: Future Offering v1 — merchant program subscription lifecycle
+	Merchant                         MerchantModel                         // SPINE: Future Offering v1 — merchant identity
+	MerchantAccount                  MerchantAccountModel                  // SPINE: merchant platform-account lifecycle
+	MerchantPaymentMethod            MerchantPaymentMethodModel            // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
+	MerchantType                     MerchantTypeModel                     // SPINE: minimal foundation — merchant classification lookup
+	MerchantProgramPlan              MerchantProgramPlanModel              // SPINE: Future Offering v1 — merchant program plan reference table
+	MerchantProgramFeeSchedule       MerchantProgramFeeScheduleModel       // SPINE: Future Offering v1 — effective-dated merchant monetization policy
+	MerchantProgramEntitlement       MerchantProgramEntitlementModel       // SPINE: Future Offering v1 — merchant program entitlement/capability gate
+	MerchantProgramSubscription      MerchantProgramSubscriptionModel      // SPINE: Future Offering v1 — merchant program subscription lifecycle
 	MerchantProgramSubscriptionEvent MerchantProgramSubscriptionEventModel // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
@@ -149,11 +152,11 @@ type Models struct {
 	CouponPerformanceStats CouponPerformanceStatsModel // DEFERRED: coupon performance reporting
 	OfferConversion        OfferConversionModel        // DEFERRED: offer conversion record
 	//Promotion              PromotionModel              // DEFERRED: promotion record
-	MerchantPromotion      MerchantPromotionModel      // DEFERRED: merchant promotion record
-	OfferRating            OfferRatingModel            // DEFERRED: offer rating record
-	OfferSponsorship       OfferSponsorshipModel       // DEFERRED: offer sponsorship record
-	SponsorshipBidType     SponsorshipBidTypeModel     // DEFERRED: sponsorship bid-type lookup
-	SponsorshipBidMinimum  SponsorshipBidMinimumModel  // DEFERRED: sponsorship bid minimum
+	MerchantPromotion     MerchantPromotionModel     // DEFERRED: merchant promotion record
+	OfferRating           OfferRatingModel           // DEFERRED: offer rating record
+	OfferSponsorship      OfferSponsorshipModel      // DEFERRED: offer sponsorship record
+	SponsorshipBidType    SponsorshipBidTypeModel    // DEFERRED: sponsorship bid-type lookup
+	SponsorshipBidMinimum SponsorshipBidMinimumModel // DEFERRED: sponsorship bid minimum
 }
 
 // New creates an initialized Models aggregate.
@@ -197,7 +200,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		OauthUserConsent:       OauthUserConsentModel{DB: dbPool, Logger: logger},       // DEFERRED
 
 		// Layer 2.3 — Consumer Domain
-		UserProfile:         UserProfileModel{DB: dbPool, Logger: logger},         // SPINE: minimal foundation
+		UserProfile: UserProfileModel{DB: dbPool, Logger: logger}, // SPINE: minimal foundation
 		//UserTrendEngagement: UserTrendEngagementModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		UserNotification:    UserNotificationModel{DB: dbPool, Logger: logger},    // SPINE: minimal foundation
 		NotificationChannel: NotificationChannelModel{DB: dbPool, Logger: logger}, // SPINE: minimal foundation
@@ -213,13 +216,17 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		DashboardTemplate:   DashboardTemplateModel{DB: dbPool, Logger: logger},   // DEFERRED
 
 		// Layer 2.4 — Merchant / Future Offering Domain
-		Merchant:              MerchantModel{DB: dbPool, Logger: logger},              // SPINE: Future Offering v1
-		MerchantAccount:       MerchantAccountModel{DB: dbPool, Logger: logger},
-		MerchantType:          MerchantTypeModel{DB: dbPool, Logger: logger},          // SPINE: minimal foundation
-		MerchantProgramPlan:   MerchantProgramPlanModel{DB: dbPool, Logger: logger},   // SPINE: Future Offering v1
-		MerchantProgramFeeSchedule: MerchantProgramFeeScheduleModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
-		MerchantProgramEntitlement:  MerchantProgramEntitlementModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
-		MerchantProgramSubscription: MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
+		Merchant:        MerchantModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
+		MerchantAccount: MerchantAccountModel{DB: dbPool, Logger: logger},
+		MerchantPaymentMethod: MerchantPaymentMethodModel{
+			DB:     dbPool,
+			Logger: logger,
+		}, // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
+		MerchantType:                     MerchantTypeModel{DB: dbPool, Logger: logger},                     // SPINE: minimal foundation
+		MerchantProgramPlan:              MerchantProgramPlanModel{DB: dbPool, Logger: logger},              // SPINE: Future Offering v1
+		MerchantProgramFeeSchedule:       MerchantProgramFeeScheduleModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
+		MerchantProgramEntitlement:       MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
+		MerchantProgramSubscription:      MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},      // SPINE: Future Offering v1
 		MerchantProgramSubscriptionEvent: MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
@@ -253,10 +260,10 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		CouponPerformanceStats: CouponPerformanceStatsModel{DB: dbPool, Logger: logger}, // DEFERRED
 		OfferConversion:        OfferConversionModel{DB: dbPool, Logger: logger},        // DEFERRED
 		//Promotion:              PromotionModel{DB: dbPool, Logger: logger},              // DEFERRED
-		MerchantPromotion:      MerchantPromotionModel{DB: dbPool, Logger: logger},      // DEFERRED
-		OfferRating:            OfferRatingModel{DB: dbPool, Logger: logger},            // DEFERRED
-		OfferSponsorship:       OfferSponsorshipModel{DB: dbPool, Logger: logger},       // DEFERRED
-		SponsorshipBidType:     SponsorshipBidTypeModel{DB: dbPool, Logger: logger},     // DEFERRED
-		SponsorshipBidMinimum:  SponsorshipBidMinimumModel{DB: dbPool, Logger: logger},  // DEFERRED
+		MerchantPromotion:     MerchantPromotionModel{DB: dbPool, Logger: logger},     // DEFERRED
+		OfferRating:           OfferRatingModel{DB: dbPool, Logger: logger},           // DEFERRED
+		OfferSponsorship:      OfferSponsorshipModel{DB: dbPool, Logger: logger},      // DEFERRED
+		SponsorshipBidType:    SponsorshipBidTypeModel{DB: dbPool, Logger: logger},    // DEFERRED
+		SponsorshipBidMinimum: SponsorshipBidMinimumModel{DB: dbPool, Logger: logger}, // DEFERRED
 	}
 }

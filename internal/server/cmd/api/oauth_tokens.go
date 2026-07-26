@@ -53,22 +53,21 @@ type TokenHandler struct {
 // tokenRequest models the RFC 6749 token request parameters that we currently care about.
 // We accept either application/x-www-form-urlencoded or JSON bodies; fields map either way.
 type tokenRequest struct {
-	GrantType    string `json:"grant_type"`     // required: "authorization_code" (current support)
-	Code         string `json:"code"`           // required if GrantType=authorization_code
-	ClientID     string `json:"client_id"`      // public OAuth client identifier (string)
-	ClientSecret string `json:"client_secret"`  // if confidential client; empty for public
-	RedirectURI  string `json:"redirect_uri"`   // MUST match the URI used in /authorize for code
+	GrantType    string `json:"grant_type"`    // required: "authorization_code" (current support)
+	Code         string `json:"code"`          // required if GrantType=authorization_code
+	ClientID     string `json:"client_id"`     // public OAuth client identifier (string)
+	ClientSecret string `json:"client_secret"` // if confidential client; empty for public
+	RedirectURI  string `json:"redirect_uri"`  // MUST match the URI used in /authorize for code
 }
-
 
 // OauthTokenHandler exchanges an *authorization code* for an access/refresh token pair.
 //
 // Minimal, production-leaning implementation aligned with your current project constraints:
-// • AuthMiddleware has already validated the caller’s access token & injected ctxUserID (uuid.UUID).
-//   (Yes, in a pure OAuth server this endpoint is unauthenticated and client-auth only; here
-//    we’re running an integrated auth service and using the caller context you’ve standardized.)
-// • Validates grant_type, client_id, (optional) client_secret, and redirect_uri.
-// • TODO hooks marked for: code lookup/validation, PKCE, rotation, scope negotiation.
+//   - AuthMiddleware has already validated the caller’s access token & injected ctxUserID (uuid.UUID).
+//     (Yes, in a pure OAuth server this endpoint is unauthenticated and client-auth only; here
+//     we’re running an integrated auth service and using the caller context you’ve standardized.)
+//   - Validates grant_type, client_id, (optional) client_secret, and redirect_uri.
+//   - TODO hooks marked for: code lookup/validation, PKCE, rotation, scope negotiation.
 //
 // Response (JSON) fields: access_token, token_type="Bearer", expires_in (seconds), refresh_token.
 // Cache disabled per RFC 6749 §5.1.
@@ -216,10 +215,10 @@ func (app *Application) OauthTokenHandler(w http.ResponseWriter, r *http.Request
 	// 7. Validate & consume authorization code
 	if err := app.Models.OauthAuthorizationCode.ValidateAndConsume(
 		ctx,
-		req.Code,         // plaintext code
-		req.ClientID,     // public client_id (string)
-		userID,           // uuid.UUID from middleware
-		req.RedirectURI,  // must match
+		req.Code,        // plaintext code
+		req.ClientID,    // public client_id (string)
+		userID,          // uuid.UUID from middleware
+		req.RedirectURI, // must match
 	); err != nil {
 		if errors.Is(err, data.ErrRecordNotFound) {
 			app.respondWithError(w, errors.New("invalid_code"), http.StatusBadRequest)
@@ -282,7 +281,7 @@ func (app *Application) OauthTokenHandler(w http.ResponseWriter, r *http.Request
 			UserID:       &userID,
 			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
-			EntityID:     req.ClientID,          // ← string, no undefined symbol
+			EntityID:     req.ClientID, // ← string, no undefined symbol
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &al); err != nil {
 			logger.Warn("Audit logging failed", "client_id", req.ClientID, "error", err)
@@ -306,7 +305,6 @@ func (app *Application) OauthTokenHandler(w http.ResponseWriter, r *http.Request
 
 	app.writeJSON(w, http.StatusOK, resp, nil)
 }
-
 
 // uriAllowed returns true if uri matches one of the registered redirect URIs exactly.
 // Extend with strict normalization or subpath rules if needed.
@@ -336,16 +334,15 @@ func verifyClientSecret(plaintext, storedHash string) error {
 	return bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(plaintext))
 }
 
-
 // OauthRefreshTokenHandler exchanges a *refresh token* for a fresh
 // access/refresh‑token pair.
 //
-// • AuthMiddleware has already injected ctxUserID (uuid.UUID).
-// • Accepts either JSON or application/x‑www‑form‑urlencoded bodies.
-// • Validates the token via app.Models.Token.ValidateRefreshToken.
-// • Implements single‑use rotation: the consumed refresh token is revoked
-//   (best‑effort) and a brand‑new one is issued.
-// • Dynamic, inline audit logging (action=refresh_oauth_token, entity_type=oauth_token).
+//   - AuthMiddleware has already injected ctxUserID (uuid.UUID).
+//   - Accepts either JSON or application/x‑www‑form‑urlencoded bodies.
+//   - Validates the token via app.Models.Token.ValidateRefreshToken.
+//   - Implements single‑use rotation: the consumed refresh token is revoked
+//     (best‑effort) and a brand‑new one is issued.
+//   - Dynamic, inline audit logging (action=refresh_oauth_token, entity_type=oauth_token).
 func (app *Application) OauthRefreshTokenHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("OauthRefreshTokenHandler")
 
@@ -375,7 +372,9 @@ func (app *Application) OauthRefreshTokenHandler(w http.ResponseWriter, r *http.
 		}
 		refreshToken = r.FormValue("refresh_token")
 	default: // treat anything else as JSON
-		var body struct{ RefreshToken string `json:"refresh_token"` }
+		var body struct {
+			RefreshToken string `json:"refresh_token"`
+		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			app.respondWithError(w, errors.New("invalid json body"), http.StatusBadRequest)
 			return
@@ -470,7 +469,6 @@ func (app *Application) OauthRefreshTokenHandler(w http.ResponseWriter, r *http.
 		"client_id":     clientID, // echoed only if supplied
 	}, nil)
 }
-
 
 func (app *Application) OauthTokenIntrospectionHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("OauthTokenIntrospectionHandler")
@@ -571,10 +569,10 @@ func (app *Application) OauthTokenIntrospectionHandler(w http.ResponseWriter, r 
 	if action != nil && entityType != nil {
 		al := data.AuditLog{
 			ID:           uuid.New(),
-			UserID:       &userID,          // ← from ctx (type-safe uuid.UUID)
+			UserID:       &userID, // ← from ctx (type-safe uuid.UUID)
 			ActionID:     action.ID,
 			EntityTypeID: entityType.ID,
-			EntityID:     claims.ID,        // ← JTI
+			EntityID:     claims.ID, // ← JTI
 		}
 		if err := app.Models.AuditLog.Insert(ctx, &al); err != nil {
 			logger.Warn("Audit logging failed", "error", err)
@@ -595,12 +593,11 @@ func writeInactive(w http.ResponseWriter) {
 	_ = json.NewEncoder(w).Encode(envelope{"active": false})
 }
 
-
 // OauthTokenRevocationHandler revokes an access token (via JTI blacklist)
 // and/or a refresh token (row‑level delete) for the authenticated user.
 //
-// • AuthMiddleware has already validated the caller’s JWT and injected ctxUserID (uuid.UUID).
-// • Either or both JSON fields may be supplied:
+//   - AuthMiddleware has already validated the caller’s JWT and injected ctxUserID (uuid.UUID).
+//   - Either or both JSON fields may be supplied:
 //     { "access_token": "<JWT>", "refresh_token": "<uuid‑string>" }
 //
 // Response: 200 OK { "message": "tokens revoked" } – even if one token was unknown.

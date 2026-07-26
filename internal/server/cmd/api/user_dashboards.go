@@ -51,11 +51,11 @@ const (
 	userDashboardEntityTypeName        = "user_dashboard"
 	userDashboardEntityTypeDescription = "User-owned dashboard configuration"
 
-	createUserDashboardAction     = "create_user_dashboard"
-	readUserDashboardAction       = "read_user_dashboard"
-	updateUserDashboardAction     = "update_user_dashboard"
-	deleteUserDashboardAction     = "delete_user_dashboard"
-	viewDashboardStatsAction      = "view_admin_dashboard_stats"
+	createUserDashboardAction         = "create_user_dashboard"
+	readUserDashboardAction           = "read_user_dashboard"
+	updateUserDashboardAction         = "update_user_dashboard"
+	deleteUserDashboardAction         = "delete_user_dashboard"
+	viewDashboardStatsAction          = "view_admin_dashboard_stats"
 	viewAllUserDashboardsPermission   = "view_all_dashboards"
 	updateAllUserDashboardsPermission = "update_all_user_dashboards"
 	deleteAllUserDashboardsPermission = "delete_all_user_dashboards"
@@ -755,10 +755,10 @@ func (app *Application) AdminDashboardStatsHandler(
 	}
 
 	stats := struct {
-		TotalDashboards  int64 `json:"total_dashboards"`
+		TotalDashboards int64 `json:"total_dashboards"`
 		LatestUpdatedAt any   `json:"latest_updated_at"`
 	}{
-		TotalDashboards:  total,
+		TotalDashboards: total,
 		LatestUpdatedAt: latestUpdatedAt.UTC(),
 	}
 

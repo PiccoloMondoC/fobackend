@@ -3,25 +3,27 @@
 // File: sdworkspace/sdbackend/internal/data/offer_ratings.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer ratings are valid future engagement and trust-signal
-//     infrastructure, but they are not required for the initial Platform
-//     release spine. The v1 spine requires canonical offers, publication
-//     governance, affiliate links, click tracking, price history, and moderation
-//     flags before expanding into user-generated rating and review workflows.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer ratings are valid future engagement and trust-signal
+//	  infrastructure, but they are not required for the initial Platform
+//	  release spine. The v1 spine requires canonical offers, publication
+//	  governance, affiliate links, click tracking, price history, and moderation
+//	  flags before expanding into user-generated rating and review workflows.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve one-active-rating-per-user-per-offer semantics.
-//   Preserve soft-delete review moderation behavior.
-//   Preserve DB-owned lifecycle timestamp behavior.
-//   Preserve bounded analytics/reporting behavior.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve one-active-rating-per-user-per-offer semantics.
+//	Preserve soft-delete review moderation behavior.
+//	Preserve DB-owned lifecycle timestamp behavior.
+//	Preserve bounded analytics/reporting behavior.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (

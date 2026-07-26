@@ -3,23 +3,25 @@
 // sdworkspace/sdbackend/internal/data/offer_clicks.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer clicks are release-critical affiliate monetization infrastructure.
-//     They record immutable outbound offer interactions, support affiliate
-//     click tracking, merchant/offer analytics, and the minimum evidence trail
-//     needed for v1 monetization behavior.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer clicks are release-critical affiliate monetization infrastructure.
+//	  They record immutable outbound offer interactions, support affiliate
+//	  click tracking, merchant/offer analytics, and the minimum evidence trail
+//	  needed for v1 monetization behavior.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve immutable click-event semantics.
-//   Preserve DB-owned id and clicked_at lifecycle behavior.
-//   Preserve bounded read paths.
-//   Preserve LogOfferClick as the canonical handler-layer entry point.
-//   Block deployment if this file breaks build, click persistence,
-//   affiliate tracking, offer analytics, or outbound monetization integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve immutable click-event semantics.
+//	Preserve DB-owned id and clicked_at lifecycle behavior.
+//	Preserve bounded read paths.
+//	Preserve LogOfferClick as the canonical handler-layer entry point.
+//	Block deployment if this file breaks build, click persistence,
+//	affiliate tracking, offer analytics, or outbound monetization integrity.
 package data
 
 import (

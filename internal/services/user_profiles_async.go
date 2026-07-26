@@ -5,25 +5,27 @@
 // sdworkspace/sdbackend/internal/services/user_profiles_async.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     User profile async services provide panic-safe, timeout-bounded,
-//     metrics-instrumented orchestration for profile moderation, handle
-//     validation, and ownership resolution. These wrappers protect the v1
-//     Future Offering release spine by keeping trust-and-safety and identity
-//     workflows non-blocking while delegating business logic to internal
-//     service methods.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  User profile async services provide panic-safe, timeout-bounded,
+//	  metrics-instrumented orchestration for profile moderation, handle
+//	  validation, and ownership resolution. These wrappers protect the v1
+//	  Future Offering release spine by keeping trust-and-safety and identity
+//	  workflows non-blocking while delegating business logic to internal
+//	  service methods.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve panic-safety for every goroutine.
-//   Preserve timeout bounds for async profile workflows.
-//   Preserve metrics and tracing instrumentation.
-//   Preserve delegation-only behavior; do not call DB/model methods directly here.
-//   Block deployment if this file breaks build, goroutine safety,
-//   observability, or profile workflow orchestration.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve panic-safety for every goroutine.
+//	Preserve timeout bounds for async profile workflows.
+//	Preserve metrics and tracing instrumentation.
+//	Preserve delegation-only behavior; do not call DB/model methods directly here.
+//	Block deployment if this file breaks build, goroutine safety,
+//	observability, or profile workflow orchestration.
 package services
 
 import (

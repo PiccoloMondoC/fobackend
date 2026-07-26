@@ -60,7 +60,7 @@ import (
 // Requirements identify policy coverage only. They never contain monetary
 // amounts, percentages, or other price terms.
 type MerchantProgramFeeScheduleRequirement struct {
-	FeeType         data.MerchantFeeType        `json:"fee_type"`
+	FeeType         data.MerchantFeeType         `json:"fee_type"`
 	BillingInterval data.MerchantBillingInterval `json:"billing_interval"`
 	PlanCode        *data.MerchantPlanCode       `json:"plan_code,omitempty"`
 }
@@ -69,15 +69,15 @@ type MerchantProgramFeeScheduleRequirement struct {
 // selected for one validated readiness requirement.
 type MerchantProgramFeeScheduleRequirementResult struct {
 	Requirement   MerchantProgramFeeScheduleRequirement `json:"requirement"`
-	ResolvedScope data.MerchantFeeScope                  `json:"resolved_scope,omitempty"`
-	PlanID        *uuid.UUID                             `json:"plan_id,omitempty"`
-	FeeScheduleID uuid.UUID                              `json:"fee_schedule_id"`
+	ResolvedScope data.MerchantFeeScope                 `json:"resolved_scope,omitempty"`
+	PlanID        *uuid.UUID                            `json:"plan_id,omitempty"`
+	FeeScheduleID uuid.UUID                             `json:"fee_schedule_id"`
 }
 
 // MerchantProgramFeeScheduleReadiness reports effective commercial-policy
 // coverage for a non-empty caller-supplied requirement set.
 type MerchantProgramFeeScheduleReadiness struct {
-	AsOf         time.Time                                  `json:"as_of"`
+	AsOf         time.Time                                     `json:"as_of"`
 	Requirements []MerchantProgramFeeScheduleRequirementResult `json:"requirements"`
 }
 

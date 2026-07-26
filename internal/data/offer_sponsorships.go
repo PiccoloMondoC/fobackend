@@ -3,27 +3,29 @@
 // File: sdworkspace/sdbackend/internal/data/offer_sponsorships.go
 //
 // GTM:
-//   Layer: 2.5 Catalog / Offer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     Offer sponsorships, sponsorship bid types, and sponsorship bid minimums
-//     are valid future monetization infrastructure, but they are not required
-//     for the initial Platform release spine. The v1 spine requires
-//     canonical offers, publication governance, affiliate links, click tracking,
-//     price history, and moderation flags before expanding into paid placement
-//     and sponsorship workflows.
+//
+//	Layer: 2.5 Catalog / Offer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  Offer sponsorships, sponsorship bid types, and sponsorship bid minimums
+//	  are valid future monetization infrastructure, but they are not required
+//	  for the initial Platform release spine. The v1 spine requires
+//	  canonical offers, publication governance, affiliate links, click tracking,
+//	  price history, and moderation flags before expanding into paid placement
+//	  and sponsorship workflows.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep safe.
-//   Preserve NUMERIC-safe decimal string behavior.
-//   Preserve sponsorship bid-type and bid-minimum validation.
-//   Preserve CPD overlap protection.
-//   Preserve 30-minute sponsorship edit window.
-//   Preserve soft-delete lifecycle behavior.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep safe.
+//	Preserve NUMERIC-safe decimal string behavior.
+//	Preserve sponsorship bid-type and bid-minimum validation.
+//	Preserve CPD overlap protection.
+//	Preserve 30-minute sponsorship edit window.
+//	Preserve soft-delete lifecycle behavior.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package data
 
 import (
@@ -63,11 +65,11 @@ type OfferSponsorship struct {
 	MaxBudget   *string `json:"max_budget,omitempty" db:"max_budget"`
 	BudgetSpent string  `json:"budget_spent" db:"budget_spent"`
 
-	ImpressionsServed int       `json:"impressions_served" db:"impressions_served"`
-	ClicksServed      int       `json:"clicks_served" db:"clicks_served"`
+	ImpressionsServed int        `json:"impressions_served" db:"impressions_served"`
+	ClicksServed      int        `json:"clicks_served" db:"clicks_served"`
 	DeletedAt         *time.Time `json:"-" db:"deleted_at"`
-	CreatedAt         time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
+	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // SponsorshipBidType represents a supported bid strategy for offer sponsorships.
@@ -130,7 +132,7 @@ func offerSponsorshipOptionalMoneyParam(value *string) any {
 	return *value
 }
 
-// offerSponsorshipNullableString converts the scanned COALESCE(max_budget::text, '')
+// offerSponsorshipNullableString converts the scanned COALESCE(max_budget::text, ”)
 // representation back to a nil pointer when the DB value is NULL.
 func offerSponsorshipNullableString(s string) *string {
 	if s == "" {
@@ -741,7 +743,6 @@ func (m *OfferSponsorshipModel) Update(ctx context.Context, ds *OfferSponsorship
 	return nil
 }
 
-
 // SoftDelete marks an offer sponsorship record as deleted without removing the row.
 // This is the standard business-lifecycle removal path when soft delete is supported.
 func (m *OfferSponsorshipModel) SoftDelete(ctx context.Context, id uuid.UUID) error {
@@ -781,7 +782,6 @@ func (m *OfferSponsorshipModel) SoftDelete(ctx context.Context, id uuid.UUID) er
 	return nil
 }
 
-
 // Delete hard-deletes an offer sponsorship record from the database.
 // This is an explicit destructive operation intended for purge, maintenance,
 // or other deliberate administrative cleanup paths.
@@ -815,7 +815,6 @@ func (m *OfferSponsorshipModel) Delete(ctx context.Context, id uuid.UUID) error 
 	logger.Info("Offer sponsorship deleted successfully", "offer_sponsorship_id", deletedID)
 	return nil
 }
-
 
 // GetMinimumsByBidType returns the bid type code, minimum bid amount, and minimum max budget.
 func (m *SponsorshipBidMinimumModel) GetMinimumsByBidType(

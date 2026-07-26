@@ -5,31 +5,33 @@
 // sdworkspace/sdbackend/internal/services/user_wallets_internal.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: DEFERRED
-//   Reason:
-//     User wallets and wallet-ledger operations are valid future rewards,
-//     points, balance, and incentive infrastructure, but they are not required
-//     for the initial Platform release spine. The v1 spine requires
-//     account identity, user settings, notifications, favorites/stash,
-//     merchant follows, canonical offers, click tracking, and price history
-//     before rewards wallets and ledger-backed incentive flows are activated.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: DEFERRED
+//	Reason:
+//	  User wallets and wallet-ledger operations are valid future rewards,
+//	  points, balance, and incentive infrastructure, but they are not required
+//	  for the initial Platform release spine. The v1 spine requires
+//	  account identity, user settings, notifications, favorites/stash,
+//	  merchant follows, canonical offers, click tracking, and price history
+//	  before rewards wallets and ledger-backed incentive flows are activated.
 //
 // DEFERRED Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve NUMERIC-safe decimal string behavior.
-//   Preserve immutable wallet ledger-entry semantics.
-//   Preserve reward-wallet creation semantics.
-//   Preserve pending -> confirmed ledger lifecycle behavior.
-//   Preserve transactional reward reversal behavior.
-//   Preserve wallet soft-delete and hard-delete distinction.
-//   Do not introduce direct balance mutation.
-//   Do not use float32 or float64 for wallet amounts.
-//   Do not duplicate data-layer transaction logic.
-//   Do not add new features.
-//   Do not route into v1 UI/API expansion.
-//   Do not block deployment on this file unless it breaks the build.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve NUMERIC-safe decimal string behavior.
+//	Preserve immutable wallet ledger-entry semantics.
+//	Preserve reward-wallet creation semantics.
+//	Preserve pending -> confirmed ledger lifecycle behavior.
+//	Preserve transactional reward reversal behavior.
+//	Preserve wallet soft-delete and hard-delete distinction.
+//	Do not introduce direct balance mutation.
+//	Do not use float32 or float64 for wallet amounts.
+//	Do not duplicate data-layer transaction logic.
+//	Do not add new features.
+//	Do not route into v1 UI/API expansion.
+//	Do not block deployment on this file unless it breaks the build.
 package services
 
 import (

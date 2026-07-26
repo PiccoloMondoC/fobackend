@@ -1,5 +1,6 @@
 // sdworkspace/sdbackend/internal/server/cmd/api/oauth_user_info.go
-//   Release Class: DEFERRED
+//
+//	Release Class: DEFERRED
 package main
 
 import (
