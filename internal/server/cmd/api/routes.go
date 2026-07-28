@@ -616,7 +616,47 @@ func (app *Application) Routes() http.Handler {
 
 			mps.With(app.RequirePermission("restore_merchant_program_subscription")).
 				Patch("/{merchantProgramSubscriptionID}/restore", app.RestoreMerchantProgramSubscriptionHandler)
+
+			mps.With(
+				app.RequirePermission(
+					"list_merchant_program_subscription_events",
+				),
+			).Get(
+				"/{merchantProgramSubscriptionID}/events/latest",
+				app.GetLatestMerchantProgramSubscriptionEventHandler,
+			)
+
+			mps.With(
+				app.RequirePermission(
+					"list_merchant_program_subscription_events",
+				),
+			).Get(
+				"/{merchantProgramSubscriptionID}/events",
+				app.ListMerchantProgramSubscriptionEventsHandler,
+			)
 		})
+
+		// Merchant Program Subscription Events
+		//
+		// Event history is privileged and read-only. Merchant actors must not
+		// receive these permissions until canonical merchant-account
+		// ownership/delegation enforcement is implemented for this route
+		// family.
+		v1.Route(
+			"/merchant-program-subscription-events",
+			func(events chi.Router) {
+				events.Use(app.AuthMiddleware)
+
+				events.With(
+					app.RequirePermission(
+						"read_merchant_program_subscription_event",
+					),
+				).Get(
+					"/{eventID}",
+					app.GetMerchantProgramSubscriptionEventByIDHandler,
+				)
+			},
+		)
 
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {

@@ -12,20 +12,35 @@
 //	  append-only history of commercially meaningful merchant program
 //	  subscription lifecycle actions.
 //
+//	  Merchant program subscriptions are optional commercial packaging
+//	  infrastructure beneath the Future Offering Platform and Monetization
+//	  Layer. This handler capability remains compiled, complete, and
+//	  production-ready regardless of whether subscriptions are commercially
+//	  or operationally enabled through administrative configuration.
+//
 //	  This handler surface supports privileged subscription administration,
 //	  merchant support, lifecycle investigation, commercial traceability,
-//	  and later billing reconciliation.
+//	  and may provide supporting evidence during later billing reconciliation.
+//	  These events are not invoices, payment records, or billing-ledger
+//	  entries.
 //
 //	  Canonical current subscription state remains owned by
 //	  merchant_program_subscriptions. Event creation is not exposed through
-//	  HTTP. Subscription lifecycle services must eventually record canonical
-//	  subscription mutations and corresponding event rows atomically through
-//	  the transaction-compatible data-layer insertion seam.
+//	  HTTP. Subscription lifecycle services record canonical subscription
+//	  mutations and corresponding event rows atomically through the
+//	  transaction-compatible data-layer seams. This handler remains strictly
+//	  read-only.
+//
+//	  Engineering owns the permanent read capability and its safety,
+//	  authorization, confidentiality, bounded-read, and integrity boundaries.
+//	  Administration governs whether and how subscriptions participate in the
+//	  commercial operating model. Administrative policy must not weaken these
+//	  engineering invariants.
 //
 //	  This file is not subscription-transition policy, merchant ownership
 //	  resolution, billing-ledger logic, payment processing, fee calculation,
-//	  audit-log persistence, outbox publication, or general-purpose event
-//	  administration.
+//	  audit-log persistence, outbox publication, commercial enablement policy,
+//	  or general-purpose event administration.
 //
 // SPINE Rule:
 //
@@ -38,16 +53,20 @@
 //	Preserve deterministic timeline ordering from the data layer.
 //	Preserve DB-owned event timestamps.
 //	Preserve explicit response DTOs.
+//	Preserve operational capability independently of commercial enablement.
 //	Never expose event creation, update, deletion, restoration, or purge.
 //	Never log or audit event-note contents.
 //	Do not infer merchant ownership from untrusted request values.
+//	Do not hard-code subscription enablement or commercial policy.
 //	Block deployment if this file breaks build, privileged access control,
-//	event-history integrity, subscription traceability, or audit accountability.
+//	event-history integrity, subscription traceability, bounded reads,
+//	configuration separation, or audit accountability.
 package main
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -108,8 +127,13 @@ type merchantProgramSubscriptionEventListResponse struct {
 	Pagination merchantProgramSubscriptionEventPagination `json:"pagination"`
 }
 
-// newMerchantProgramSubscriptionEventResponse converts one canonical
+// newMerchantProgramSubscriptionEventResponse converts one non-nil canonical
 // persistence model into its authorized HTTP representation.
+//
+// Callers must establish the non-nil model-result invariant before invoking
+// this converter. A nil model result represents not-found or invalid upstream
+// behavior and must be handled explicitly rather than converted into a
+// zero-valued response.
 func newMerchantProgramSubscriptionEventResponse(
 	event *data.MerchantProgramSubscriptionEvent,
 ) merchantProgramSubscriptionEventResponse {
@@ -185,8 +209,9 @@ func parseMerchantProgramSubscriptionEventPagination(
 
 	if limit <= 0 ||
 		limit > maxMerchantProgramSubscriptionEventLimit {
-		return 0, 0, errors.New(
-			"limit must be between 1 and 100",
+		return 0, 0, fmt.Errorf(
+			"limit must be between 1 and %d",
+			maxMerchantProgramSubscriptionEventLimit,
 		)
 	}
 
@@ -344,7 +369,7 @@ func (app *Application) GetMerchantProgramSubscriptionEventByIDHandler(
 		event.ID.String(),
 	); err != nil {
 		logger.Warn(
-			"Merchant program subscription event retrieved but audit recording failed",
+			"Merchant program subscription event read completed but audit recording failed",
 			"event_id",
 			event.ID,
 			"subscription_id",
@@ -354,20 +379,6 @@ func (app *Application) GetMerchantProgramSubscriptionEventByIDHandler(
 			"error",
 			err,
 		)
-
-		app.respondWithJSON(
-			w,
-			http.StatusPartialContent,
-			jsonResponse{
-				Error: false,
-				Message: "Merchant program subscription event " +
-					"retrieved, but audit logging failed",
-				Data: newMerchantProgramSubscriptionEventResponse(
-					event,
-				),
-			},
-		)
-		return
 	}
 
 	logger.Info(
@@ -505,7 +516,10 @@ func (app *Application) ListMerchantProgramSubscriptionEventsHandler(
 		r.URL.Query().Get("event_type"),
 	)
 
-	var events []*data.MerchantProgramSubscriptionEvent
+	var (
+		events    []*data.MerchantProgramSubscriptionEvent
+		eventType data.MerchantProgramSubscriptionEventType
+	)
 
 	if rawEventType == "" {
 		events, err =
@@ -518,7 +532,7 @@ func (app *Application) ListMerchantProgramSubscriptionEventsHandler(
 					offset,
 				)
 	} else {
-		eventType :=
+		eventType =
 			data.NormalizeMerchantProgramSubscriptionEventType(
 				data.MerchantProgramSubscriptionEventType(
 					rawEventType,
@@ -551,16 +565,32 @@ func (app *Application) ListMerchantProgramSubscriptionEventsHandler(
 	}
 
 	if err != nil {
-		logger.Error(
-			"List merchant program subscription events failed",
+		logFields := []interface{}{
 			"subscription_id",
 			subscriptionID,
 			"limit",
 			limit,
 			"offset",
 			offset,
+		}
+
+		if eventType != "" {
+			logFields = append(
+				logFields,
+				"event_type",
+				eventType,
+			)
+		}
+
+		logFields = append(
+			logFields,
 			"error",
 			err,
+		)
+
+		logger.Error(
+			"List merchant program subscription events failed",
+			logFields...,
 		)
 
 		app.respondWithError(
@@ -610,7 +640,7 @@ func (app *Application) ListMerchantProgramSubscriptionEventsHandler(
 		subscriptionID.String(),
 	); err != nil {
 		logger.Warn(
-			"Merchant program subscription events retrieved but audit recording failed",
+			"Merchant program subscription event read completed but audit recording failed",
 			"subscription_id",
 			subscriptionID,
 			"user_id",
@@ -618,22 +648,9 @@ func (app *Application) ListMerchantProgramSubscriptionEventsHandler(
 			"error",
 			err,
 		)
-
-		app.respondWithJSON(
-			w,
-			http.StatusPartialContent,
-			jsonResponse{
-				Error: false,
-				Message: "Merchant program subscription events " +
-					"retrieved, but audit logging failed",
-				Data: response,
-			},
-		)
-		return
 	}
 
-	logger.Info(
-		"Merchant program subscription events retrieved",
+	logFields := []interface{}{
 		"subscription_id",
 		subscriptionID,
 		"limit",
@@ -644,6 +661,19 @@ func (app *Application) ListMerchantProgramSubscriptionEventsHandler(
 		len(responseEvents),
 		"user_id",
 		userID,
+	}
+
+	if eventType != "" {
+		logFields = append(
+			logFields,
+			"event_type",
+			eventType,
+		)
+	}
+
+	logger.Info(
+		"Merchant program subscription events retrieved",
+		logFields...,
 	)
 
 	app.respondWithJSON(
@@ -801,7 +831,7 @@ func (app *Application) GetLatestMerchantProgramSubscriptionEventHandler(
 		event.ID.String(),
 	); err != nil {
 		logger.Warn(
-			"Latest merchant program subscription event retrieved but audit recording failed",
+			"Merchant program subscription event read completed but audit recording failed",
 			"event_id",
 			event.ID,
 			"subscription_id",
@@ -811,18 +841,6 @@ func (app *Application) GetLatestMerchantProgramSubscriptionEventHandler(
 			"error",
 			err,
 		)
-
-		app.respondWithJSON(
-			w,
-			http.StatusPartialContent,
-			jsonResponse{
-				Error: false,
-				Message: "Latest merchant program subscription event " +
-					"retrieved, but audit logging failed",
-				Data: response,
-			},
-		)
-		return
 	}
 
 	logger.Info(

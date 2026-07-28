@@ -74,9 +74,7 @@ The merchant is **not** paying for a Future Offering.
 
 The merchant is paying for:
 
-```text
 Market Anticipation Intelligence
-```
 
 That is the commercial product.
 
@@ -84,7 +82,7 @@ That is the commercial product.
 
 # 6. Future Offering lifecycle
 
-```text
+
 Merchant creates Future Offering
         │
         ▼
@@ -104,9 +102,7 @@ Anticipation Intelligence Fees
         │
         ▼
 Launch
-```
 
----
 
 # 7. Anticipation Intelligence Reports
 
@@ -123,7 +119,6 @@ A report contains:
 
 Example:
 
-```text
 Anticipation Intelligence Report
 
                      Goal     Achieved
@@ -134,13 +129,11 @@ Early Access        2,500       1,540
 Beta Applications   1,000         542
 Reservations           500         241
 Preorder Intent        250         128
-```
+
 
 The report demonstrates value.
 
 It does **not** determine payment.
-
----
 
 # 8. Merchant goals
 
@@ -155,7 +148,6 @@ Goals:
 
 Goals do **not** trigger invoices.
 
----
 
 # 9. Billing philosophy
 
@@ -169,45 +161,37 @@ Not on:
 
 This creates predictable SaaS revenue.
 
----
 
 # 10. Commercial fees
 
 Current fee taxonomy:
 
-```text
+
 Anticipation Intelligence Activation Fee
-```
+
 
 One-time fee when Market Anticipation Intelligence services are activated for a Future Offering.
 
 ---
 
-```text
 Anticipation Intelligence Fee
-```
 
 Recurring fee while Anticipation Intelligence services continue operating.
 
 ---
 
-```text
 Subscription Fee
-```
 
 Optional.
 
 Only applies when Plans and Subscriptions are enabled.
 
----
 
-```text
 Campaign Performance Fee
-```
+
 
 Applies only to Launch Campaign commercial models where appropriate.
 
----
 
 # 11. Plans
 
@@ -215,16 +199,13 @@ Plans are **not** an architectural dependency.
 
 Plans are a commercial packaging mechanism.
 
----
 
 When Plans are disabled:
 
-```text
 Merchant Account
         │
         ▼
 Platform Capabilities
-```
 
 Any merchant may use:
 

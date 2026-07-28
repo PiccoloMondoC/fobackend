@@ -205,12 +205,24 @@ func main() {
 	// decision — they only see EmailSender / SMSSender.
 	notificationServices := notificationservices.NewTestServices(logger)
 
-	// Initialize internal automation service (runs in background)
-	svc := &services.Service{ // use fully-qualified type
-		Logger:       logger,
-		Models:       &models,
-		Cfg:          &services.Config{DBTimeout: cfg.DBTimeout},
-		ShutdownChan: make(chan struct{}),
+	// Construct the validated internal service container before any readiness-
+	// critical internal workflow executes or HTTP traffic is accepted.
+	shutdownChan := make(chan struct{})
+
+	svc, err := services.NewService(
+		logger,
+		&models,
+		&services.Config{
+			DBTimeout: cfg.DBTimeout,
+		},
+		shutdownChan,
+	)
+	if err != nil {
+		logger.Fatal(
+			"internal service initialization failed",
+			"error",
+			err,
+		)
 	}
 
 	// Ensure SPINE merchant program plan seed data synchronously before the
@@ -251,14 +263,21 @@ func main() {
 			JWTIssuer:   cfg.JWTIssuer,
 			JWTAudience: cfg.JWTAudience,
 		},
-		Logger:       logger,
-		Models:       models,
-		Preloaded:    preloaded,
-		TokenService: tokenService,
-		EmailService: notificationServices.Email,
-		SMSService:   notificationServices.SMS,
+		Logger:           logger,
+		Models:           models,
+		Preloaded:        preloaded,
+		TokenService:     tokenService,
+		EmailService:     notificationServices.Email,
+		SMSService:       notificationServices.SMS,
+		InternalServices: svc,
 
 		publicRoutes: newEndpointRegistry(),
+	}
+
+	if app.InternalServices == nil {
+		logger.Fatal(
+			"application internal services are required",
+		)
 	}
 
 	// Start HTTP server

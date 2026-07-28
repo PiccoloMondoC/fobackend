@@ -48,6 +48,8 @@ import (
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
 	notificationservices "github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/notification_services"
+	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/services"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -55,12 +57,13 @@ import (
 const cfgTimeout = 10 * time.Second
 
 type Application struct {
-	Config       Config
-	Logger       *logging.Logger
-	Models       data.Models
-	Router       chi.Router
-	Preloaded    *PreloadedIDs
-	TokenService *auth.TokenService
+	Config           Config
+	Logger           *logging.Logger
+	Models           data.Models
+	Router           chi.Router
+	Preloaded        *PreloadedIDs
+	TokenService     *auth.TokenService
+	InternalServices *services.Service
 
 	// EmailService and SMSService depend on the root notification_services
 	// interfaces only. Handlers must not know or care whether the active

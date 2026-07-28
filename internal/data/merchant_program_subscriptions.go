@@ -452,17 +452,10 @@ func translateMerchantProgramSubscriptionWriteError(
 	}
 }
 
-// Insert inserts a new merchant program subscription.
-//
-// If subscription.ID is uuid.Nil, a new UUID is generated. Status defaults to
-// SubscriptionStatusPending and billing period defaults to BillingPeriodMonthly
-// when omitted.
-//
-// Insert does not cancel or mutate existing subscriptions. If the merchant
-// already has a non-deleted current subscription, the database partial unique
-// index rejects the write and this method returns a clear conflict error.
-func (m *MerchantProgramSubscriptionModel) Insert(
+func (m *MerchantProgramSubscriptionModel) insert(
 	ctx context.Context,
+	queryer merchantProgramSubscriptionQueryer,
+	functionName string,
 	subscription *MerchantProgramSubscription,
 ) error {
 	if err := m.validate(); err != nil {
@@ -474,7 +467,7 @@ func (m *MerchantProgramSubscriptionModel) Insert(
 
 	logger := m.Logger.
 		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("InsertMerchantProgramSubscription")
+		WithFunctionName(functionName)
 
 	if err := validateMerchantProgramSubscriptionForInsert(
 		subscription,
@@ -502,7 +495,7 @@ func (m *MerchantProgramSubscriptionModel) Insert(
 		RETURNING created_at, updated_at, deleted_at
 	`
 
-	err := m.DB.
+	err := queryer.
 		QueryRow(
 			ctx,
 			query,
@@ -559,6 +552,54 @@ func (m *MerchantProgramSubscriptionModel) Insert(
 	)
 
 	return nil
+}
+
+// Insert inserts a new merchant program subscription through the model's
+// database pool.
+//
+// If subscription.ID is uuid.Nil, a new UUID is generated. Status defaults to
+// SubscriptionStatusPending and billing period defaults to BillingPeriodMonthly
+// when omitted.
+//
+// Insert does not cancel or mutate existing subscriptions. If the merchant
+// already has a non-deleted current subscription, the database partial unique
+// index rejects the write and this method returns a clear conflict error.
+//
+// Insert alone is not atomic with a corresponding lifecycle event. Workflows
+// requiring creation-plus-history atomicity must use InsertTx inside the same
+// transaction as the corresponding created event insertion.
+func (m *MerchantProgramSubscriptionModel) Insert(
+	ctx context.Context,
+	subscription *MerchantProgramSubscription,
+) error {
+	return m.insert(
+		ctx,
+		m.DB,
+		"InsertMerchantProgramSubscription",
+		subscription,
+	)
+}
+
+// InsertTx inserts a new merchant program subscription through tx.
+//
+// InsertTx does not begin, commit, or roll back tx. The coordinating service
+// owns transaction lifecycle and must use the same transaction for the
+// corresponding created lifecycle event.
+func (m *MerchantProgramSubscriptionModel) InsertTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	subscription *MerchantProgramSubscription,
+) error {
+	if err := validateMerchantProgramSubscriptionTx(tx); err != nil {
+		return err
+	}
+
+	return m.insert(
+		ctx,
+		tx,
+		"InsertMerchantProgramSubscriptionTx",
+		subscription,
+	)
 }
 
 // GetByID retrieves a non-deleted merchant program subscription by ID.
@@ -626,6 +667,70 @@ func (m *MerchantProgramSubscriptionModel) GetByID(
 	)
 
 	return &subscription, nil
+}
+
+// GetByIDForUpdateTx retrieves and locks one non-deleted merchant program
+// subscription through tx.
+//
+// GetByIDForUpdateTx returns nil, nil when the subscription does not exist or
+// is soft-deleted. The row lock is held until the caller commits or rolls back
+// tx. This method does not own the transaction lifecycle.
+func (m *MerchantProgramSubscriptionModel) GetByIDForUpdateTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+) (*MerchantProgramSubscription, error) {
+	if err := m.validate(); err != nil {
+		return nil, err
+	}
+	if tx == nil {
+		return nil, errors.New(
+			"merchant program subscription transaction is required",
+		)
+	}
+	if err := validateMerchantProgramSubscriptionID(id); err != nil {
+		return nil, err
+	}
+
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(
+			"GetMerchantProgramSubscriptionByIDForUpdateTx",
+		)
+
+	query := `
+		SELECT ` + merchantProgramSubscriptionSelectColumns + `
+		FROM merchant_program_subscriptions
+		WHERE id = $1
+		  AND deleted_at IS NULL
+		FOR UPDATE
+	`
+
+	subscription := &MerchantProgramSubscription{}
+
+	if err := scanMerchantProgramSubscription(
+		tx.QueryRow(ctx, query, id),
+		subscription,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		logger.Error(
+			"Get merchant program subscription for update failed",
+			err,
+			"subscription_id",
+			id,
+		)
+
+		return nil, fmt.Errorf(
+			"get merchant program subscription %s for update: %w",
+			id,
+			err,
+		)
+	}
+
+	return subscription, nil
 }
 
 // GetActiveByMerchantID retrieves a merchant's active, non-deleted merchant

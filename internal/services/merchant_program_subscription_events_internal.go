@@ -11,18 +11,31 @@
 //	  Merchant program subscription lifecycle events preserve the durable,
 //	  append-only history of commercially meaningful subscription actions.
 //
+//	  Merchant program subscriptions are optional commercial packaging
+//	  infrastructure beneath the Future Offering Platform and Monetization
+//	  Layer. This capability remains compiled and production-ready regardless
+//	  of whether subscriptions are administratively enabled or disabled.
+//
 //	  Canonical current subscription state remains owned by
 //	  merchant_program_subscriptions. This service provides the transaction-
-//	  compatible event-recording seam required by subscription lifecycle
-//	  workflows so the canonical subscription mutation and corresponding event
-//	  insertion can eventually occur atomically.
+//	  compatible event-recording seam used by coordinating subscription
+//	  lifecycle workflows so the canonical subscription mutation and its
+//	  corresponding immutable event can be committed atomically.
 //
-//	  This file does not begin, commit, or roll back transactions. Transaction
-//	  ownership belongs to the coordinating subscription lifecycle workflow.
+//	  The coordinating subscription lifecycle workflow owns:
+//	    - transaction creation and completion;
+//	    - canonical subscription mutation;
+//	    - prior-state evaluation;
+//	    - activated-versus-resumed semantics;
+//	    - authorization and commercial-policy evaluation.
 //
-//	  This file does not independently mutate subscription state, expose event
-//	  creation through HTTP, perform billing, publish outbox events, implement
-//	  authorization policy, or provide asynchronous event insertion.
+//	  This service owns only validated, transaction-required lifecycle-event
+//	  recording.
+//
+//	  This file does not begin, commit, or roll back transactions. It does not
+//	  independently mutate subscription state, expose event creation through
+//	  HTTP, perform billing, publish outbox events, implement authorization or
+//	  commercial policy, or provide asynchronous event insertion.
 //
 // SPINE Rule:
 //
@@ -34,10 +47,14 @@
 //	Preserve canonical event-type validation.
 //	Preserve actor provenance where available.
 //	Preserve DB-owned event timestamps.
+//	Preserve operation independently of commercial enablement policy.
 //	Never provide a non-transactional lifecycle-transition event workflow.
 //	Never begin, commit, or roll back a caller-owned transaction.
+//	Never require a database pool for caller-supplied transaction execution.
+//	Never impose an independent timeout on caller-owned transaction work.
 //	Never log lifecycle-event note contents.
 //	Never expose update, delete, restore, purge, or upsert behavior.
+//	Never move canonical lifecycle-event insertion to asynchronous processing.
 //	Block deployment if this file breaks transaction-compatible lifecycle-event
 //	recording or permits subscription state and event history to diverge.
 package services
@@ -46,7 +63,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
 
@@ -54,16 +70,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// MerchantProgramSubscriptionEventRecordInput contains the canonical input
-// required to record one immutable merchant program subscription lifecycle
-// event.
+// MerchantProgramSubscriptionEventRecordInput contains the canonical workflow
+// input required to record one immutable merchant program subscription
+// lifecycle event.
 //
-// The coordinating subscription workflow supplies SubscriptionID and EventType.
+// The coordinating subscription lifecycle workflow supplies SubscriptionID and
+// EventType after determining the correct lifecycle action from canonical
+// subscription state.
+//
 // PerformedBy is nil for platform-originated actions or when no retained user
 // actor can properly be attributed.
 //
-// Note is optional explanatory context. Its contents must never be written to
-// application logs, audit metadata, or error messages.
+// Note is optional explanatory context. The data layer owns its canonical
+// persistence normalization. Note contents must never be written to application
+// logs, audit metadata, metrics, traces, or error messages.
 type MerchantProgramSubscriptionEventRecordInput struct {
 	SubscriptionID uuid.UUID
 	EventType      data.MerchantProgramSubscriptionEventType
@@ -71,74 +91,56 @@ type MerchantProgramSubscriptionEventRecordInput struct {
 	PerformedBy    *uuid.UUID
 }
 
-// validateMerchantProgramSubscriptionEventService validates the dependency
-// container required for transaction-compatible lifecycle-event recording.
-func validateMerchantProgramSubscriptionEventService(
+// validateMerchantProgramSubscriptionEventTxService validates only the
+// dependencies required for transaction-backed lifecycle-event recording.
+//
+// This path deliberately does not require:
+//
+//   - Service.Cfg;
+//   - Service.Cfg.DBTimeout; or
+//   - MerchantProgramSubscriptionEvent.DB.
+//
+// The caller owns the transaction and its context lifetime. Persistence occurs
+// exclusively through the supplied pgx.Tx. The event model's logger remains
+// required because its InsertTx method performs model-level observability and
+// validation.
+func validateMerchantProgramSubscriptionEventTxService(
 	s *Service,
 ) error {
 	if s == nil {
-		return errors.New(
-			"merchant program subscription event service is required",
+		return fmt.Errorf(
+			"%w: merchant program subscription event service is nil",
+			ErrInvalidServiceConfiguration,
 		)
 	}
 	if s.Logger == nil {
-		return errors.New(
-			"merchant program subscription event service logger is required",
+		return fmt.Errorf(
+			"%w: merchant program subscription event service logger is nil",
+			ErrInvalidServiceConfiguration,
 		)
 	}
 	if s.Models == nil {
-		return errors.New(
-			"merchant program subscription event service models are required",
-		)
-	}
-	if s.Cfg == nil {
-		return errors.New(
-			"merchant program subscription event service config is required",
-		)
-	}
-	if s.Cfg.DBTimeout <= 0 {
-		return errors.New(
-			"merchant program subscription event service DB timeout must be positive",
-		)
-	}
-	if s.Models.MerchantProgramSubscriptionEvent.DB == nil {
-		return errors.New(
-			"merchant program subscription event model database pool is required",
+		return fmt.Errorf(
+			"%w: merchant program subscription event service models are nil",
+			ErrInvalidServiceConfiguration,
 		)
 	}
 	if s.Models.MerchantProgramSubscriptionEvent.Logger == nil {
-		return errors.New(
-			"merchant program subscription event model logger is required",
+		return fmt.Errorf(
+			"%w: merchant program subscription event model logger is nil",
+			ErrInvalidServiceConfiguration,
 		)
 	}
 
 	return nil
 }
 
-// normalizeMerchantProgramSubscriptionEventRecordNote trims an optional note.
-//
-// Blank notes are normalized to nil. The canonical normalized value returned
-// here is the value passed to persistence.
-func normalizeMerchantProgramSubscriptionEventRecordNote(
-	note *string,
-) *string {
-	if note == nil {
-		return nil
-	}
-
-	normalized := strings.TrimSpace(*note)
-	if normalized == "" {
-		return nil
-	}
-
-	return &normalized
-}
-
 // validateMerchantProgramSubscriptionEventRecordInput validates and
-// canonicalizes lifecycle-event input.
+// canonicalizes workflow-owned lifecycle-event input.
 //
-// The returned value, rather than the caller's original input, must be used for
-// persistence so validation and writing operate on the same canonical values.
+// The service owns validation of workflow identifiers and the controlled event
+// vocabulary. The data model remains the canonical owner of persistence-level
+// normalization, including optional note normalization.
 func validateMerchantProgramSubscriptionEventRecordInput(
 	input MerchantProgramSubscriptionEventRecordInput,
 ) (MerchantProgramSubscriptionEventRecordInput, error) {
@@ -172,44 +174,49 @@ func validateMerchantProgramSubscriptionEventRecordInput(
 			)
 	}
 
-	input.Note =
-		normalizeMerchantProgramSubscriptionEventRecordNote(
-			input.Note,
-		)
-
 	return input, nil
 }
 
 // RecordMerchantProgramSubscriptionEventTxInternal records one immutable
 // subscription lifecycle event through an existing transaction.
 //
-// This method deliberately requires pgx.Tx. It must be called by a coordinating
-// subscription lifecycle workflow that uses the same transaction for:
+// The method must be called by a coordinating subscription lifecycle workflow
+// that uses the same transaction for:
 //
 //  1. the canonical merchant_program_subscriptions mutation; and
 //  2. the corresponding merchant_program_subscription_events insertion.
 //
-// This method does not begin, commit, or roll back tx. The caller owns the
-// transaction lifecycle.
+// Transaction-compatible subscription mutation methods already exist in the
+// subscription data model. The coordinating lifecycle workflow must select the
+// correct event from the canonical prior state. In particular:
 //
-// Until transaction-compatible subscription mutation methods are added, this
-// method is the authoritative event-side integration seam but must not be used
-// to represent a lifecycle transition whose subscription mutation occurs
-// outside the same transaction.
+//   - initial or pre-active activation records activated;
+//   - paused-to-active records resumed;
+//   - suspended-to-active records resumed.
+//
+// This method deliberately does not inspect or mutate subscription state. It
+// trusts the authorized coordinating workflow to provide the lifecycle event
+// that corresponds to the mutation performed in the same transaction.
+//
+// RecordMerchantProgramSubscriptionEventTxInternal does not begin, commit, or
+// roll back tx. The caller owns transaction lifecycle and context lifetime.
+//
+// This method must not be used as a general-purpose event writer or to represent
+// a lifecycle transition whose canonical subscription mutation occurs outside
+// the same transaction.
 func (s *Service) RecordMerchantProgramSubscriptionEventTxInternal(
 	ctx context.Context,
 	tx pgx.Tx,
 	input MerchantProgramSubscriptionEventRecordInput,
 ) (*data.MerchantProgramSubscriptionEvent, error) {
-	if err :=
-		validateMerchantProgramSubscriptionEventService(s); err != nil {
+	if ctx == nil {
+		return nil, ErrNilContext
+	}
+
+	if err := validateMerchantProgramSubscriptionEventTxService(s); err != nil {
 		return nil, err
 	}
-	if ctx == nil {
-		return nil, errors.New(
-			"merchant program subscription event context is required",
-		)
-	}
+
 	if tx == nil {
 		return nil, errors.New(
 			"merchant program subscription event transaction is required",

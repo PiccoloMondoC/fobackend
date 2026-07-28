@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "rewrite helper files container.go, decimals.go, errors.go, notification-jobs.go, offer-description.go, offer-fraud.go, pagination.go, status-resolution.go sevices layer"
+git commit -m "review and refactor merchant_program_subscription_events.go data and handler layers; merchant_program_subscription_events_internal.go and merchant_program_subscriptions_lifecycle.go service layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -51,3 +51,10 @@ relationships Commerce model
        Angular Frontend Architecture
  Routes, components, services, state,
  APIs, permissions and design system
+
+
+
+BEG §18.6A requires engineering to implement complete, production-ready platform capabilities, and define the safe operating boundaries while Administration governs their commercial and operational behavior through configuration within those boundaries. Engineering must implement capability—not operational policy. Hard-coded commercial, operational, or policy gating is therefore inappropriate in any layer unless it enforces invariant system safety, security, or data integrity. Where governing documents conflict, SBD and MPA supersede the older MCBS.
+
+
+ Engineering builds complete capabilities and defines the safe operating boundaries. Administration configures how those capabilities are commercially and operationally used within those boundaries.

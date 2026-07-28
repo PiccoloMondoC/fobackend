@@ -987,6 +987,15 @@ const (
 		('cancel_merchant_program_subscription', 'Allows cancelling merchant program subscriptions'),
 		('soft_delete_merchant_program_subscription', 'Allows soft-deleting merchant program subscriptions'),
 		('restore_merchant_program_subscription', 'Allows restoring soft-deleted merchant program subscriptions'),
+		-- Merchant Program Subscription Events
+		(
+			'read_merchant_program_subscription_event',
+			'Allows reading one immutable merchant program subscription lifecycle event'
+		),
+		(
+			'list_merchant_program_subscription_events',
+			'Allows listing immutable lifecycle events for a merchant program subscription'
+		),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Allows creating merchant-owned payment method references'),
 		('read_merchant_payment_method', 'Allows reading a merchant-owned payment method reference'),
@@ -1179,6 +1188,10 @@ const (
 		),
 		('merchant_program_plan', 'Merchant program plan entity'),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
+		(
+			'merchant_program_subscription_event',
+			'Immutable merchant program subscription lifecycle event entity'
+		),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
@@ -1451,6 +1464,19 @@ const (
 		('cancel_merchant_program_subscription', 'Cancel a merchant program subscription'),
 		('soft_delete_merchant_program_subscription', 'Soft-delete a merchant program subscription'),
 		('restore_merchant_program_subscription', 'Restore a merchant program subscription'),
+		-- Merchant Program Subscription Events
+		(
+			'read_merchant_program_subscription_event',
+			'Read one immutable merchant program subscription lifecycle event'
+		),
+		(
+			'list_merchant_program_subscription_events',
+			'List immutable lifecycle events for a merchant program subscription'
+		),
+		(
+			'read_latest_merchant_program_subscription_event',
+			'Read the latest immutable lifecycle event for a merchant program subscription'
+		),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Create a merchant payment method reference'),
 		('read_merchant_payment_method', 'Read a merchant payment method reference'),

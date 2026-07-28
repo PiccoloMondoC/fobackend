@@ -12,16 +12,23 @@
 //	  append-only history of commercially meaningful merchant program
 //	  subscription lifecycle actions.
 //
-//	  Merchant program subscriptions determine merchant plan relationships
-//	  beneath the Future Offering Platform and Monetization Layer. Their
-//	  lifecycle history is required for merchant support, entitlement
-//	  investigation, subscription administration, commercial traceability,
-//	  and later billing reconciliation.
+//	  Merchant program subscriptions are optional commercial packaging
+//	  infrastructure beneath the Future Offering Platform and Monetization
+//	  Layer. This capability remains compiled and production-ready regardless
+//	  of whether subscriptions are administratively enabled or disabled.
+//
+//	  When subscriptions are enabled, their lifecycle history supports merchant
+//	  assistance, entitlement investigation, subscription administration,
+//	  commercial traceability, and later billing reconciliation.
 //
 //	  Canonical current subscription state remains in
 //	  merchant_program_subscriptions. This file records historical lifecycle
 //	  facts and must not become an independently mutable second source of
 //	  subscription state.
+//
+//	  The controlled event vocabulary is an engineering-owned lifecycle
+//	  invariant. Whether subscriptions are enabled and how they are packaged
+//	  commercially remain configuration and Admin policy.
 //
 //	  This file is not billing-ledger logic, payment processing, invoice
 //	  handling, fee calculation, audit-log persistence, outbox publication,
@@ -38,6 +45,7 @@
 //	Preserve DB-owned event timestamps.
 //	Preserve deterministic subscription timeline ordering.
 //	Preserve transaction-compatible insertion.
+//	Preserve centralized normalization, scanning, and PostgreSQL error handling.
 //	Never expose update, upsert, soft-delete, restore, or hard-delete methods.
 //	Never log event-note contents.
 //	Block deployment if this file breaks build, event persistence,
@@ -55,7 +63,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -74,7 +81,7 @@ const (
 	MerchantProgramSubscriptionEventCreated MerchantProgramSubscriptionEventType = "created"
 
 	// MerchantProgramSubscriptionEventActivated means the subscription entered
-	// active service.
+	// active service for the first time or from a non-resumable pre-active state.
 	MerchantProgramSubscriptionEventActivated MerchantProgramSubscriptionEventType = "activated"
 
 	// MerchantProgramSubscriptionEventPlanChanged means the subscription's
@@ -85,7 +92,8 @@ const (
 	MerchantProgramSubscriptionEventPaused MerchantProgramSubscriptionEventType = "paused"
 
 	// MerchantProgramSubscriptionEventResumed means a paused or suspended
-	// subscription returned to active service.
+	// subscription returned to active service. The coordinating service owns
+	// the activated-versus-resumed decision from the canonical prior state.
 	MerchantProgramSubscriptionEventResumed MerchantProgramSubscriptionEventType = "resumed"
 
 	// MerchantProgramSubscriptionEventCancelled means the subscription was
@@ -136,48 +144,45 @@ type MerchantProgramSubscriptionEventModel struct {
 	Logger *logging.Logger
 }
 
-// merchantProgramSubscriptionEventQueryer is the minimal execution contract
-// needed by event insertion.
+// merchantProgramSubscriptionEventQuerier is the minimal execution contract
+// required for event insertion.
 //
 // Both *pgxpool.Pool and pgx.Tx satisfy this contract. It allows a coordinating
 // service to insert a lifecycle event in the same transaction as its canonical
 // subscription mutation without giving this model transaction ownership.
-type merchantProgramSubscriptionEventQueryer interface {
+type merchantProgramSubscriptionEventQuerier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-func (m *MerchantProgramSubscriptionEventModel) validate() error {
+func (m *MerchantProgramSubscriptionEventModel) validateBase() error {
 	if m == nil {
 		return errors.New("merchant program subscription event model is required")
 	}
-	if m.DB == nil {
-		return errors.New("merchant program subscription event model database pool is required")
-	}
 	if m.Logger == nil {
-		return errors.New("merchant program subscription event model logger is required")
+		return errors.New(
+			"merchant program subscription event model logger is required",
+		)
+	}
+	return nil
+}
+
+func (m *MerchantProgramSubscriptionEventModel) validatePool() error {
+	if err := m.validateBase(); err != nil {
+		return err
+	}
+	if m.DB == nil {
+		return errors.New(
+			"merchant program subscription event model database pool is required",
+		)
 	}
 	return nil
 }
 
 func scanMerchantProgramSubscriptionEvent(
-	row pgx.Row,
+	row scannableRow,
 	event *MerchantProgramSubscriptionEvent,
 ) error {
 	return row.Scan(
-		&event.ID,
-		&event.SubscriptionID,
-		&event.EventType,
-		&event.Note,
-		&event.PerformedBy,
-		&event.CreatedAt,
-	)
-}
-
-func scanMerchantProgramSubscriptionEventFromRows(
-	rows pgx.Rows,
-	event *MerchantProgramSubscriptionEvent,
-) error {
-	return rows.Scan(
 		&event.ID,
 		&event.SubscriptionID,
 		&event.EventType,
@@ -193,7 +198,7 @@ func NormalizeMerchantProgramSubscriptionEventType(
 	eventType MerchantProgramSubscriptionEventType,
 ) MerchantProgramSubscriptionEventType {
 	return MerchantProgramSubscriptionEventType(
-		strings.ToLower(strings.TrimSpace(string(eventType))),
+		normalizeIdentifier(string(eventType)),
 	)
 }
 
@@ -230,19 +235,6 @@ func validateMerchantProgramSubscriptionEventType(
 	return eventType, nil
 }
 
-func normalizeMerchantProgramSubscriptionEventNote(note *string) *string {
-	if note == nil {
-		return nil
-	}
-
-	normalized := strings.TrimSpace(*note)
-	if normalized == "" {
-		return nil
-	}
-
-	return &normalized
-}
-
 func validateMerchantProgramSubscriptionEventForInsert(
 	event *MerchantProgramSubscriptionEvent,
 ) error {
@@ -255,12 +247,15 @@ func validateMerchantProgramSubscriptionEventForInsert(
 		)
 	}
 
-	eventType, err := validateMerchantProgramSubscriptionEventType(event.EventType)
+	eventType, err := validateMerchantProgramSubscriptionEventType(
+		event.EventType,
+	)
 	if err != nil {
 		return err
 	}
+
 	event.EventType = eventType
-	event.Note = normalizeMerchantProgramSubscriptionEventNote(event.Note)
+	event.Note = normalizeOptionalString(event.Note)
 
 	if event.PerformedBy != nil && *event.PerformedBy == uuid.Nil {
 		return errors.New(
@@ -289,7 +284,10 @@ func validateMerchantProgramSubscriptionEventSubscriptionID(
 	return nil
 }
 
-func validateMerchantProgramSubscriptionEventPagination(limit, offset int) error {
+func validateMerchantProgramSubscriptionEventPagination(
+	limit int,
+	offset int,
+) error {
 	if limit <= 0 || limit > 100 {
 		return errors.New("limit must be between 1 and 100")
 	}
@@ -304,21 +302,18 @@ func translateMerchantProgramSubscriptionEventWriteError(
 	subscriptionID uuid.UUID,
 	performedBy *uuid.UUID,
 ) error {
-	var pgErr *pgconn.PgError
-	if !errors.As(err, &pgErr) {
-		return err
-	}
+	switch {
+	case IsForeignKeyViolation(err):
+		constraintName := PgErrorConstraintName(err)
 
-	switch pgErr.Code {
-	case "23503":
 		switch {
-		case strings.Contains(pgErr.ConstraintName, "subscription_id"):
+		case strings.Contains(constraintName, "subscription_id"):
 			return fmt.Errorf(
 				"merchant program subscription event references missing subscription %s",
 				subscriptionID,
 			)
 
-		case strings.Contains(pgErr.ConstraintName, "performed_by"):
+		case strings.Contains(constraintName, "performed_by"):
 			if performedBy == nil {
 				return errors.New(
 					"merchant program subscription event references a missing user",
@@ -335,10 +330,12 @@ func translateMerchantProgramSubscriptionEventWriteError(
 			)
 		}
 
-	case "23505":
-		return errors.New("merchant program subscription event already exists")
+	case IsUniqueViolation(err):
+		return errors.New(
+			"merchant program subscription event already exists",
+		)
 
-	case "23514":
+	case IsCheckViolation(err):
 		return errors.New(
 			"merchant program subscription event contains an invalid event type",
 		)
@@ -350,10 +347,10 @@ func translateMerchantProgramSubscriptionEventWriteError(
 
 func insertMerchantProgramSubscriptionEvent(
 	ctx context.Context,
-	queryer merchantProgramSubscriptionEventQueryer,
+	querier merchantProgramSubscriptionEventQuerier,
 	event *MerchantProgramSubscriptionEvent,
 ) error {
-	query := `
+	const query = `
 		INSERT INTO merchant_program_subscription_events (
 			id,
 			subscription_id,
@@ -365,7 +362,7 @@ func insertMerchantProgramSubscriptionEvent(
 		RETURNING created_at
 	`
 
-	return queryer.QueryRow(
+	return querier.QueryRow(
 		ctx,
 		query,
 		event.ID,
@@ -376,9 +373,29 @@ func insertMerchantProgramSubscriptionEvent(
 	).Scan(&event.CreatedAt)
 }
 
+func merchantProgramSubscriptionEventLogFields(
+	event *MerchantProgramSubscriptionEvent,
+) []any {
+	fields := []any{
+		"event_id", event.ID,
+		"subscription_id", event.SubscriptionID,
+		"event_type", event.EventType,
+	}
+
+	if event.PerformedBy != nil {
+		fields = append(
+			fields,
+			"performed_by",
+			*event.PerformedBy,
+		)
+	}
+
+	return fields
+}
+
 func (m *MerchantProgramSubscriptionEventModel) insert(
 	ctx context.Context,
-	queryer merchantProgramSubscriptionEventQueryer,
+	querier merchantProgramSubscriptionEventQuerier,
 	functionName string,
 	event *MerchantProgramSubscriptionEvent,
 ) error {
@@ -398,7 +415,7 @@ func (m *MerchantProgramSubscriptionEventModel) insert(
 		event.ID = uuid.New()
 	}
 
-	err := insertMerchantProgramSubscriptionEvent(ctx, queryer, event)
+	err := insertMerchantProgramSubscriptionEvent(ctx, querier, event)
 	if err != nil {
 		err = translateMerchantProgramSubscriptionEventWriteError(
 			err,
@@ -406,44 +423,23 @@ func (m *MerchantProgramSubscriptionEventModel) insert(
 			event.PerformedBy,
 		)
 
-		logFields := []any{
-			"error", err,
-			"event_id", event.ID,
-			"subscription_id", event.SubscriptionID,
-			"event_type", event.EventType,
-		}
-		if event.PerformedBy != nil {
-			logFields = append(
-				logFields,
-				"performed_by",
-				*event.PerformedBy,
-			)
-		}
+		errorFields := append(
+			[]any{err},
+			merchantProgramSubscriptionEventLogFields(event)...,
+		)
 
 		logger.Error(
 			"Insert merchant program subscription event failed",
-			logFields...,
+			errorFields...,
 		)
 		return err
 	}
 
-	logFields := []any{
-		"event_id", event.ID,
-		"subscription_id", event.SubscriptionID,
-		"event_type", event.EventType,
-	}
-	if event.PerformedBy != nil {
-		logFields = append(
-			logFields,
-			"performed_by",
-			*event.PerformedBy,
-		)
-	}
-
 	logger.Info(
 		"Insert merchant program subscription event successful",
-		logFields...,
+		merchantProgramSubscriptionEventLogFields(event)...,
 	)
+
 	return nil
 }
 
@@ -460,7 +456,7 @@ func (m *MerchantProgramSubscriptionEventModel) Insert(
 	ctx context.Context,
 	event *MerchantProgramSubscriptionEvent,
 ) error {
-	if err := m.validate(); err != nil {
+	if err := m.validatePool(); err != nil {
 		return err
 	}
 
@@ -475,6 +471,10 @@ func (m *MerchantProgramSubscriptionEventModel) Insert(
 // InsertTx inserts an immutable merchant program subscription lifecycle event
 // through tx.
 //
+// InsertTx validates only the model dependencies needed by the transaction
+// path. It does not require the model database pool because all persistence is
+// performed through the caller-supplied transaction.
+//
 // InsertTx does not begin, commit, or roll back tx. The coordinating service
 // owns transaction lifecycle and must use the same transaction for the
 // canonical subscription mutation and its corresponding lifecycle event.
@@ -483,7 +483,7 @@ func (m *MerchantProgramSubscriptionEventModel) InsertTx(
 	tx pgx.Tx,
 	event *MerchantProgramSubscriptionEvent,
 ) error {
-	if err := m.validate(); err != nil {
+	if err := m.validateBase(); err != nil {
 		return err
 	}
 	if tx == nil {
@@ -507,7 +507,7 @@ func (m *MerchantProgramSubscriptionEventModel) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
 ) (*MerchantProgramSubscriptionEvent, error) {
-	if err := m.validate(); err != nil {
+	if err := m.validatePool(); err != nil {
 		return nil, err
 	}
 
@@ -557,6 +557,7 @@ func (m *MerchantProgramSubscriptionEventModel) GetByID(
 		"subscription_id", event.SubscriptionID,
 		"event_type", event.EventType,
 	)
+
 	return &event, nil
 }
 
@@ -571,7 +572,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionID(
 	limit int,
 	offset int,
 ) ([]*MerchantProgramSubscriptionEvent, error) {
-	if err := m.validate(); err != nil {
+	if err := m.validatePool(); err != nil {
 		return nil, err
 	}
 
@@ -590,6 +591,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionID(
 		logger.Error("Validation failed", err)
 		return nil, err
 	}
+
 	if err := validateMerchantProgramSubscriptionEventPagination(
 		limit,
 		offset,
@@ -626,7 +628,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionID(
 	var events []*MerchantProgramSubscriptionEvent
 	for rows.Next() {
 		var event MerchantProgramSubscriptionEvent
-		if err := scanMerchantProgramSubscriptionEventFromRows(
+		if err := scanMerchantProgramSubscriptionEvent(
 			rows,
 			&event,
 		); err != nil {
@@ -637,6 +639,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionID(
 			)
 			return nil, err
 		}
+
 		events = append(events, &event)
 	}
 
@@ -656,6 +659,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionID(
 		"offset", offset,
 		"count", len(events),
 	)
+
 	return events, nil
 }
 
@@ -671,7 +675,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionIDAndType(
 	limit int,
 	offset int,
 ) ([]*MerchantProgramSubscriptionEvent, error) {
-	if err := m.validate(); err != nil {
+	if err := m.validatePool(); err != nil {
 		return nil, err
 	}
 
@@ -736,7 +740,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionIDAndType(
 	var events []*MerchantProgramSubscriptionEvent
 	for rows.Next() {
 		var event MerchantProgramSubscriptionEvent
-		if err := scanMerchantProgramSubscriptionEventFromRows(
+		if err := scanMerchantProgramSubscriptionEvent(
 			rows,
 			&event,
 		); err != nil {
@@ -748,6 +752,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionIDAndType(
 			)
 			return nil, err
 		}
+
 		events = append(events, &event)
 	}
 
@@ -769,6 +774,7 @@ func (m *MerchantProgramSubscriptionEventModel) ListBySubscriptionIDAndType(
 		"offset", offset,
 		"count", len(events),
 	)
+
 	return events, nil
 }
 
@@ -781,7 +787,7 @@ func (m *MerchantProgramSubscriptionEventModel) GetLatestBySubscriptionID(
 	ctx context.Context,
 	subscriptionID uuid.UUID,
 ) (*MerchantProgramSubscriptionEvent, error) {
-	if err := m.validate(); err != nil {
+	if err := m.validatePool(); err != nil {
 		return nil, err
 	}
 
@@ -837,6 +843,7 @@ func (m *MerchantProgramSubscriptionEventModel) GetLatestBySubscriptionID(
 		"subscription_id", event.SubscriptionID,
 		"event_type", event.EventType,
 	)
+
 	return &event, nil
 }
 
@@ -845,7 +852,7 @@ func (m *MerchantProgramSubscriptionEventModel) Exists(
 	ctx context.Context,
 	id uuid.UUID,
 ) (bool, error) {
-	if err := m.validate(); err != nil {
+	if err := m.validatePool(); err != nil {
 		return false, err
 	}
 
@@ -870,8 +877,7 @@ func (m *MerchantProgramSubscriptionEventModel) Exists(
 	`
 
 	var exists bool
-	err := m.DB.QueryRow(ctx, query, id).Scan(&exists)
-	if err != nil {
+	if err := m.DB.QueryRow(ctx, query, id).Scan(&exists); err != nil {
 		logger.Error(
 			"Merchant program subscription event exists query failed",
 			err,

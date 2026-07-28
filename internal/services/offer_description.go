@@ -1,7 +1,7 @@
 // Package services contains trusted internal service composition,
 // automation support, moderation helpers, and shared internal workflow logic.
 //
-// sdworkspace/sdbackend/internal/services/internal-services/offer-description.go
+// sdworkspace/sdbackend/internal/services/offer_description.go
 //
 // GTM:
 //

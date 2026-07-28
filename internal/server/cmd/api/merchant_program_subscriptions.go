@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
+	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/services"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -61,34 +62,71 @@ const (
 	actionRestoreMerchantProgramSubscription         = "restore_merchant_program_subscription"
 )
 
-// merchantProgramSubscriptionHTTPStatus maps data-layer validation and lifecycle
-// errors to HTTP status codes. Keep data-layer not-found wording aligned with
-// this mapper unless/until merchant program subscription sentinels are added.
+// merchantProgramSubscriptionHTTPStatus maps canonical validation,
+// persistence, and lifecycle errors to stable HTTP status classes.
+//
+// Lifecycle conflicts are classified through service sentinels. Legacy
+// persistence errors that do not yet expose sentinels remain mapped through
+// their established stable wording.
 func merchantProgramSubscriptionHTTPStatus(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
 
+	switch {
+	case errors.Is(
+		err,
+		services.ErrInvalidMerchantProgramSubscriptionTransition,
+	),
+		errors.Is(
+			err,
+			services.ErrMerchantProgramSubscriptionPlanUnchanged,
+		):
+		return http.StatusConflict
+
+	case errors.Is(
+		err,
+		services.ErrUnsupportedMerchantProgramSubscriptionTransition,
+	):
+		return http.StatusBadRequest
+	}
+
 	msg := strings.ToLower(err.Error())
 
 	switch {
-	case strings.Contains(msg, "already has a current merchant program subscription"),
+	case strings.Contains(
+		msg,
+		"already has a current merchant program subscription",
+	),
 		strings.Contains(msg, "already exists"):
 		return http.StatusConflict
+
 	case strings.Contains(msg, "not found"),
-		strings.Contains(msg, "no active merchant program subscription"),
-		strings.Contains(msg, "no current merchant program subscription"),
-		strings.Contains(msg, "no soft-deleted merchant program subscription"):
+		strings.Contains(
+			msg,
+			"no active merchant program subscription",
+		),
+		strings.Contains(
+			msg,
+			"no current merchant program subscription",
+		),
+		strings.Contains(
+			msg,
+			"no soft-deleted merchant program subscription",
+		):
 		return http.StatusNotFound
+
 	case strings.Contains(msg, "references missing"),
 		strings.Contains(msg, "references a missing"):
 		return http.StatusUnprocessableEntity
+
 	case strings.Contains(msg, "invalid"),
 		strings.Contains(msg, "required"),
 		strings.Contains(msg, "must be"),
 		strings.Contains(msg, "limit"),
 		strings.Contains(msg, "offset"):
 		return http.StatusBadRequest
+
 	default:
 		return http.StatusInternalServerError
 	}
@@ -276,11 +314,35 @@ func (app *Application) CreateMerchantProgramSubscriptionHandler(w http.Response
 		CancelledAt:   cancelledAt,
 	}
 
-	if err := app.Models.MerchantProgramSubscription.Insert(ctx, subscription); err != nil {
-		logger.Error("Create merchant program subscription failed", "error", err)
-		app.respondWithError(w, err, merchantProgramSubscriptionHTTPStatus(err))
+	createdSubscription, err :=
+		app.InternalServices.
+			CreateMerchantProgramSubscriptionInternal(
+				ctx,
+				services.MerchantProgramSubscriptionCreateInput{
+					Subscription: subscription,
+					PerformedBy:  userID,
+				},
+			)
+	if err != nil {
+		logger.Error(
+			"Create merchant program subscription failed",
+			"merchant_id",
+			input.MerchantID,
+			"plan_id",
+			input.PlanID,
+			"error",
+			err,
+		)
+
+		app.respondWithError(
+			w,
+			err,
+			merchantProgramSubscriptionHTTPStatus(err),
+		)
 		return
 	}
+
+	subscription = createdSubscription
 
 	if err := app.auditMerchantProgramSubscription(ctx, userID, actionCreateMerchantProgramSubscription, "Create a merchant program subscription", subscription.ID.String()); err != nil {
 		logger.Warn("Audit logging failed", "subscription_id", subscription.ID, "error", err)
@@ -627,7 +689,15 @@ func (app *Application) UpdateMerchantProgramSubscriptionPlanHandler(w http.Resp
 		return
 	}
 
-	if err := app.Models.MerchantProgramSubscription.UpdatePlan(ctx, subscriptionID, input.PlanID); err != nil {
+	if err := app.InternalServices.
+		ChangeMerchantProgramSubscriptionPlanInternal(
+			ctx,
+			services.MerchantProgramSubscriptionPlanChangeInput{
+				SubscriptionID: subscriptionID,
+				PlanID:         input.PlanID,
+				PerformedBy:    userID,
+			},
+		); err != nil {
 		logger.Error("Update merchant program subscription plan failed", "subscription_id", subscriptionID, "plan_id", input.PlanID, "error", err)
 		app.respondWithError(w, err, merchantProgramSubscriptionHTTPStatus(err))
 		return
@@ -657,7 +727,7 @@ func (app *Application) transitionMerchantProgramSubscriptionStatus(
 	actionName string,
 	actionDescription string,
 	successMessage string,
-	modelFn func(context.Context, uuid.UUID) error,
+	transition services.MerchantProgramSubscriptionTransition,
 ) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName(functionName)
 
@@ -681,9 +751,30 @@ func (app *Application) transitionMerchantProgramSubscriptionStatus(
 		return
 	}
 
-	if err := modelFn(ctx, subscriptionID); err != nil {
-		logger.Error("Merchant program subscription status transition failed", "subscription_id", subscriptionID, "action", actionName, "error", err)
-		app.respondWithError(w, err, merchantProgramSubscriptionHTTPStatus(err))
+	if err := app.InternalServices.
+		TransitionMerchantProgramSubscriptionInternal(
+			ctx,
+			services.MerchantProgramSubscriptionTransitionInput{
+				SubscriptionID: subscriptionID,
+				Transition:     transition,
+				PerformedBy:    userID,
+			},
+		); err != nil {
+		logger.Error(
+			"Transition merchant program subscription failed",
+			"subscription_id",
+			subscriptionID,
+			"transition",
+			transition,
+			"error",
+			err,
+		)
+
+		app.respondWithError(
+			w,
+			err,
+			merchantProgramSubscriptionHTTPStatus(err),
+		)
 		return
 	}
 
@@ -704,20 +795,23 @@ func (app *Application) transitionMerchantProgramSubscriptionStatus(
 	})
 }
 
-// ActivateMerchantProgramSubscriptionHandler activates a subscription.
+// ActivateMerchantProgramSubscriptionHandler activates or resumes a merchant
+// program subscription. The coordinating service determines activated versus
+// resumed from the locked canonical prior state.
 func (app *Application) ActivateMerchantProgramSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	app.transitionMerchantProgramSubscriptionStatus(
 		w,
 		r,
 		"ActivateMerchantProgramSubscriptionHandler",
 		actionUpdateMerchantProgramSubscriptionStatus,
-		"Activate a merchant program subscription",
+		"Activate or resume a merchant program subscription",
 		"Merchant program subscription activated successfully",
-		app.Models.MerchantProgramSubscription.Activate,
+		services.MerchantProgramSubscriptionTransitionActivate,
 	)
 }
 
-// PauseMerchantProgramSubscriptionHandler pauses a subscription.
+// PauseMerchantProgramSubscriptionHandler pauses a merchant program
+// subscription.
 func (app *Application) PauseMerchantProgramSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	app.transitionMerchantProgramSubscriptionStatus(
 		w,
@@ -726,11 +820,12 @@ func (app *Application) PauseMerchantProgramSubscriptionHandler(w http.ResponseW
 		actionUpdateMerchantProgramSubscriptionStatus,
 		"Pause a merchant program subscription",
 		"Merchant program subscription paused successfully",
-		app.Models.MerchantProgramSubscription.Pause,
+		services.MerchantProgramSubscriptionTransitionPause,
 	)
 }
 
-// SuspendMerchantProgramSubscriptionHandler suspends a subscription.
+// SuspendMerchantProgramSubscriptionHandler suspends a merchant program
+// subscription.
 func (app *Application) SuspendMerchantProgramSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	app.transitionMerchantProgramSubscriptionStatus(
 		w,
@@ -739,11 +834,12 @@ func (app *Application) SuspendMerchantProgramSubscriptionHandler(w http.Respons
 		actionUpdateMerchantProgramSubscriptionStatus,
 		"Suspend a merchant program subscription",
 		"Merchant program subscription suspended successfully",
-		app.Models.MerchantProgramSubscription.Suspend,
+		services.MerchantProgramSubscriptionTransitionSuspend,
 	)
 }
 
-// ExpireMerchantProgramSubscriptionHandler expires a subscription.
+// ExpireMerchantProgramSubscriptionHandler expires a merchant program
+// subscription.
 func (app *Application) ExpireMerchantProgramSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	app.transitionMerchantProgramSubscriptionStatus(
 		w,
@@ -752,11 +848,12 @@ func (app *Application) ExpireMerchantProgramSubscriptionHandler(w http.Response
 		actionUpdateMerchantProgramSubscriptionStatus,
 		"Expire a merchant program subscription",
 		"Merchant program subscription expired successfully",
-		app.Models.MerchantProgramSubscription.Expire,
+		services.MerchantProgramSubscriptionTransitionExpire,
 	)
 }
 
-// CancelMerchantProgramSubscriptionHandler cancels a subscription.
+// CancelMerchantProgramSubscriptionHandler cancels a merchant program
+// subscription.
 func (app *Application) CancelMerchantProgramSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	app.transitionMerchantProgramSubscriptionStatus(
 		w,
@@ -765,7 +862,7 @@ func (app *Application) CancelMerchantProgramSubscriptionHandler(w http.Response
 		actionCancelMerchantProgramSubscription,
 		"Cancel a merchant program subscription",
 		"Merchant program subscription cancelled successfully",
-		app.Models.MerchantProgramSubscription.Cancel,
+		services.MerchantProgramSubscriptionTransitionCancel,
 	)
 }
 

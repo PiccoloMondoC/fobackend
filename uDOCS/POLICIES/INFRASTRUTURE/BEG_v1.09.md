@@ -527,8 +527,13 @@ Engineering is responsible for implementing complete operational capabilities to
 
 **Administration is responsible for enabling, disabling, configuring, and operating those capabilities through approved administrative mechanisms.**
 
+18.6B **Engineering invariants are not policy**
+Engineering invariants are not policy. Administrative configuration may govern commercial and operational behavior, but it must not weaken or override the engineering invariants that preserve the platform's correctness, security, integrity, auditability, or reliability.
+
 18.7 **Waiver-does-not-remove-capability rule**
-The absence of a charge is not the absence of a charging capability. A temporary business decision to waive, discount, or defer a fee must never remove or weaken the platform capability that supports it.
+Engineering invariants are not administrative policy. Administrative configuration may govern commercial and operational behavior, but it must not weaken, disable, bypass, or override the engineering invariants that preserve the platform’s correctness, security, data integrity, auditability, reliability, authorization boundaries, transactional consistency, or other non-negotiable system guarantees.
+
+Administrative flexibility must operate only within the safe boundaries established by Engineering. Where a configurable policy would conflict with an engineering invariant, the engineering invariant takes precedence.
 
 18.8 **Examples of variable policy domains**
 This doctrine applies to pricing, fees, credits, promotional programs, onboarding requirements, trust policies, platform operating rules, billing requirements, invoice generation, payment collection, and similar operational business controls.
