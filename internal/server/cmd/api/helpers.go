@@ -1,6 +1,12 @@
 // sdworkspace/sdbackend/internal/server/cmd/api/helpers.go
 
-// CE, during your review, please consider splitting this file into
+// CE, during your review, please consider splitting this file into.
+// I believe you can do that CE, but for me as a project leader, that approach
+// to purity is causing a different problem for me. We can even remember this one file
+// and when you split them, the become difficult to find and use. You don't remember anything
+// and I the non-engineer must always find and remind you. Doesn't work!
+// I prefer it stays a single file.
+
 // sdworkspace/sdbackend/internal/server/cmd/api/context-helpers.go
 // sdworkspace/sdbackend/internal/server/cmd/api/authz-helpers.go
 // sdworkspace/sdbackend/internal/server/cmd/api/pagination-helpers.go

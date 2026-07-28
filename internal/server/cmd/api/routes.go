@@ -658,6 +658,80 @@ func (app *Application) Routes() http.Handler {
 			},
 		)
 
+		// Merchant Platform Credit Accounts
+		//
+		// This is a privileged administrative surface. Merchant possession of a
+		// merchant account does not itself authorize issuing, listing, correcting,
+		// or cancelling platform commercial credit.
+		v1.Route("/merchant-platform-credit-accounts", func(mpca chi.Router) {
+			mpca.Use(app.AuthMiddleware)
+
+			mpca.With(
+				app.RequirePermission(
+					actionCreateMerchantPlatformCreditAccount,
+				),
+			).Post(
+				"/",
+				app.CreateMerchantPlatformCreditAccountHandler,
+			)
+
+			// Keep the more-specific merchant routes before the two-ID route.
+			mpca.With(
+				app.RequirePermission(
+					actionListMerchantPlatformCreditAccounts,
+				),
+			).Get(
+				"/merchant/{merchantID}/usable",
+				app.ListCurrentlyUsableMerchantPlatformCreditAccountsHandler,
+			)
+
+			mpca.With(
+				app.RequirePermission(
+					actionListMerchantPlatformCreditAccounts,
+				),
+			).Get(
+				"/merchant/{merchantID}",
+				app.ListMerchantPlatformCreditAccountsByMerchantHandler,
+			)
+
+			mpca.With(
+				app.RequirePermission(
+					actionReadMerchantPlatformCreditAccount,
+				),
+			).Get(
+				"/merchant/{merchantID}/{merchantPlatformCreditAccountID}",
+				app.GetMerchantPlatformCreditAccountByIDForMerchantHandler,
+			)
+
+			mpca.With(
+				app.RequirePermission(
+					actionReadMerchantPlatformCreditAccount,
+				),
+			).Get(
+				"/{merchantPlatformCreditAccountID}",
+				app.GetMerchantPlatformCreditAccountByIDHandler,
+			)
+
+			// UpdateDescriptiveFields is full replacement, not partial mutation.
+			mpca.With(
+				app.RequirePermission(
+					actionUpdateMerchantPlatformCreditAccountDescriptiveFields,
+				),
+			).Put(
+				"/{merchantPlatformCreditAccountID}/descriptive-fields",
+				app.UpdateMerchantPlatformCreditAccountDescriptiveFieldsHandler,
+			)
+
+			mpca.With(
+				app.RequirePermission(
+					actionCancelMerchantPlatformCreditAccount,
+				),
+			).Patch(
+				"/{merchantPlatformCreditAccountID}/cancel",
+				app.CancelMerchantPlatformCreditAccountHandler,
+			)
+		})
+
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)

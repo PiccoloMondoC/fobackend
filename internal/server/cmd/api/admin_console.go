@@ -89,14 +89,15 @@ type adminConsolePlatformStatus struct {
 // These fields identify control-plane inclusion. They do not claim that every
 // possible operation within the domain is enabled for the requesting actor.
 type adminConsoleDomains struct {
-	PlatformSettings             bool `json:"platform_settings"`
-	PlatformSettingHistory       bool `json:"platform_setting_history"`
-	MerchantAccounts             bool `json:"merchant_accounts"`
-	MerchantProgramPlans         bool `json:"merchant_program_plans"`
-	MerchantProgramEntitlements  bool `json:"merchant_program_entitlements"`
-	MerchantProgramFeeSchedules  bool `json:"merchant_program_fee_schedules"`
-	MerchantProgramSubscriptions bool `json:"merchant_program_subscriptions"`
-	MerchantPaymentMethods       bool `json:"merchant_payment_methods"`
+	PlatformSettings               bool `json:"platform_settings"`
+	PlatformSettingHistory         bool `json:"platform_setting_history"`
+	MerchantAccounts               bool `json:"merchant_accounts"`
+	MerchantProgramPlans           bool `json:"merchant_program_plans"`
+	MerchantProgramEntitlements    bool `json:"merchant_program_entitlements"`
+	MerchantProgramFeeSchedules    bool `json:"merchant_program_fee_schedules"`
+	MerchantProgramSubscriptions   bool `json:"merchant_program_subscriptions"`
+	MerchantPlatformCreditAccounts bool `json:"merchant_platform_credit_accounts"`
+	MerchantPaymentMethods         bool `json:"merchant_payment_methods"`
 }
 
 // adminConsoleOverviewResponse is the stable presentation DTO returned by the

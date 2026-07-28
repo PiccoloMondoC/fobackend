@@ -996,6 +996,15 @@ const (
 			'list_merchant_program_subscription_events',
 			'Allows listing immutable lifecycle events for a merchant program subscription'
 		),
+		-- Merchant Platform Credit Accounts
+		('create_merchant_platform_credit_account', 'Allows creating merchant platform credit accounts'),
+		('read_merchant_platform_credit_account', 'Allows reading merchant platform credit accounts'),
+		('list_merchant_platform_credit_accounts', 'Allows listing merchant platform credit accounts'),
+		(
+			'update_merchant_platform_credit_account_descriptive_fields',
+			'Allows updating merchant platform credit account descriptive fields'
+		),
+		('cancel_merchant_platform_credit_account', 'Allows cancelling merchant platform credit accounts'),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Allows creating merchant-owned payment method references'),
 		('read_merchant_payment_method', 'Allows reading a merchant-owned payment method reference'),
@@ -1182,16 +1191,11 @@ const (
 		('merchant', 'Merchant entity'),
 		('merchant_account', 'Canonical merchant platform-account lifecycle entity'),
 		('merchant_program_entitlement', 'Merchant program entitlement capability-gate entity'),
-		(
-			'merchant_program_fee_schedule',
-			'Merchant program fee schedule effective-dated commercial policy entity'
-		),
+		('merchant_program_fee_schedule', 'Merchant program fee schedule effective-dated commercial policy entity'),
 		('merchant_program_plan', 'Merchant program plan entity'),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
-		(
-			'merchant_program_subscription_event',
-			'Immutable merchant program subscription lifecycle event entity'
-		),
+		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
+		('merchant_platform_credit_account', 'Platform-issued merchant commercial credit account entity'),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
@@ -1465,18 +1469,15 @@ const (
 		('soft_delete_merchant_program_subscription', 'Soft-delete a merchant program subscription'),
 		('restore_merchant_program_subscription', 'Restore a merchant program subscription'),
 		-- Merchant Program Subscription Events
-		(
-			'read_merchant_program_subscription_event',
-			'Read one immutable merchant program subscription lifecycle event'
-		),
-		(
-			'list_merchant_program_subscription_events',
-			'List immutable lifecycle events for a merchant program subscription'
-		),
-		(
-			'read_latest_merchant_program_subscription_event',
-			'Read the latest immutable lifecycle event for a merchant program subscription'
-		),
+		('read_merchant_program_subscription_event', 'Read one immutable merchant program subscription lifecycle event'),
+		('list_merchant_program_subscription_events', 'List immutable lifecycle events for a merchant program subscription'),
+		('read_latest_merchant_program_subscription_event', 'Read the latest immutable lifecycle event for a merchant program subscription'),
+		-- Merchant Platform Credit Account
+		('create_merchant_platform_credit_account', 'Create a platform-issued merchant commercial credit account'),
+		('read_merchant_platform_credit_account', 'Read a platform-issued merchant commercial credit account'),
+		('list_merchant_platform_credit_accounts', 'List platform-issued merchant commercial credit accounts'),
+		('update_merchant_platform_credit_account_descriptive_fields', 'Replace descriptive metadata for a merchant platform credit account'),
+		('cancel_merchant_platform_credit_account', Cancel an active merchant platform credit account'),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Create a merchant payment method reference'),
 		('read_merchant_payment_method', 'Read a merchant payment method reference'),

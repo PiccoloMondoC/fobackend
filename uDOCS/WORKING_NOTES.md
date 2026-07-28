@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_platform_credit_accounts.go data layer"
+git commit -m "write merchant_platform_credit_accounts.go handler layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -58,3 +58,27 @@ BEG §18.6A requires engineering to implement complete, production-ready platfor
 
 
  Engineering builds complete capabilities and defines the safe operating boundaries. Administration configures how those capabilities are commercially and operationally used within those boundaries.
+
+
+The correct handler-layer completion boundary for this project is:
+
+* the domain handler file;
+* canonical route registration;
+* permission, action, and entity-type seed registration;
+* role-permission assignment;
+* Admin Console domain declaration where the capability is genuinely administrative;
+* handler-specific shared registration required for discoverability.
+
+Only service construction and startup composition remain deferred to the service-layer phase.
+
+
+
+When we're reviewing handlers, we want the engineer thinking about:
+
+HTTP contracts
+request validation
+authorization
+Admin Console domain declaration where the capability is genuinely administrative
+routing
+audit
+discoverability
