@@ -339,7 +339,7 @@ func (app *Application) CreateMerchantPlatformCreditAccountHandler(w http.Respon
 		account.StartsAt = *startsAt
 	}
 
-	if err := app.Models.MerchantPlatformCreditAccount.Insert(ctx, account); err != nil {
+	if err := app.InternalServices.CreateMerchantPlatformCreditAccountInternal(ctx, account); err != nil {
 		logger.Error("Create merchant platform credit account failed", "merchant_id", input.MerchantID, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditAccountHTTPStatus(err))
 		return
@@ -408,7 +408,7 @@ func (app *Application) GetMerchantPlatformCreditAccountByIDHandler(w http.Respo
 		return
 	}
 
-	account, err := app.Models.MerchantPlatformCreditAccount.GetByID(ctx, accountID)
+	account, err := app.InternalServices.GetMerchantPlatformCreditAccountByIDInternal(ctx, accountID)
 	if err != nil {
 		logger.Error("Get merchant platform credit account by ID failed", "merchant_platform_credit_account_id", accountID, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditAccountHTTPStatus(err))
@@ -479,7 +479,7 @@ func (app *Application) GetMerchantPlatformCreditAccountByIDForMerchantHandler(w
 		return
 	}
 
-	account, err := app.Models.MerchantPlatformCreditAccount.GetByIDForMerchant(ctx, merchantID, accountID)
+	account, err := app.InternalServices.GetMerchantPlatformCreditAccountByIDForMerchantInternal(ctx, merchantID, accountID)
 	if err != nil {
 		logger.Error(
 			"Get merchant platform credit account by ID for merchant failed",
@@ -555,7 +555,7 @@ func (app *Application) ListMerchantPlatformCreditAccountsByMerchantHandler(w ht
 		return
 	}
 
-	accounts, err := app.Models.MerchantPlatformCreditAccount.ListByMerchant(ctx, merchantID, limit, offset)
+	accounts, err := app.InternalServices.ListMerchantPlatformCreditAccountsByMerchantInternal(ctx, merchantID, limit, offset)
 	if err != nil {
 		logger.Error("List merchant platform credit accounts by merchant failed", "merchant_id", merchantID, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditAccountHTTPStatus(err))
@@ -630,7 +630,7 @@ func (app *Application) ListCurrentlyUsableMerchantPlatformCreditAccountsHandler
 		return
 	}
 
-	accounts, err := app.Models.MerchantPlatformCreditAccount.ListCurrentlyUsableByMerchant(ctx, merchantID, currency, limit)
+	accounts, err := app.InternalServices.ListCurrentlyUsableMerchantPlatformCreditAccountsInternal(ctx, merchantID, currency, limit)
 	if err != nil {
 		logger.Error(
 			"List currently usable merchant platform credit accounts failed",
@@ -718,7 +718,7 @@ func (app *Application) UpdateMerchantPlatformCreditAccountDescriptiveFieldsHand
 		return
 	}
 
-	if err := app.Models.MerchantPlatformCreditAccount.UpdateDescriptiveFields(
+	if err := app.InternalServices.UpdateMerchantPlatformCreditAccountDescriptiveFieldsInternal(
 		ctx,
 		accountID,
 		input.SourceCode.Value,
@@ -794,7 +794,7 @@ func (app *Application) CancelMerchantPlatformCreditAccountHandler(w http.Respon
 		return
 	}
 
-	if err := app.Models.MerchantPlatformCreditAccount.Cancel(ctx, accountID); err != nil {
+	if err := app.InternalServices.CancelMerchantPlatformCreditAccountInternal(ctx, accountID); err != nil {
 		logger.Error("Cancel merchant platform credit account failed", "merchant_platform_credit_account_id", accountID, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditAccountHTTPStatus(err))
 		return

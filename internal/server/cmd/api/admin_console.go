@@ -286,14 +286,15 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			PlatformSettingsHardDeleteEnabled: hardDeleteEnabled,
 		},
 		Domains: adminConsoleDomains{
-			PlatformSettings:             true,
-			PlatformSettingHistory:       true,
-			MerchantAccounts:             true,
-			MerchantProgramPlans:         true,
-			MerchantProgramEntitlements:  true,
-			MerchantProgramFeeSchedules:  true,
-			MerchantProgramSubscriptions: true,
-			MerchantPaymentMethods:       true,
+			PlatformSettings:               true,
+			PlatformSettingHistory:         true,
+			MerchantAccounts:               true,
+			MerchantProgramPlans:           true,
+			MerchantProgramEntitlements:    true,
+			MerchantProgramFeeSchedules:    true,
+			MerchantProgramSubscriptions:   true,
+			MerchantPlatformCreditAccounts: true,
+			MerchantPaymentMethods:         true,
 		},
 	}
 

@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_platform_credit_accounts.go handler layer"
+git commit -m "write merchant_platform_credit_accounts_internal.go services layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -69,7 +69,7 @@ The correct handler-layer completion boundary for this project is:
 * Admin Console domain declaration where the capability is genuinely administrative;
 * handler-specific shared registration required for discoverability.
 
-Only service construction and startup composition remain deferred to the service-layer phase.
+Only service construction, service-handler integration, and startup composition remain deferred to the service-layer phase.
 
 
 
