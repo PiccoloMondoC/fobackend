@@ -43,8 +43,8 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_program_subscription_events.go` — Done
 - [ ] `merchant_platform_credit_accounts.go`
 - [ ] `merchant_platform_credit_eligible_fee_types.go`
->            Merchant Intelligence Activation Fee
->            Merchant Intelligence Fee
+>            Market Intelligence Activation Fee
+>            Market Intelligence Fee
 >            Campaign Performance Fee     Launch Campaign only
 >            Subscription Fee             optional
 - [ ] `merchant_platform_credit_applications.go`

@@ -119,7 +119,7 @@ func (app *Application) CreateUserFavoriteHandler(w http.ResponseWriter, r *http
 	}
 
 	// Insert Audit Log (fail gracefully if audit logging fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
@@ -292,7 +292,7 @@ func (app *Application) GetUserFavoriteByUserIDHandler(w http.ResponseWriter, r 
 	}
 
 	// Insert Audit Log (fail gracefully if audit logging fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,

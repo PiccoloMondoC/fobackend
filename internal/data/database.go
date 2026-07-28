@@ -1804,17 +1804,28 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
 	-- ===============================================================
+	-- Merchant Platform Credit Accounts
 	CREATE TABLE IF NOT EXISTS merchant_platform_credit_accounts (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE RESTRICT,
 
 		status TEXT NOT NULL DEFAULT 'active'
-			CHECK (status IN ('active', 'exhausted', 'expired', 'cancelled')),
+			CHECK (status IN (
+				'active',
+				'exhausted',
+				'expired',
+				'cancelled'
+			)),
 
-		original_amount NUMERIC(19,4) NOT NULL CHECK (original_amount > 0),
-		remaining_amount NUMERIC(19,4) NOT NULL CHECK (remaining_amount >= 0),
+		original_amount NUMERIC(19,4) NOT NULL
+			CHECK (original_amount > 0),
 
-		currency CHAR(3) NOT NULL DEFAULT 'USD'
+		remaining_amount NUMERIC(19,4) NOT NULL
+			CHECK (remaining_amount >= 0),
+
+		currency CHAR(3) NOT NULL
 			CHECK (currency ~ '^[A-Z]{3}$'),
 
 		starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1830,13 +1841,46 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			CHECK (remaining_amount <= original_amount),
 
 		CONSTRAINT chk_merchant_platform_credit_accounts_dates
-			CHECK (expires_at IS NULL OR expires_at > starts_at)
+			CHECK (
+				expires_at IS NULL
+				OR expires_at > starts_at
+			)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_platform_credit_accounts_merchant_status
-		ON merchant_platform_credit_accounts(merchant_id, status)
-		WHERE status = 'active';
+	-- Merchant history and administrative listing.
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_platform_credit_accounts_merchant_created
+	ON merchant_platform_credit_accounts (
+		merchant_id,
+		created_at DESC,
+		id DESC
+	);
 
+	-- Currently usable-account lookup and deterministic availability ordering.
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_platform_credit_accounts_usable
+	ON merchant_platform_credit_accounts (
+		merchant_id,
+		currency,
+		expires_at,
+		created_at,
+		id
+	)
+	WHERE status = 'active'
+	AND remaining_amount > 0;
+
+	-- Cross-merchant expiration processing.
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_platform_credit_accounts_active_expiration
+	ON merchant_platform_credit_accounts (
+		expires_at,
+		id
+	)
+	WHERE status = 'active'
+	AND expires_at IS NOT NULL;
+
+
+	-- Merchant Platform Credit Eligible Fee Types
 	CREATE TABLE IF NOT EXISTS merchant_platform_credit_eligible_fee_types (
 		credit_account_id UUID NOT NULL REFERENCES merchant_platform_credit_accounts(id) ON DELETE CASCADE,
 		fee_type TEXT NOT NULL CHECK (fee_type IN (

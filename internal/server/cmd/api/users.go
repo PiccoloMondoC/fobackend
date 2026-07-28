@@ -489,7 +489,7 @@ func (app *Application) LinkOAuthAccountHandler(w http.ResponseWriter, r *http.R
 	}
 
 	// Insert audit record
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,

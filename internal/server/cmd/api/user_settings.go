@@ -117,7 +117,7 @@ func (app *Application) SaveUserSettingsHandler(w http.ResponseWriter, r *http.R
 	}
 
 	// Insert Audit Log (fail gracefully if audit logging fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
@@ -219,7 +219,7 @@ func (app *Application) GetUserSettingsByIDHandler(w http.ResponseWriter, r *htt
 	}
 
 	// Insert Audit Log (fail gracefully if audit logging fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
@@ -320,7 +320,7 @@ func (app *Application) GetUserSettingsByUserIDHandler(w http.ResponseWriter, r 
 	}
 
 	// Insert Audit Log (fail gracefully if audit logging fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
@@ -570,7 +570,7 @@ func (app *Application) UpdateUserSettingsHandler(w http.ResponseWriter, r *http
 	}
 
 	// Insert Audit Log
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,

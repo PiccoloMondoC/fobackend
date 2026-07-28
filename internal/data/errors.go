@@ -141,6 +141,30 @@ var (
 	ErrMerchantApplicationStatusAlreadyInactive = errors.New("merchant application status already inactive")
 	ErrMerchantPromotionNotFound                = errors.New("merchant promotion not found")
 	ErrMerchantFollowNotFound                   = errors.New("merchant follow not found")
+
+	// Merchant platform credit accounts.
+	ErrMerchantPlatformCreditAccountNotFound = errors.New(
+		"merchant platform credit account not found",
+	)
+	ErrMerchantPlatformCreditAccountInvalidState = errors.New(
+		"invalid merchant platform credit account state",
+	)
+	ErrMerchantPlatformCreditAccountInvalidTransition = errors.New(
+		"invalid merchant platform credit account lifecycle transition",
+	)
+	ErrMerchantPlatformCreditAccountNotUsable = errors.New(
+		"merchant platform credit account is not currently usable",
+	)
+	ErrMerchantPlatformCreditAccountInsufficientBalance = errors.New(
+		"merchant platform credit account has insufficient remaining balance",
+	)
+	ErrMerchantPlatformCreditAccountCurrencyMismatch = errors.New(
+		"merchant platform credit account currency mismatch",
+	)
+	ErrMerchantPlatformCreditAccountMutationConflict = errors.New(
+		"merchant platform credit account mutation conflict",
+	)
+
 	// Merchant payment methods.
 	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")
 	ErrMerchantPaymentMethodAlreadyExists   = errors.New("merchant payment method already exists")

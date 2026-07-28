@@ -133,7 +133,7 @@ func (app *Application) CreateProductHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Insert Audit Log (fail gracefully if needed)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
@@ -716,7 +716,7 @@ func (app *Application) CreateBrandHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Insert Audit Log (fail gracefully if fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,

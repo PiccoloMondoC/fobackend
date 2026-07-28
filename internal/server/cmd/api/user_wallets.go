@@ -248,7 +248,7 @@ func (app *Application) GetUserWalletByIDHandler(w http.ResponseWriter, r *http.
 	}
 
 	// Insert Audit Log (fail gracefully if fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,
@@ -337,7 +337,7 @@ func (app *Application) GetUserWalletByUserIDHandler(w http.ResponseWriter, r *h
 	}
 
 	// Insert Audit Log (fail gracefully if fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,

@@ -215,7 +215,7 @@ func (app *Application) GetOwnUserProfileHandler(w http.ResponseWriter, r *http.
 	}
 
 	// --- Insert Audit Log (fail-safe) ---
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,

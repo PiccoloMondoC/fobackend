@@ -595,7 +595,7 @@ func (app *Application) SubmitOfferStatusForReviewHandler(w http.ResponseWriter,
 	}
 
 	// Insert Audit Log (fail gracefully if audit logging fails)
-	if userID != nil && action != nil && entityType != nil {
+	if action != nil && entityType != nil {
 		audit := data.AuditLog{
 			ID:           uuid.New(),
 			UserID:       userID,

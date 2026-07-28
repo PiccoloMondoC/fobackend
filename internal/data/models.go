@@ -120,6 +120,7 @@ type Models struct {
 	MerchantProgramEntitlement       MerchantProgramEntitlementModel       // SPINE: Future Offering v1 — merchant program entitlement/capability gate
 	MerchantProgramSubscription      MerchantProgramSubscriptionModel      // SPINE: Future Offering v1 — merchant program subscription lifecycle
 	MerchantProgramSubscriptionEvent MerchantProgramSubscriptionEventModel // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
+	MerchantPlatformCreditAccount    MerchantPlatformCreditAccountModel    // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
@@ -228,6 +229,10 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantProgramEntitlement:       MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
 		MerchantProgramSubscription:      MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},      // SPINE: Future Offering v1
 		MerchantProgramSubscriptionEvent: MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
+		MerchantPlatformCreditAccount: MerchantPlatformCreditAccountModel{
+			DB:     dbPool,
+			Logger: logger,
+		}, // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 
