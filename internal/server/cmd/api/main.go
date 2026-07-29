@@ -252,7 +252,10 @@ func main() {
 	// Start automation orchestrator after readiness-critical seed data has been ensured.
 	services.StartOfferAutomationOrchestrator(svc)
 
-	// Construct HTTP application (cmd/api) – *never* calls svc directly
+	// Construct the HTTP application with the same validated internal service
+	// container used for readiness-critical startup work. Handlers invoke domain
+	// service methods through app.InternalServices; they do not construct service
+	// dependencies or bypass the service boundary.
 	app := &Application{
 		Config: Config{
 			Bootstrap:   *cfg,

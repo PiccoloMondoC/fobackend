@@ -48,7 +48,6 @@ package services
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
@@ -107,7 +106,10 @@ func (s *Service) CreateMerchantPlatformCreditAccountInternal(
 	defer cancel()
 
 	if account == nil {
-		return errors.New("merchant platform credit account is required")
+		return fmt.Errorf(
+			"%w: account is required",
+			data.ErrMerchantPlatformCreditAccountInvalidInput,
+		)
 	}
 
 	if err := s.Models.MerchantPlatformCreditAccount.Insert(dbCtx, account); err != nil {
@@ -348,7 +350,10 @@ func (s *Service) ConsumeMerchantPlatformCreditAccountTxInternal(
 	defer cancel()
 
 	if tx == nil {
-		return nil, errors.New("merchant platform credit account transaction is required")
+		return nil, fmt.Errorf(
+			"%w: transaction is required",
+			data.ErrMerchantPlatformCreditAccountInvalidInput,
+		)
 	}
 
 	account, err := s.Models.MerchantPlatformCreditAccount.ConsumeTx(

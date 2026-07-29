@@ -165,6 +165,36 @@ const merchantPlatformCreditAccountSelectColumns = `
 `
 
 // -----------------------------------------------------------------------------
+// Domain sentinel errors
+// -----------------------------------------------------------------------------
+
+// ErrMerchantPlatformCreditAccountInvalidInput indicates that caller-supplied
+// merchant platform credit account data violates the domain's structural
+// input contract.
+//
+// It covers malformed identifiers, amounts, currencies, validity windows,
+// pagination bounds, batch bounds, and descriptive-field limits. It does not
+// represent a persisted lifecycle conflict or invalid stored state.
+var ErrMerchantPlatformCreditAccountInvalidInput = errors.New(
+	"invalid merchant platform credit account input",
+)
+
+// merchantPlatformCreditAccountInvalidInput wraps
+// ErrMerchantPlatformCreditAccountInvalidInput with a human-readable
+// diagnostic message while preserving errors.Is classification stability for
+// callers above this model.
+func merchantPlatformCreditAccountInvalidInput(
+	format string,
+	args ...interface{},
+) error {
+	return fmt.Errorf(
+		"%w: %s",
+		ErrMerchantPlatformCreditAccountInvalidInput,
+		fmt.Sprintf(format, args...),
+	)
+}
+
+// -----------------------------------------------------------------------------
 // Entity and model
 // -----------------------------------------------------------------------------
 
@@ -275,11 +305,13 @@ func normalizeMerchantPlatformCreditCurrency(currency string) string {
 // It deliberately does not maintain a hard-coded enabled-currency catalog.
 func validateMerchantPlatformCreditCurrency(currency string) error {
 	if currency == "" {
-		return errors.New("merchant platform credit account currency is required")
+		return merchantPlatformCreditAccountInvalidInput(
+			"currency is required",
+		)
 	}
 	if !merchantPlatformCreditCurrencyPattern.MatchString(currency) {
-		return fmt.Errorf(
-			"merchant platform credit account currency must be a three-letter uppercase identifier: %q",
+		return merchantPlatformCreditAccountInvalidInput(
+			"currency must be a three-letter uppercase identifier: %q",
 			currency,
 		)
 	}
@@ -310,16 +342,20 @@ func isZeroMerchantPlatformCreditAmount(amount string) bool {
 // canonical decimal compatible with PostgreSQL NUMERIC(19,4).
 func validatePositiveMerchantPlatformCreditAmount(amount string) error {
 	if amount == "" {
-		return errors.New("merchant platform credit amount is required")
+		return merchantPlatformCreditAccountInvalidInput(
+			"amount is required",
+		)
 	}
 	if !merchantPlatformCreditAmountPattern.MatchString(amount) {
-		return fmt.Errorf(
-			"merchant platform credit amount must be a positive decimal compatible with NUMERIC(19,4): %q",
+		return merchantPlatformCreditAccountInvalidInput(
+			"amount must be a positive decimal compatible with NUMERIC(19,4): %q",
 			amount,
 		)
 	}
 	if isZeroMerchantPlatformCreditAmount(amount) {
-		return errors.New("merchant platform credit amount must be greater than zero")
+		return merchantPlatformCreditAccountInvalidInput(
+			"amount must be greater than zero",
+		)
 	}
 	return nil
 }
@@ -338,8 +374,8 @@ func validateMerchantPlatformCreditOptionalText(
 		return nil
 	}
 	if len([]rune(*value)) > maxLength {
-		return fmt.Errorf(
-			"merchant platform credit account %s must not exceed %d characters",
+		return merchantPlatformCreditAccountInvalidInput(
+			"%s must not exceed %d characters",
 			fieldName,
 			maxLength,
 		)
@@ -367,13 +403,17 @@ func validateMerchantPlatformCreditAccountForInsert(
 	account *MerchantPlatformCreditAccount,
 ) error {
 	if account == nil {
-		return errors.New("merchant platform credit account is required")
+		return merchantPlatformCreditAccountInvalidInput(
+			"account is required",
+		)
 	}
 
 	normalizeMerchantPlatformCreditAccount(account)
 
 	if account.MerchantID == uuid.Nil {
-		return errors.New("merchant platform credit account merchant_id is required")
+		return merchantPlatformCreditAccountInvalidInput(
+			"merchant_id is required",
+		)
 	}
 
 	if err := validatePositiveMerchantPlatformCreditAmount(account.OriginalAmount); err != nil {
@@ -403,8 +443,8 @@ func validateMerchantPlatformCreditAccountForInsert(
 	if account.ExpiresAt != nil &&
 		!account.StartsAt.IsZero() &&
 		!account.ExpiresAt.After(account.StartsAt) {
-		return errors.New(
-			"merchant platform credit account expires_at must be after starts_at",
+		return merchantPlatformCreditAccountInvalidInput(
+			"expires_at must be after starts_at",
 		)
 	}
 
@@ -557,7 +597,9 @@ func (m *MerchantPlatformCreditAccountModel) GetByID(
 		WithFunctionName("GetMerchantPlatformCreditAccountByID")
 
 	if id == uuid.Nil {
-		err := errors.New("merchant platform credit account id is required")
+		err := merchantPlatformCreditAccountInvalidInput(
+			"id is required",
+		)
 		logger.Error("validation failed", err)
 		return nil, err
 	}
@@ -607,8 +649,8 @@ func (m *MerchantPlatformCreditAccountModel) GetByIDForMerchant(
 		WithFunctionName("GetMerchantPlatformCreditAccountByIDForMerchant")
 
 	if merchantID == uuid.Nil || id == uuid.Nil {
-		err := errors.New(
-			"merchant id and merchant platform credit account id are required",
+		err := merchantPlatformCreditAccountInvalidInput(
+			"merchant_id and merchant platform credit account id are required",
 		)
 		logger.Error("validation failed", err)
 		return nil, err
@@ -659,12 +701,14 @@ func (m *MerchantPlatformCreditAccountModel) ListByMerchant(
 		WithFunctionName("ListMerchantPlatformCreditAccountsByMerchant")
 
 	if merchantID == uuid.Nil {
-		err := errors.New("merchant id is required")
+		err := merchantPlatformCreditAccountInvalidInput(
+			"merchant_id is required",
+		)
 		logger.Error("validation failed", err)
 		return nil, err
 	}
 	if limit <= 0 || limit > merchantPlatformCreditAccountMaxListLimit {
-		err := fmt.Errorf(
+		err := merchantPlatformCreditAccountInvalidInput(
 			"limit must be between 1 and %d",
 			merchantPlatformCreditAccountMaxListLimit,
 		)
@@ -672,7 +716,9 @@ func (m *MerchantPlatformCreditAccountModel) ListByMerchant(
 		return nil, err
 	}
 	if offset < 0 {
-		err := errors.New("offset must be non-negative")
+		err := merchantPlatformCreditAccountInvalidInput(
+			"offset must be non-negative",
+		)
 		logger.Error("validation failed", err)
 		return nil, err
 	}
@@ -756,7 +802,9 @@ func (m *MerchantPlatformCreditAccountModel) ListCurrentlyUsableByMerchant(
 		WithFunctionName("ListCurrentlyUsableMerchantPlatformCreditAccounts")
 
 	if merchantID == uuid.Nil {
-		err := errors.New("merchant id is required")
+		err := merchantPlatformCreditAccountInvalidInput(
+			"merchant_id is required",
+		)
 		logger.Error("validation failed", err)
 		return nil, err
 	}
@@ -768,7 +816,7 @@ func (m *MerchantPlatformCreditAccountModel) ListCurrentlyUsableByMerchant(
 	}
 
 	if limit <= 0 || limit > merchantPlatformCreditAccountMaxListLimit {
-		err := fmt.Errorf(
+		err := merchantPlatformCreditAccountInvalidInput(
 			"limit must be between 1 and %d",
 			merchantPlatformCreditAccountMaxListLimit,
 		)
@@ -858,7 +906,9 @@ func (m *MerchantPlatformCreditAccountModel) UpdateDescriptiveFields(
 		WithFunctionName("UpdateMerchantPlatformCreditAccountDescriptiveFields")
 
 	if id == uuid.Nil {
-		err := errors.New("merchant platform credit account id is required")
+		err := merchantPlatformCreditAccountInvalidInput(
+			"id is required",
+		)
 		logger.Error("validation failed", err)
 		return err
 	}
@@ -946,7 +996,9 @@ func (m *MerchantPlatformCreditAccountModel) Cancel(
 		WithFunctionName("CancelMerchantPlatformCreditAccount")
 
 	if id == uuid.Nil {
-		err := errors.New("merchant platform credit account id is required")
+		err := merchantPlatformCreditAccountInvalidInput(
+			"id is required",
+		)
 		logger.Error("validation failed", err)
 		return err
 	}
@@ -981,6 +1033,11 @@ func (m *MerchantPlatformCreditAccountModel) Cancel(
 		return err
 	}
 
+	// The guarded mutation matched no row. This read is diagnostic only and
+	// reports the state observed after the failed UPDATE. A concurrent
+	// mutation may have changed the row between those operations, so the
+	// result must not be treated as historical proof of the exact state at
+	// UPDATE time.
 	const statusQuery = `
 		SELECT status
 		FROM merchant_platform_credit_accounts
@@ -1031,7 +1088,7 @@ func (m *MerchantPlatformCreditAccountModel) ExpireBatch(
 		WithFunctionName("ExpireBatchMerchantPlatformCreditAccounts")
 
 	if limit <= 0 || limit > merchantPlatformCreditAccountMaxBatchLimit {
-		err := fmt.Errorf(
+		err := merchantPlatformCreditAccountInvalidInput(
 			"limit must be between 1 and %d",
 			merchantPlatformCreditAccountMaxBatchLimit,
 		)
@@ -1145,15 +1202,17 @@ func (m *MerchantPlatformCreditAccountModel) ConsumeTx(
 		WithFunctionName("ConsumeMerchantPlatformCreditAccount")
 
 	if q == nil {
-		err := errors.New(
-			"merchant platform credit account querier is required",
+		err := merchantPlatformCreditAccountInvalidInput(
+			"querier is required",
 		)
 		logger.Error("validation failed", err)
 		return nil, err
 	}
 
 	if id == uuid.Nil {
-		err := errors.New("merchant platform credit account id is required")
+		err := merchantPlatformCreditAccountInvalidInput(
+			"id is required",
+		)
 		logger.Error("validation failed", err)
 		return nil, err
 	}

@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "review and refactor merchant_platform_credit_accounts.go handler layer"
+git commit -m "review and refactor merchant_platform_credit_accounts_internal.go services layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -60,6 +60,8 @@ BEG §18.6A requires engineering to implement complete, production-ready platfor
  Engineering builds complete capabilities and defines the safe operating boundaries. Administration configures how those capabilities are commercially and operationally used within those boundaries.
 
 
+
+### HANDLER-LAYER COMPLETION
 The correct handler-layer completion boundary for this project is:
 
 * the domain handler file;
@@ -72,8 +74,7 @@ The correct handler-layer completion boundary for this project is:
 Only service construction, service-handler integration, and startup composition remain deferred to the service-layer phase.
 
 
-
-When we're reviewing handlers, we want the engineer thinking about:
+**When we're reviewing handlers, we want the engineer thinking about:**
 
 HTTP contracts
 request validation
@@ -83,6 +84,20 @@ routing
 audit
 discoverability
 
+
+### SERVICE-LAYER COMPLETION
+Service implementation, service-handler integration, service construction, and startup composition form one coherent service-layer completion boundary.
+
+They should be reviewed together because each proves a different part of the same operational chain:
+
+handler call
+    → service contract
+    → service implementation
+    → dependency construction
+    → startup wiring
+    → executable application
+
+Splitting that chain into separate reviews would add ceremony without creating a meaningful architectural boundary.
 
 
 

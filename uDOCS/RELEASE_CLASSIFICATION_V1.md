@@ -36,12 +36,12 @@ A merchant must exist before anything else.
 
 ### Phase 4 — Commerce Architecture
 Everything needed to let the platform commercially operate, even if all fees are currently waived. Notice that billing ledger comes last — everything else generates financial activity; the ledger records it.
-- [x] `merchant_program_plans.go` — Done
-- [x] `merchant_program_entitlements.go` — Done
-- [x] `merchant_program_fee_schedules.go` — Done
-- [x] `merchant_program_subscriptions.go` — Done
-- [x] `merchant_program_subscription_events.go` — Done
-- [ ] `merchant_platform_credit_accounts.go`
+- [x] `merchant_program_plans.go`                        — Done
+- [x] `merchant_program_entitlements.go`                 — Done
+- [x] `merchant_program_fee_schedules.go`                — Done
+- [x] `merchant_program_subscriptions.go`                — Done
+- [x] `merchant_program_subscription_events.go`          — Done
+- [x] `merchant_platform_credit_accounts.go`             — Done
 - [ ] `merchant_platform_credit_eligible_fee_types.go`
 >            Market Intelligence Activation Fee
 >            Market Intelligence Fee
