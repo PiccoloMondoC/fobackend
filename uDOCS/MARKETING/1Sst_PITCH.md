@@ -8,11 +8,8 @@ It's a **category-defining diagram**.
 
 In fact, if I were introducing Sagrenti to a room full of executives, I'd probably start with exactly that.
 
----
-
 ## Commerce has worked the same way for decades.
 
-```text
 Idea
   │
   ▼
@@ -23,17 +20,13 @@ Launch
   │
   ▼
 Sell
-```
 
 The problem?
 
 The first time the market truly speaks is often after the business has already committed.
 
----
-
 ## Sagrenti introduces a missing stage.
 
-```text
 Idea
   │
   ▼
@@ -47,11 +40,8 @@ Launch
   │
   ▼
 Sell
-```
 
 Everything changes because of one additional step.
-
----
 
 Then I'd say something like:
 
@@ -62,8 +52,6 @@ Then I'd say something like:
 > We simply asked:
 
 > **"Why does the market get a voice only after the product already exists?"**
-
----
 
 And then comes what I think is the killer sentence:
 
@@ -91,19 +79,14 @@ And it has another advantage: a merchant can understand it in about ten seconds.
 
 They don't need to learn your terminology first. They already understand the existing lifecycle. You simply show them that there's a missing stage—and then make the case that Sagrenti fills it. That's an elegant way to introduce an entirely new category.
 
-
 ### Put another way
 
-
 Absolutely. And after our discussion, I'd tighten it a little further.
-
----
 
 # The Missing Stage in Commerce
 
 For decades, commerce has followed the same basic lifecycle.
 
-```text
 Idea
   │
   ▼
@@ -114,7 +97,6 @@ Launch
   │
   ▼
 Sell
-```
 
 Every business recognizes this process.
 
@@ -130,15 +112,12 @@ By then:
 
 The first real market signal often arrives too late to change the decision.
 
----
-
 # Sagrenti introduces a missing stage.
 
-```text
 Idea
   │
   ▼
-Measure Anticipation
+>Measure Anticipation
   │
   ▼
 Build
@@ -148,7 +127,6 @@ Launch
   │
   ▼
 Sell
-```
 
 Everything changes because of one additional step.
 
@@ -164,8 +142,6 @@ Not hope.
 
 Real anticipation from real consumers who choose to engage with future offerings.
 
----
-
 ## We didn't invent product development.
 
 We didn't invent commerce.
@@ -173,8 +149,6 @@ We didn't invent commerce.
 We simply asked one question:
 
 > **Why does the market get a voice only after the product already exists?**
-
----
 
 ## Sagrenti's answer
 
@@ -194,8 +168,6 @@ they can begin asking:
 
 before they build.
 
----
-
 ## This is not another marketplace.
 
 It is not another e-commerce platform.
@@ -207,8 +179,6 @@ It is not another advertising platform.
 Sagrenti introduces a new stage in commerce.
 
 A stage where consumer anticipation becomes measurable before products and services become available.
-
----
 
 ## The category
 
@@ -226,9 +196,7 @@ Those are mechanisms.
 
 The innovation is this:
 
-> **The market speaks before production.**
-
----
+> The market speaks before production.
 
 ## The vision
 

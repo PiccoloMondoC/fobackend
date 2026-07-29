@@ -1807,6 +1807,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	-- Merchant Platform Credit Accounts
 	CREATE TABLE IF NOT EXISTS merchant_platform_credit_accounts (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
 		merchant_id UUID NOT NULL
 			REFERENCES merchants(id)
 			ON DELETE RESTRICT,
@@ -1831,14 +1832,25 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		expires_at TIMESTAMPTZ,
 
-		source_code TEXT,
-		note TEXT,
+		source_code TEXT
+			CHECK (
+				source_code IS NULL
+				OR char_length(source_code) <= 128
+			),
+
+		note TEXT
+			CHECK (
+				note IS NULL
+				OR char_length(note) <= 2000
+			),
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
 		CONSTRAINT chk_merchant_platform_credit_accounts_amounts
-			CHECK (remaining_amount <= original_amount),
+			CHECK (
+				remaining_amount <= original_amount
+			),
 
 		CONSTRAINT chk_merchant_platform_credit_accounts_dates
 			CHECK (
@@ -1879,7 +1891,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	WHERE status = 'active'
 	AND expires_at IS NOT NULL;
 
-
+	
 	-- Merchant Platform Credit Eligible Fee Types
 	CREATE TABLE IF NOT EXISTS merchant_platform_credit_eligible_fee_types (
 		credit_account_id UUID NOT NULL REFERENCES merchant_platform_credit_accounts(id) ON DELETE CASCADE,

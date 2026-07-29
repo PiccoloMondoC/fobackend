@@ -126,8 +126,10 @@ const (
 // -----------------------------------------------------------------------------
 
 const (
-	merchantPlatformCreditAccountMaxListLimit  = 100
-	merchantPlatformCreditAccountMaxBatchLimit = 1000
+	merchantPlatformCreditAccountMaxListLimit        = 100
+	merchantPlatformCreditAccountMaxBatchLimit       = 1000
+	merchantPlatformCreditAccountMaxSourceCodeLength = 128
+	merchantPlatformCreditAccountMaxNoteLength       = 2000
 )
 
 // NUMERIC(19,4) permits at most 15 digits before the decimal point and four
@@ -322,6 +324,29 @@ func validatePositiveMerchantPlatformCreditAmount(amount string) error {
 	return nil
 }
 
+// validateMerchantPlatformCreditOptionalText validates a normalized optional
+// metadata value against its structural persistence limit.
+//
+// A nil value is valid and represents absence. Callers must normalize optional
+// strings before invoking this function.
+func validateMerchantPlatformCreditOptionalText(
+	value *string,
+	fieldName string,
+	maxLength int,
+) error {
+	if value == nil {
+		return nil
+	}
+	if len([]rune(*value)) > maxLength {
+		return fmt.Errorf(
+			"merchant platform credit account %s must not exceed %d characters",
+			fieldName,
+			maxLength,
+		)
+	}
+	return nil
+}
+
 // normalizeMerchantPlatformCreditAccount canonicalizes caller-owned,
 // non-database-owned fields.
 func normalizeMerchantPlatformCreditAccount(
@@ -356,6 +381,22 @@ func validateMerchantPlatformCreditAccountForInsert(
 	}
 
 	if err := validateMerchantPlatformCreditCurrency(account.Currency); err != nil {
+		return err
+	}
+
+	if err := validateMerchantPlatformCreditOptionalText(
+		account.SourceCode,
+		"source_code",
+		merchantPlatformCreditAccountMaxSourceCodeLength,
+	); err != nil {
+		return err
+	}
+
+	if err := validateMerchantPlatformCreditOptionalText(
+		account.Note,
+		"note",
+		merchantPlatformCreditAccountMaxNoteLength,
+	); err != nil {
 		return err
 	}
 
@@ -498,7 +539,12 @@ func (m *MerchantPlatformCreditAccountModel) Insert(
 
 // GetByID retrieves a merchant platform credit account by canonical ID.
 //
-// Terminal accounts remain readable. Returns (nil, nil) when no account exists.
+// This is an unrestricted persistence lookup intended for privileged internal
+// or administrative use. Merchant-owned boundaries must use
+// GetByIDForMerchant so merchant ownership remains part of the SQL predicate.
+//
+// Terminal accounts remain readable. Absence is a normal read result and
+// returns (nil, nil).
 func (m *MerchantPlatformCreditAccountModel) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
@@ -819,6 +865,24 @@ func (m *MerchantPlatformCreditAccountModel) UpdateDescriptiveFields(
 
 	sourceCode = normalizeOptionalString(sourceCode)
 	note = normalizeOptionalString(note)
+
+	if err := validateMerchantPlatformCreditOptionalText(
+		sourceCode,
+		"source_code",
+		merchantPlatformCreditAccountMaxSourceCodeLength,
+	); err != nil {
+		logger.Error("validation failed", err)
+		return err
+	}
+
+	if err := validateMerchantPlatformCreditOptionalText(
+		note,
+		"note",
+		merchantPlatformCreditAccountMaxNoteLength,
+	); err != nil {
+		logger.Error("validation failed", err)
+		return err
+	}
 
 	const query = `
 		UPDATE merchant_platform_credit_accounts

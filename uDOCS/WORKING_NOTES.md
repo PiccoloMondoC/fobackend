@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_platform_credit_accounts_internal.go services layer"
+git commit -m "review and refactor merchant_platform_credit_accounts.go data layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -82,3 +82,17 @@ Admin Console domain declaration where the capability is genuinely administrativ
 routing
 audit
 discoverability
+
+
+
+
+gofmt -w \ ./internal/data/merchant_platform_credit_accounts.go
+
+go vet ./internal/data/...
+
+go vet ./internal/services/...
+go vet ./internal/server/cmd/api/...
+
+go test ./internal/data
+go test ./internal/services
+go test ./internal/server/cmd/api
