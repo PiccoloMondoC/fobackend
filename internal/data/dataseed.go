@@ -1002,7 +1002,7 @@ const (
 		('list_merchant_platform_credit_accounts', 'Allows listing merchant platform credit accounts'),
 		(
 			'update_merchant_platform_credit_account_descriptive_fields',
-			'Allows updating merchant platform credit account descriptive fields'
+			'Allows replacing merchant platform credit account descriptive metadata'
 		),
 		('cancel_merchant_platform_credit_account', 'Allows cancelling merchant platform credit accounts'),
 		-- Merchant Payment Methods
@@ -1477,7 +1477,7 @@ const (
 		('read_merchant_platform_credit_account', 'Read a platform-issued merchant commercial credit account'),
 		('list_merchant_platform_credit_accounts', 'List platform-issued merchant commercial credit accounts'),
 		('update_merchant_platform_credit_account_descriptive_fields', 'Replace descriptive metadata for a merchant platform credit account'),
-		('cancel_merchant_platform_credit_account', Cancel an active merchant platform credit account'),
+		('cancel_merchant_platform_credit_account', 'Cancel an active merchant platform credit account'),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Create a merchant payment method reference'),
 		('read_merchant_payment_method', 'Read a merchant payment method reference'),

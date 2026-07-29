@@ -195,41 +195,42 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// RequirePermission allows the request to proceed when the authenticated
+// actor's current role holds the required permission.
+//
+// AuthMiddleware establishes ctxUserID as uuid.UUID and ctxRoleID as the
+// authenticated user's resolved role ID. Permission evaluation therefore uses
+// that trusted context rather than reloading the user and role independently.
 func (app *Application) RequirePermission(permission string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, ok := r.Context().Value(ctxUserID).(string)
-			if !ok || userID == "" {
-				app.Logger.Warn("Unauthorized", "reason", "missing userID")
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			ctx := r.Context()
+
+			userID, ok := ctx.Value(ctxUserID).(uuid.UUID)
+			if !ok || userID == uuid.Nil {
+				app.Logger.Warn(
+					"RequirePermission: authenticated user ID missing from context",
+					"permission", permission,
+				)
+				app.respondWithError(
+					w,
+					errors.New("unauthorized"),
+					http.StatusUnauthorized,
+				)
 				return
 			}
 
-			id, err := uuid.Parse(userID)
-			if err != nil {
-				app.Logger.Warn("Invalid userID format", "userID", userID)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
-
-			user, err := app.Models.User.GetByID(r.Context(), id)
-			if err != nil {
-				app.Logger.Warn("User not found", "userID", userID)
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			role, err := app.Models.Role.GetRoleByID(r.Context(), user.RoleID)
-			if err != nil {
-				app.Logger.Warn("User role not found", "roleID", user.RoleID)
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			hasPerm, err := app.Models.RolePermission.RoleHasPermission(r.Context(), role.ID.String(), permission)
-			if err != nil || !hasPerm {
-				app.Logger.Warn("Access denied", "userID", userID, "role", role.Name, "missing_permission", permission, "error", err)
-				http.Error(w, "Forbidden", http.StatusForbidden)
+			if !app.HasPermission(ctx, permission) {
+				app.Logger.Warn(
+					"RequirePermission: access denied",
+					"user_id", userID,
+					"permission", permission,
+				)
+				app.respondWithError(
+					w,
+					errors.New("forbidden: insufficient permissions"),
+					http.StatusForbidden,
+				)
 				return
 			}
 

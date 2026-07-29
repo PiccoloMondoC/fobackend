@@ -92,35 +92,36 @@ const (
 // Error translation
 // -----------------------------------------------------------------------------
 
-// merchantPlatformCreditAccountHTTPStatus classifies an error returned by the
-// merchant platform credit account data model into an HTTP status code.
+// merchantPlatformCreditAccountHTTPStatus translates merchant platform credit
+// account domain and validation errors into stable HTTP status codes.
 //
-// Classification relies primarily on exported data-layer sentinel errors via
-// errors.Is. Substring matching is used only as a secondary fallback for
-// plain validation errors that do not carry a sentinel, consistent with the
-// data layer's use of errors.New for structural validation failures.
+// Exported sentinel errors define the primary classification contract.
+// Plain validation errors that do not yet carry a sentinel are classified
+// conservatively as caller errors when their message uses the data layer's
+// established structural-validation vocabulary.
 func merchantPlatformCreditAccountHTTPStatus(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
 
 	switch {
-	case errors.Is(err, data.ErrMerchantNotFound):
+	case errors.Is(err, data.ErrMerchantNotFound),
+		errors.Is(err, data.ErrMerchantPlatformCreditAccountNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, data.ErrMerchantPlatformCreditAccountNotFound):
-		return http.StatusNotFound
-	case errors.Is(err, data.ErrMerchantPlatformCreditAccountInvalidTransition):
-		return http.StatusConflict
-	case errors.Is(err, data.ErrMerchantPlatformCreditAccountInvalidState):
+
+	case errors.Is(err, data.ErrMerchantPlatformCreditAccountInvalidTransition),
+		errors.Is(err, data.ErrMerchantPlatformCreditAccountInvalidState):
 		return http.StatusConflict
 	}
 
-	msg := strings.ToLower(err.Error())
+	message := strings.ToLower(err.Error())
+
 	switch {
-	case strings.Contains(msg, "required"),
-		strings.Contains(msg, "invalid"),
-		strings.Contains(msg, "must be"),
-		strings.Contains(msg, "compatible with"):
+	case strings.Contains(message, "required"),
+		strings.Contains(message, "invalid"),
+		strings.Contains(message, "must be"),
+		strings.Contains(message, "must not exceed"),
+		strings.Contains(message, "compatible with"):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError
