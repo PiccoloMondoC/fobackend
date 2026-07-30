@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "review and refactor merchant_platform_credit_accounts_internal.go services layer"
+git commit -m "write merchant_platform_credit_eligible_fee_types.go data layer"
 git push
 
 | data layer | handler layer | services layer |

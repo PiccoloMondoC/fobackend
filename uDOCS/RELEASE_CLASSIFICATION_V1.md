@@ -43,10 +43,14 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_program_subscription_events.go`          — Done
 - [x] `merchant_platform_credit_accounts.go`             — Done
 - [ ] `merchant_platform_credit_eligible_fee_types.go`
->            Market Intelligence Activation Fee
->            Market Intelligence Fee
->            Campaign Performance Fee     Launch Campaign only
->            Subscription Fee             optional
+>       Anticipation Intelligence Activation Fee (one-time)
+        Charged when Anticipation Intelligence services are activated for a Future Offering.
+>       Anticipation Intelligence Fee (recurring/usage-based)
+        Charged while Anticipation Intelligence services continue operating for that Future Offering.
+>       Campaign Performance Fee (Launch Campaign only)
+        Applies only to present-commerce Launch Campaign services where that commercial model is enabled.
+>       Subscription Fee (optional)
+        Applies only when Plans and Subscriptions are enabled by Admin.
 - [ ] `merchant_platform_credit_applications.go`
 - [ ] `merchant_billing_accounts.go`
 - [ ] `merchant_billable_events.go`

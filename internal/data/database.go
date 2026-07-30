@@ -1891,20 +1891,27 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	WHERE status = 'active'
 	AND expires_at IS NOT NULL;
 
-	
+
 	-- Merchant Platform Credit Eligible Fee Types
 	CREATE TABLE IF NOT EXISTS merchant_platform_credit_eligible_fee_types (
-		credit_account_id UUID NOT NULL REFERENCES merchant_platform_credit_accounts(id) ON DELETE CASCADE,
-		fee_type TEXT NOT NULL CHECK (fee_type IN (
-			'merchant_setup_fee',
-			'subscription_fee',
-			'campaign_performance_fee',
-			'future_offering_fee'
-		)),
+		credit_account_id UUID NOT NULL
+			REFERENCES merchant_platform_credit_accounts(id)
+			ON DELETE CASCADE,
+
+		fee_type TEXT NOT NULL
+			CHECK (fee_type IN (
+				'anticipation_intelligence_activation_fee',
+				'anticipation_intelligence_fee',
+				'campaign_performance_fee',
+				'subscription_fee'
+			)),
+
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
 		PRIMARY KEY (credit_account_id, fee_type)
 	);
 
+	
 	-- ===============================================================
 	-- Merchant Trust / Verification
 	-- ===============================================================

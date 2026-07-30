@@ -165,6 +165,17 @@ var (
 		"merchant platform credit account mutation conflict",
 	)
 
+	// Merchant platform credit eligible fee types.
+	ErrMerchantPlatformCreditEligibleFeeTypeInvalidInput = errors.New(
+		"invalid merchant platform credit eligible fee type input",
+	)
+	ErrMerchantPlatformCreditEligibleFeeTypeAlreadyExists = errors.New(
+		"merchant platform credit eligible fee type already exists",
+	)
+	ErrMerchantPlatformCreditEligibleFeeTypeNotFound = errors.New(
+		"merchant platform credit eligible fee type not found",
+	)
+
 	// Merchant payment methods.
 	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")
 	ErrMerchantPaymentMethodAlreadyExists   = errors.New("merchant payment method already exists")

@@ -67,17 +67,22 @@ const (
 type MerchantFeeType string
 
 const (
-	// MerchantFeeTypeSetup identifies the one-time merchant setup fee.
-	MerchantFeeTypeSetup MerchantFeeType = "merchant_setup_fee"
+	// MerchantFeeTypeAnticipationIntelligenceActivation identifies the one-time
+	// fee charged when Anticipation Intelligence services are activated for a
+	// Future Offering.
+	MerchantFeeTypeAnticipationIntelligenceActivation MerchantFeeType = "anticipation_intelligence_activation_fee"
 
-	// MerchantFeeTypeSubscription identifies a recurring subscription fee.
-	MerchantFeeTypeSubscription MerchantFeeType = "subscription_fee"
+	// MerchantFeeTypeAnticipationIntelligence identifies the recurring or
+	// usage-based fee charged while Anticipation Intelligence services continue
+	// operating for a Future Offering.
+	MerchantFeeTypeAnticipationIntelligence MerchantFeeType = "anticipation_intelligence_fee"
 
-	// MerchantFeeTypeCampaignPerformance identifies a Campaign Performance Fee.
+	// MerchantFeeTypeCampaignPerformance identifies the present-commerce Campaign
+	// Performance Fee.
 	MerchantFeeTypeCampaignPerformance MerchantFeeType = "campaign_performance_fee"
 
-	// MerchantFeeTypeFutureOffering identifies a Future Offering or Launch Intelligence fee.
-	MerchantFeeTypeFutureOffering MerchantFeeType = "future_offering_fee"
+	// MerchantFeeTypeSubscription identifies an optional subscription fee.
+	MerchantFeeTypeSubscription MerchantFeeType = "subscription_fee"
 
 	// MerchantFeeTypeAdjustment identifies a billing adjustment.
 	MerchantFeeTypeAdjustment MerchantFeeType = "adjustment_fee"
@@ -104,6 +109,10 @@ const (
 
 	// MerchantBillingIntervalEvent identifies a charge per qualifying event.
 	MerchantBillingIntervalEvent MerchantBillingInterval = "event"
+
+	// MerchantBillingIntervalCustom identifies an administratively governed
+	// billing cadence that is not constrained to the standard fixed intervals.
+	MerchantBillingIntervalCustom MerchantBillingInterval = "custom"
 )
 
 // MerchantFeeCalculationMethod identifies how a fee is calculated.
@@ -204,10 +213,10 @@ func NormalizeMerchantFeeType(value MerchantFeeType) MerchantFeeType {
 // IsValidMerchantFeeType reports whether value is an allowed merchant-fee type.
 func IsValidMerchantFeeType(value MerchantFeeType) bool {
 	switch NormalizeMerchantFeeType(value) {
-	case MerchantFeeTypeSetup,
-		MerchantFeeTypeSubscription,
+	case MerchantFeeTypeAnticipationIntelligenceActivation,
+		MerchantFeeTypeAnticipationIntelligence,
 		MerchantFeeTypeCampaignPerformance,
-		MerchantFeeTypeFutureOffering,
+		MerchantFeeTypeSubscription,
 		MerchantFeeTypeAdjustment,
 		MerchantFeeTypeRefund,
 		MerchantFeeTypeReversal:
@@ -228,7 +237,8 @@ func IsValidMerchantBillingInterval(value MerchantBillingInterval) bool {
 	case MerchantBillingIntervalOneTime,
 		MerchantBillingIntervalMonthly,
 		MerchantBillingIntervalAnnual,
-		MerchantBillingIntervalEvent:
+		MerchantBillingIntervalEvent,
+		MerchantBillingIntervalCustom:
 		return true
 	default:
 		return false
@@ -265,15 +275,21 @@ func IsMerchantFeeTypeIntervalCompatible(
 	interval = NormalizeMerchantBillingInterval(interval)
 
 	switch feeType {
-	case MerchantFeeTypeSetup:
+	case MerchantFeeTypeAnticipationIntelligenceActivation:
 		return interval == MerchantBillingIntervalOneTime
 
 	case MerchantFeeTypeSubscription:
 		return interval == MerchantBillingIntervalMonthly ||
-			interval == MerchantBillingIntervalAnnual
+			interval == MerchantBillingIntervalAnnual ||
+			interval == MerchantBillingIntervalCustom
+
+	case MerchantFeeTypeAnticipationIntelligence:
+		return interval == MerchantBillingIntervalMonthly ||
+			interval == MerchantBillingIntervalAnnual ||
+			interval == MerchantBillingIntervalEvent ||
+			interval == MerchantBillingIntervalCustom
 
 	case MerchantFeeTypeCampaignPerformance,
-		MerchantFeeTypeFutureOffering,
 		MerchantFeeTypeAdjustment,
 		MerchantFeeTypeRefund,
 		MerchantFeeTypeReversal:

@@ -111,16 +111,18 @@ type Models struct {
 	DashboardTemplate   DashboardTemplateModel   // DEFERRED: dashboard templates
 
 	// Layer 2.4 — Merchant / Future Offering Domain
-	Merchant                         MerchantModel                         // SPINE: Future Offering v1 — merchant identity
-	MerchantAccount                  MerchantAccountModel                  // SPINE: merchant platform-account lifecycle
-	MerchantPaymentMethod            MerchantPaymentMethodModel            // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
-	MerchantType                     MerchantTypeModel                     // SPINE: minimal foundation — merchant classification lookup
-	MerchantProgramPlan              MerchantProgramPlanModel              // SPINE: Future Offering v1 — merchant program plan reference table
-	MerchantProgramFeeSchedule       MerchantProgramFeeScheduleModel       // SPINE: Future Offering v1 — effective-dated merchant monetization policy
-	MerchantProgramEntitlement       MerchantProgramEntitlementModel       // SPINE: Future Offering v1 — merchant program entitlement/capability gate
-	MerchantProgramSubscription      MerchantProgramSubscriptionModel      // SPINE: Future Offering v1 — merchant program subscription lifecycle
-	MerchantProgramSubscriptionEvent MerchantProgramSubscriptionEventModel // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
-	MerchantPlatformCreditAccount    MerchantPlatformCreditAccountModel    // SPINE: Commerce Architecture — platform-issued merchant commercial credit
+	Merchant                              MerchantModel                              // SPINE: Future Offering v1 — merchant identity
+	MerchantAccount                       MerchantAccountModel                       // SPINE: merchant platform-account lifecycle
+	MerchantPaymentMethod                 MerchantPaymentMethodModel                 // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
+	MerchantType                          MerchantTypeModel                          // SPINE: minimal foundation — merchant classification lookup
+	MerchantProgramPlan                   MerchantProgramPlanModel                   // SPINE: Future Offering v1 — merchant program plan reference table
+	MerchantProgramFeeSchedule            MerchantProgramFeeScheduleModel            // SPINE: Future Offering v1 — effective-dated merchant monetization policy
+	MerchantProgramEntitlement            MerchantProgramEntitlementModel            // SPINE: Future Offering v1 — merchant program entitlement/capability gate
+	MerchantProgramSubscription           MerchantProgramSubscriptionModel           // SPINE: Future Offering v1 — merchant program subscription lifecycle
+	MerchantProgramSubscriptionEvent      MerchantProgramSubscriptionEventModel      // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
+	MerchantPlatformCreditEligibleFeeType MerchantPlatformCreditEligibleFeeTypeModel // SPINE: Commerce Architecture — credit eligibility by canonical fee type
+
+	MerchantPlatformCreditAccount MerchantPlatformCreditAccountModel // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
@@ -223,16 +225,14 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 			DB:     dbPool,
 			Logger: logger,
 		}, // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
-		MerchantType:                     MerchantTypeModel{DB: dbPool, Logger: logger},                     // SPINE: minimal foundation
-		MerchantProgramPlan:              MerchantProgramPlanModel{DB: dbPool, Logger: logger},              // SPINE: Future Offering v1
-		MerchantProgramFeeSchedule:       MerchantProgramFeeScheduleModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
-		MerchantProgramEntitlement:       MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
-		MerchantProgramSubscription:      MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},      // SPINE: Future Offering v1
-		MerchantProgramSubscriptionEvent: MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
-		MerchantPlatformCreditAccount: MerchantPlatformCreditAccountModel{
-			DB:     dbPool,
-			Logger: logger,
-		}, // SPINE: Commerce Architecture — platform-issued merchant commercial credit
+		MerchantType:                          MerchantTypeModel{DB: dbPool, Logger: logger},                     // SPINE: minimal foundation
+		MerchantProgramPlan:                   MerchantProgramPlanModel{DB: dbPool, Logger: logger},              // SPINE: Future Offering v1
+		MerchantProgramFeeSchedule:            MerchantProgramFeeScheduleModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
+		MerchantProgramEntitlement:            MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
+		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},      // SPINE: Future Offering v1
+		MerchantProgramSubscriptionEvent:      MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
+		MerchantPlatformCreditEligibleFeeType: MerchantPlatformCreditEligibleFeeTypeModel{DB: dbPool, Logger: logger},
+		MerchantPlatformCreditAccount:         MerchantPlatformCreditAccountModel{DB: dbPool, Logger: logger}, // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 
