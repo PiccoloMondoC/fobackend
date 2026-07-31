@@ -32,6 +32,13 @@
 //	Do not introduce generic route namespaces without a canonical domain owner.
 //	Do not weaken middleware, actor, role, or permission boundaries.
 //	Do not block release-critical SPINE domains through unrelated deferred work.
+//
+// Routing Convention:
+//
+//	Use permission string literals in RequirePermission(...) route
+//	registration throughout this file for consistency. Do not introduce
+//	isolated permission constants unless this file is intentionally
+//	migrated to a different convention as a whole.
 package main
 
 import (
@@ -617,23 +624,11 @@ func (app *Application) Routes() http.Handler {
 			mps.With(app.RequirePermission("restore_merchant_program_subscription")).
 				Patch("/{merchantProgramSubscriptionID}/restore", app.RestoreMerchantProgramSubscriptionHandler)
 
-			mps.With(
-				app.RequirePermission(
-					"list_merchant_program_subscription_events",
-				),
-			).Get(
-				"/{merchantProgramSubscriptionID}/events/latest",
-				app.GetLatestMerchantProgramSubscriptionEventHandler,
-			)
+			mps.With(app.RequirePermission("list_merchant_program_subscription_events")).
+				Get("/{merchantProgramSubscriptionID}/events/latest", app.GetLatestMerchantProgramSubscriptionEventHandler)
 
-			mps.With(
-				app.RequirePermission(
-					"list_merchant_program_subscription_events",
-				),
-			).Get(
-				"/{merchantProgramSubscriptionID}/events",
-				app.ListMerchantProgramSubscriptionEventsHandler,
-			)
+			mps.With(app.RequirePermission("list_merchant_program_subscription_events")).
+				Get("/{merchantProgramSubscriptionID}/events", app.ListMerchantProgramSubscriptionEventsHandler)
 		})
 
 		// Merchant Program Subscription Events
@@ -647,16 +642,9 @@ func (app *Application) Routes() http.Handler {
 			func(events chi.Router) {
 				events.Use(app.AuthMiddleware)
 
-				events.With(
-					app.RequirePermission(
-						"read_merchant_program_subscription_event",
-					),
-				).Get(
-					"/{eventID}",
-					app.GetMerchantProgramSubscriptionEventByIDHandler,
-				)
-			},
-		)
+				events.With(app.RequirePermission("read_merchant_program_subscription_event")).
+					Get("/{eventID}", app.GetMerchantProgramSubscriptionEventByIDHandler)
+			})
 
 		// Merchant Platform Credit Accounts
 		//
@@ -666,165 +654,129 @@ func (app *Application) Routes() http.Handler {
 		v1.Route("/merchant-platform-credit-accounts", func(mpca chi.Router) {
 			mpca.Use(app.AuthMiddleware)
 
-			mpca.With(
-				app.RequirePermission(
-					actionCreateMerchantPlatformCreditAccount,
-				),
-			).Post(
-				"/",
-				app.CreateMerchantPlatformCreditAccountHandler,
-			)
+			mpca.With(app.RequirePermission(actionCreateMerchantPlatformCreditAccount)).
+				Post("/", app.CreateMerchantPlatformCreditAccountHandler)
 
 			// Keep the more-specific merchant routes before the two-ID route.
-			mpca.With(
-				app.RequirePermission(
-					actionListMerchantPlatformCreditAccounts,
-				),
-			).Get(
-				"/merchant/{merchantID}/usable",
-				app.ListCurrentlyUsableMerchantPlatformCreditAccountsHandler,
-			)
+			mpca.With(app.RequirePermission(actionListMerchantPlatformCreditAccounts)).
+				Get("/merchant/{merchantID}/usable", app.ListCurrentlyUsableMerchantPlatformCreditAccountsHandler)
 
-			mpca.With(
-				app.RequirePermission(
-					actionListMerchantPlatformCreditAccounts,
-				),
-			).Get(
-				"/merchant/{merchantID}",
-				app.ListMerchantPlatformCreditAccountsByMerchantHandler,
-			)
+			mpca.With(app.RequirePermission(actionListMerchantPlatformCreditAccounts)).
+				Get("/merchant/{merchantID}", app.ListMerchantPlatformCreditAccountsByMerchantHandler)
 
-			mpca.With(
-				app.RequirePermission(
-					actionReadMerchantPlatformCreditAccount,
-				),
-			).Get(
-				"/merchant/{merchantID}/{merchantPlatformCreditAccountID}",
-				app.GetMerchantPlatformCreditAccountByIDForMerchantHandler,
-			)
+			mpca.With(app.RequirePermission(actionReadMerchantPlatformCreditAccount)).
+				Get("/merchant/{merchantID}/{merchantPlatformCreditAccountID}", app.GetMerchantPlatformCreditAccountByIDForMerchantHandler)
 
-			mpca.With(
-				app.RequirePermission(
-					actionReadMerchantPlatformCreditAccount,
-				),
-			).Get(
-				"/{merchantPlatformCreditAccountID}",
-				app.GetMerchantPlatformCreditAccountByIDHandler,
-			)
-
-			// UpdateDescriptiveFields is full replacement, not partial mutation.
-			mpca.With(
-				app.RequirePermission(
-					actionUpdateMerchantPlatformCreditAccountDescriptiveFields,
-				),
-			).Put(
-				"/{merchantPlatformCreditAccountID}/descriptive-fields",
-				app.UpdateMerchantPlatformCreditAccountDescriptiveFieldsHandler,
-			)
-
-			mpca.With(
-				app.RequirePermission(
-					actionCancelMerchantPlatformCreditAccount,
-				),
-			).Patch(
-				"/{merchantPlatformCreditAccountID}/cancel",
-				app.CancelMerchantPlatformCreditAccountHandler,
-			)
+			mpca.With(app.RequirePermission(actionReadMerchantPlatformCreditAccount)).
+				Get("/{merchantPlatformCreditAccountID}", app.GetMerchantPlatformCreditAccountByIDHandler)
 		})
+
+		// Merchant Platform Credit Eligible Fee Types
+		//
+		// Fee-type eligibility is privileged administrative configuration owned by
+		// the parent merchant platform credit account. One association is identified
+		// by the composite key:
+		//
+		//	merchantPlatformCreditAccountID + feeType
+		//
+		// PUT on the collection performs complete atomic replacement of the
+		// account's eligibility set. An explicitly supplied empty fee_types array
+		// clears that set.
+		v1.Route(
+			"/merchant-platform-credit-accounts/"+
+				"{merchantPlatformCreditAccountID}/eligible-fee-types",
+			func(mpce chi.Router) {
+				mpce.Use(app.AuthMiddleware)
+
+				mpce.With(
+					app.RequirePermission(
+						"create_merchant_platform_credit_eligible_fee_type",
+					),
+				).Post(
+					"/",
+					app.CreateMerchantPlatformCreditEligibleFeeTypeHandler,
+				)
+
+				mpce.With(
+					app.RequirePermission(
+						"list_merchant_platform_credit_eligible_fee_types",
+					),
+				).Get(
+					"/",
+					app.ListMerchantPlatformCreditEligibleFeeTypesHandler,
+				)
+
+				mpce.With(
+					app.RequirePermission(
+						"replace_merchant_platform_credit_eligible_fee_type_set",
+					),
+				).Put(
+					"/",
+					app.ReplaceMerchantPlatformCreditEligibleFeeTypeSetHandler,
+				)
+
+				mpce.With(
+					app.RequirePermission(
+						"check_merchant_platform_credit_eligible_fee_type",
+					),
+				).Get(
+					"/{feeType}/check",
+					app.CheckMerchantPlatformCreditEligibleFeeTypeHandler,
+				)
+
+				mpce.With(
+					app.RequirePermission(
+						"read_merchant_platform_credit_eligible_fee_type",
+					),
+				).Get(
+					"/{feeType}",
+					app.GetMerchantPlatformCreditEligibleFeeTypeHandler,
+				)
+
+				mpce.With(
+					app.RequirePermission(
+						"delete_merchant_platform_credit_eligible_fee_type",
+					),
+				).Delete(
+					"/{feeType}",
+					app.DeleteMerchantPlatformCreditEligibleFeeTypeHandler,
+				)
+			},
+		)
 
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)
 
-			mpm.With(
-				app.RequirePermission(
-					actionCreateMerchantPaymentMethod,
-				),
-			).Post(
-				"/",
-				app.CreateMerchantPaymentMethodHandler,
-			)
+			mpm.With(app.RequirePermission("create_merchant_payment_method")).
+				Post("/", app.CreateMerchantPaymentMethodHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionReadDefaultMerchantPaymentMethod,
-				),
-			).Get(
-				"/default",
-				app.GetDefaultMerchantPaymentMethodHandler,
-			)
+			mpm.With(app.RequirePermission("read_default_merchant_payment_method")).
+				Get("/default", app.GetDefaultMerchantPaymentMethodHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionListMerchantPaymentMethods,
-				),
-			).Get(
-				"/",
-				app.ListMerchantPaymentMethodsHandler,
-			)
+			mpm.With(app.RequirePermission("list_merchant_payment_methods")).
+				Get("/", app.ListMerchantPaymentMethodsHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionReadMerchantPaymentMethod,
-				),
-			).Get(
-				"/{merchantPaymentMethodID}",
-				app.GetMerchantPaymentMethodByIDHandler,
-			)
+			mpm.With(app.RequirePermission("read_merchant_payment_method")).
+				Get("/{merchantPaymentMethodID}", app.GetMerchantPaymentMethodByIDHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionUpdateMerchantPaymentMethod,
-				),
-			).Put(
-				"/{merchantPaymentMethodID}",
-				app.UpdateMerchantPaymentMethodHandler,
-			)
+			mpm.With(app.RequirePermission("update_merchant_payment_method")).
+				Put("/{merchantPaymentMethodID}", app.UpdateMerchantPaymentMethodHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionSetDefaultMerchantPaymentMethod,
-				),
-			).Patch(
-				"/{merchantPaymentMethodID}/set-default",
-				app.SetDefaultMerchantPaymentMethodHandler,
-			)
+			mpm.With(app.RequirePermission("set_default_merchant_payment_method")).
+				Patch("/{merchantPaymentMethodID}/set-default", app.SetDefaultMerchantPaymentMethodHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionClearDefaultMerchantPaymentMethod,
-				),
-			).Patch(
-				"/{merchantPaymentMethodID}/clear-default",
-				app.ClearDefaultMerchantPaymentMethodHandler,
-			)
+			mpm.With(app.RequirePermission("clear_default_merchant_payment_method")).
+				Patch("/{merchantPaymentMethodID}/clear-default", app.ClearDefaultMerchantPaymentMethodHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionUpdateMerchantPaymentMethodStatus,
-				),
-			).Patch(
-				"/{merchantPaymentMethodID}/status",
-				app.UpdateMerchantPaymentMethodStatusHandler,
-			)
+			mpm.With(app.RequirePermission("update_merchant_payment_method_status")).
+				Patch("/{merchantPaymentMethodID}/status", app.UpdateMerchantPaymentMethodStatusHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionRestoreMerchantPaymentMethod,
-				),
-			).Patch(
-				"/{merchantPaymentMethodID}/restore",
-				app.RestoreMerchantPaymentMethodHandler,
-			)
+			mpm.With(app.RequirePermission("restore_merchant_payment_method")).
+				Patch("/{merchantPaymentMethodID}/restore", app.RestoreMerchantPaymentMethodHandler)
 
-			mpm.With(
-				app.RequirePermission(
-					actionSoftDeleteMerchantPaymentMethod,
-				),
-			).Delete(
-				"/{merchantPaymentMethodID}",
-				app.SoftDeleteMerchantPaymentMethodHandler,
-			)
+			mpm.With(app.RequirePermission("soft_delete_merchant_payment_method")).
+				Delete("/{merchantPaymentMethodID}", app.SoftDeleteMerchantPaymentMethodHandler)
 		})
 
 		// Categories

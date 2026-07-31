@@ -1005,6 +1005,31 @@ const (
 			'Allows replacing merchant platform credit account descriptive metadata'
 		),
 		('cancel_merchant_platform_credit_account', 'Allows cancelling merchant platform credit accounts'),
+		-- Merchant Platform Credit Eligible Fee Types
+		(
+			'create_merchant_platform_credit_eligible_fee_type',
+			'Allows creating a merchant platform credit fee-type eligibility association'
+		),
+		(
+			'read_merchant_platform_credit_eligible_fee_type',
+			'Allows reading a merchant platform credit fee-type eligibility association'
+		),
+		(
+			'list_merchant_platform_credit_eligible_fee_types',
+			'Allows listing the fee-type eligibility set for a merchant platform credit account'
+		),
+		(
+			'check_merchant_platform_credit_eligible_fee_type',
+			'Allows checking whether a merchant platform credit account is eligible for a fee type'
+		),
+		(
+			'delete_merchant_platform_credit_eligible_fee_type',
+			'Allows deleting a merchant platform credit fee-type eligibility association'
+		),
+		(
+			'replace_merchant_platform_credit_eligible_fee_type_set',
+			'Allows atomically replacing the fee-type eligibility set for a merchant platform credit account'
+		),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Allows creating merchant-owned payment method references'),
 		('read_merchant_payment_method', 'Allows reading a merchant-owned payment method reference'),
@@ -1196,6 +1221,7 @@ const (
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
 		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
 		('merchant_platform_credit_account', 'Platform-issued merchant commercial credit account entity'),
+		('merchant_platform_credit_eligible_fee_type', 'Merchant platform credit fee-type eligibility association'),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
@@ -1478,6 +1504,31 @@ const (
 		('list_merchant_platform_credit_accounts', 'List platform-issued merchant commercial credit accounts'),
 		('update_merchant_platform_credit_account_descriptive_fields', 'Replace descriptive metadata for a merchant platform credit account'),
 		('cancel_merchant_platform_credit_account', 'Cancel an active merchant platform credit account'),
+		-- Merchant Platform Credit Eligible Fee Types
+		(
+			'create_merchant_platform_credit_eligible_fee_type',
+			'Create a merchant platform credit fee-type eligibility association'
+		),
+		(
+			'read_merchant_platform_credit_eligible_fee_type',
+			'Read a merchant platform credit fee-type eligibility association'
+		),
+		(
+			'list_merchant_platform_credit_eligible_fee_types',
+			'List the fee-type eligibility set for a merchant platform credit account'
+		),
+		(
+			'check_merchant_platform_credit_eligible_fee_type',
+			'Check whether a merchant platform credit account is eligible for a fee type'
+		),
+		(
+			'delete_merchant_platform_credit_eligible_fee_type',
+			'Delete a merchant platform credit fee-type eligibility association'
+		),
+		(
+			'replace_merchant_platform_credit_eligible_fee_type_set',
+			'Atomically replace the fee-type eligibility set for a merchant platform credit account'
+		),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Create a merchant payment method reference'),
 		('read_merchant_payment_method', 'Read a merchant payment method reference'),
