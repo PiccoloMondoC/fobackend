@@ -11,7 +11,7 @@ The correct handler-layer completion boundary for this project is:
 Only service construction, service-handler integration, and startup composition remain deferred to the service-layer phase.
 
 # BETTER
-Service implementation, service-handler integration, service construction, and startup composition remain deferred to the service-layer phase.
+Service implementation, service-handler integration, service construction, and startup composition form one coherent service-layer completion boundary.
 
 
 **When we're reviewing handlers, we want the engineer thinking about:**

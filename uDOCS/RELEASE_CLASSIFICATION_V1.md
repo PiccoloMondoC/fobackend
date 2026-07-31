@@ -8,7 +8,8 @@
 
 Engineering builds capabilities; operations exercises them through configuration rather than code changes.
 
-`admin_console.go` is a first-class SPINE subsystem, not an afterthought. It doesn't necessarily need to be built before the backend APIs, but it is a core deliverable because it owns the administrative decisions that should never be hard-coded:
+`admin_console.go` is a first-class SPINE subsystem, not an afterthought. It doesn't necessarily need to be built before the backend APIs, but it is a core deliverable because it owns the administrative decisions that should never be hard-coded: 
+>                                                        — Done
 
 - Program plans
 - Fee schedules
@@ -24,15 +25,16 @@ Engineering builds capabilities; operations exercises them through configuration
 ## SPINE (v1 build)
 
 ### Phase 1 — Admin Control Plane Foundation
-- [x ] `admin_console.go` — console boundary, authorization, capability registry, and completed-domain overview — Done
+- [x ] `admin_console.go` — console boundary, authorization, capability registry, and completed-domain overview
+>                                                        — Done
 
 ### Phase 2 — Platform Architecture
-- [x] `platform_settings.go` — Done
-- [x] `platform_setting_history.go` — Done
+- [x] `platform_settings.go`                             — Done
+- [x] `platform_setting_history.go`                      — Done
 
 ### Phase 3 — Merchant Foundation
 A merchant must exist before anything else.
-- [x ] `merchant_accounts.go` — Done
+- [x ] `merchant_accounts.go`                            — Done
 
 ### Phase 4 — Commerce Architecture
 Everything needed to let the platform commercially operate, even if all fees are currently waived. Notice that billing ledger comes last — everything else generates financial activity; the ledger records it.
@@ -42,7 +44,7 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_program_subscriptions.go`                — Done
 - [x] `merchant_program_subscription_events.go`          — Done
 - [x] `merchant_platform_credit_accounts.go`             — Done
-- [ ] `merchant_platform_credit_eligible_fee_types.go`
+- [x] `merchant_platform_credit_eligible_fee_types.go`   — Done
 >       Anticipation Intelligence Activation Fee (one-time)
         Charged when Anticipation Intelligence services are activated for a Future Offering.
 >       Anticipation Intelligence Fee (recurring/usage-based)

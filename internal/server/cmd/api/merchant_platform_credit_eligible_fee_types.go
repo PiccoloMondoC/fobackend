@@ -26,9 +26,11 @@
 // Handler Boundary:
 //
 //	This file implements only the handler layer. It contains no SQL, opens
-//	no database transactions, duplicates no model canonicalization, and
-//	calls only the pool-based data-layer methods. Transaction-aware model
-//	methods remain composition surfaces for a future service layer.
+//	no database transactions, and duplicates no model canonicalization.
+//	Ordinary domain operations pass through app.InternalServices rather than
+//	invoking app.Models.MerchantPlatformCreditEligibleFeeType directly. This
+//	file never constructs a service; it fails safely if app.InternalServices
+//	is unavailable.
 //
 // SPINE Rule:
 //
@@ -38,11 +40,13 @@
 //	Preserve mass-assignment safety through explicit request DTOs.
 //	Preserve the canonical shared fee vocabulary; never redeclare it here.
 //	Preserve composite-identity handling; never invent a synthetic ID.
-//	Preserve atomic complete-set replacement through the data layer.
+//	Preserve atomic complete-set replacement through the service boundary.
 //	Never hard-code eligibility, grant, promotion, or enablement policy.
 //	Never expose a redundant delete-all endpoint.
+//	Never maintain a second implementation path beside the service boundary.
 //	Block deployment if this file breaks build, authorization, audit
-//	accountability, or composite-identity integrity.
+//	accountability, composite-identity integrity, or service-handler
+//	separation.
 package main
 
 import (
@@ -138,6 +142,17 @@ func merchantPlatformCreditEligibleFeeTypeEntityID(accountID uuid.UUID, feeType 
 	return accountID.String() + ":" + string(feeType)
 }
 
+// respondInternalServicesUnavailable fails safely when the validated
+// internal service container is not present on the Application. Handlers
+// must never construct a service inline as a fallback.
+func (app *Application) respondInternalServicesUnavailable(w http.ResponseWriter) {
+	app.respondWithError(
+		w,
+		errors.New("internal services are unavailable"),
+		http.StatusInternalServerError,
+	)
+}
+
 type createMerchantPlatformCreditEligibleFeeTypeRequest struct {
 	FeeType data.MerchantFeeType `json:"fee_type"`
 }
@@ -222,6 +237,11 @@ func (app *Application) CreateMerchantPlatformCreditEligibleFeeTypeHandler(
 		return
 	}
 
+	if app.InternalServices == nil {
+		app.respondInternalServicesUnavailable(w)
+		return
+	}
+
 	accountID, err := app.parseMerchantPlatformCreditAccountID(r)
 	if err != nil {
 		app.respondWithError(
@@ -256,9 +276,8 @@ func (app *Application) CreateMerchantPlatformCreditEligibleFeeTypeHandler(
 	}
 
 	association, err :=
-		app.Models.
-			MerchantPlatformCreditEligibleFeeType.
-			Insert(
+		app.InternalServices.
+			CreateMerchantPlatformCreditEligibleFeeTypeInternal(
 				ctx,
 				accountID,
 				feeType,
@@ -355,13 +374,18 @@ func (app *Application) GetMerchantPlatformCreditEligibleFeeTypeHandler(w http.R
 		return
 	}
 
+	if app.InternalServices == nil {
+		app.respondInternalServicesUnavailable(w)
+		return
+	}
+
 	accountID, feeType, err := app.parseMerchantPlatformCreditEligibleFeeTypeKey(r)
 	if err != nil {
 		app.respondWithError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	association, err := app.Models.MerchantPlatformCreditEligibleFeeType.Get(ctx, accountID, feeType)
+	association, err := app.InternalServices.GetMerchantPlatformCreditEligibleFeeTypeInternal(ctx, accountID, feeType)
 	if err != nil {
 		logger.Error("Get merchant platform credit eligible fee type failed", "credit_account_id", accountID, "fee_type", feeType, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditEligibleFeeTypeHTTPStatus(err))
@@ -399,13 +423,18 @@ func (app *Application) ListMerchantPlatformCreditEligibleFeeTypesHandler(w http
 		return
 	}
 
+	if app.InternalServices == nil {
+		app.respondInternalServicesUnavailable(w)
+		return
+	}
+
 	accountID, err := app.parseMerchantPlatformCreditAccountID(r)
 	if err != nil {
 		app.respondWithError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	associations, err := app.Models.MerchantPlatformCreditEligibleFeeType.ListByCreditAccount(ctx, accountID)
+	associations, err := app.InternalServices.ListMerchantPlatformCreditEligibleFeeTypesByCreditAccountInternal(ctx, accountID)
 	if err != nil {
 		logger.Error("List merchant platform credit eligible fee types failed", "credit_account_id", accountID, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditEligibleFeeTypeHTTPStatus(err))
@@ -441,13 +470,18 @@ func (app *Application) CheckMerchantPlatformCreditEligibleFeeTypeHandler(w http
 		return
 	}
 
+	if app.InternalServices == nil {
+		app.respondInternalServicesUnavailable(w)
+		return
+	}
+
 	accountID, feeType, err := app.parseMerchantPlatformCreditEligibleFeeTypeKey(r)
 	if err != nil {
 		app.respondWithError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	eligible, err := app.Models.MerchantPlatformCreditEligibleFeeType.IsEligible(ctx, accountID, feeType)
+	eligible, err := app.InternalServices.IsMerchantPlatformCreditEligibleFeeTypeInternal(ctx, accountID, feeType)
 	if err != nil {
 		logger.Error("Check merchant platform credit fee-type eligibility failed", "credit_account_id", accountID, "fee_type", feeType, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditEligibleFeeTypeHTTPStatus(err))
@@ -482,13 +516,18 @@ func (app *Application) DeleteMerchantPlatformCreditEligibleFeeTypeHandler(w htt
 		return
 	}
 
+	if app.InternalServices == nil {
+		app.respondInternalServicesUnavailable(w)
+		return
+	}
+
 	accountID, feeType, err := app.parseMerchantPlatformCreditEligibleFeeTypeKey(r)
 	if err != nil {
 		app.respondWithError(w, err, http.StatusBadRequest)
 		return
 	}
 
-	if err := app.Models.MerchantPlatformCreditEligibleFeeType.Delete(ctx, accountID, feeType); err != nil {
+	if err := app.InternalServices.DeleteMerchantPlatformCreditEligibleFeeTypeInternal(ctx, accountID, feeType); err != nil {
 		logger.Error("Delete merchant platform credit eligible fee type failed", "credit_account_id", accountID, "fee_type", feeType, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditEligibleFeeTypeHTTPStatus(err))
 		return
@@ -523,6 +562,11 @@ func (app *Application) ReplaceMerchantPlatformCreditEligibleFeeTypeSetHandler(w
 		return
 	}
 
+	if app.InternalServices == nil {
+		app.respondInternalServicesUnavailable(w)
+		return
+	}
+
 	accountID, err := app.parseMerchantPlatformCreditAccountID(r)
 	if err != nil {
 		app.respondWithError(w, err, http.StatusBadRequest)
@@ -539,7 +583,7 @@ func (app *Application) ReplaceMerchantPlatformCreditEligibleFeeTypeSetHandler(w
 		return
 	}
 
-	replaced, err := app.Models.MerchantPlatformCreditEligibleFeeType.ReplaceSet(ctx, accountID, input.FeeTypes.Value)
+	replaced, err := app.InternalServices.ReplaceMerchantPlatformCreditEligibleFeeTypeSetInternal(ctx, accountID, input.FeeTypes.Value)
 	if err != nil {
 		logger.Error("Replace merchant platform credit eligible fee type set failed", "credit_account_id", accountID, "error", err)
 		app.respondWithError(w, err, merchantPlatformCreditEligibleFeeTypeHTTPStatus(err))

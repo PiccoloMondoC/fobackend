@@ -408,12 +408,35 @@ func (m *MerchantPlatformCreditEligibleFeeTypeModel) ListByCreditAccount(
 	return associations, nil
 }
 
-// IsEligible reports whether the composite-key association exists.
+// IsEligible reports whether the composite-key association exists using the
+// model's connection pool.
 //
-// false with a nil error is a valid negative result. Database failure remains
-// distinguishable through the returned error.
+// false with a nil error is a valid negative result. Use IsEligibleTx when the
+// eligibility decision must participate in a caller-owned transaction.
 func (m *MerchantPlatformCreditEligibleFeeTypeModel) IsEligible(
 	ctx context.Context,
+	creditAccountID uuid.UUID,
+	feeType MerchantFeeType,
+) (bool, error) {
+	return m.IsEligibleTx(
+		ctx,
+		m.DB,
+		creditAccountID,
+		feeType,
+	)
+}
+
+// IsEligibleTx is the transaction-aware form of IsEligible.
+//
+// q may be *pgxpool.Pool or pgx.Tx. When q is a transaction, the eligibility
+// check observes that transaction's snapshot and any eligibility mutations
+// already performed through the same transaction.
+//
+// false with a nil error is a valid negative result. The caller owns commit or
+// rollback when q is a transaction.
+func (m *MerchantPlatformCreditEligibleFeeTypeModel) IsEligibleTx(
+	ctx context.Context,
+	q merchantPlatformCreditEligibleFeeTypeQuerier,
 	creditAccountID uuid.UUID,
 	feeType MerchantFeeType,
 ) (bool, error) {
@@ -422,12 +445,23 @@ func (m *MerchantPlatformCreditEligibleFeeTypeModel) IsEligible(
 
 	logger := m.Logger.
 		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("IsMerchantPlatformCreditEligibleFeeType")
+		WithFunctionName(
+			"IsMerchantPlatformCreditEligibleFeeType",
+		)
 
-	normalizedFeeType, err := validateMerchantPlatformCreditEligibleFeeTypeKey(
-		creditAccountID,
-		feeType,
-	)
+	if q == nil {
+		err := merchantPlatformCreditEligibleFeeTypeInvalidInput(
+			"querier is required",
+		)
+		logger.Error("validation failed", err)
+		return false, err
+	}
+
+	normalizedFeeType, err :=
+		validateMerchantPlatformCreditEligibleFeeTypeKey(
+			creditAccountID,
+			feeType,
+		)
 	if err != nil {
 		logger.Error("validation failed", err)
 		return false, err
@@ -443,13 +477,12 @@ func (m *MerchantPlatformCreditEligibleFeeTypeModel) IsEligible(
 	`
 
 	var eligible bool
-	err = m.DB.QueryRow(
+	if err := q.QueryRow(
 		ctx,
 		query,
 		creditAccountID,
 		normalizedFeeType,
-	).Scan(&eligible)
-	if err != nil {
+	).Scan(&eligible); err != nil {
 		logger.Error(
 			"check merchant platform credit fee-type eligibility failed",
 			err,
