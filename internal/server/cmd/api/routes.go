@@ -744,6 +744,36 @@ func (app *Application) Routes() http.Handler {
 			},
 		)
 
+		// Merchant Platform Credit Applications
+		v1.Route("/merchant-platform-credit-applications", func(mpcap chi.Router) {
+			mpcap.Use(app.AuthMiddleware)
+
+			// Keep static routes before the parameterized application-ID route.
+			mpcap.With(app.RequirePermission("read_merchant_platform_credit_application")).
+				Get(
+					"/by-account/{merchantPlatformCreditAccountID}/fee-calculation/{feeCalculationID}",
+					app.GetMerchantPlatformCreditApplicationByCreditAccountAndFeeCalculationHandler,
+				)
+
+			mpcap.With(app.RequirePermission("list_merchant_platform_credit_applications")).
+				Get(
+					"/by-account/{merchantPlatformCreditAccountID}",
+					app.ListMerchantPlatformCreditApplicationsByCreditAccountHandler,
+				)
+
+			mpcap.With(app.RequirePermission("list_merchant_platform_credit_applications")).
+				Get(
+					"/by-fee-calculation/{feeCalculationID}",
+					app.ListMerchantPlatformCreditApplicationsByFeeCalculationHandler,
+				)
+
+			mpcap.With(app.RequirePermission("read_merchant_platform_credit_application")).
+				Get(
+					"/{merchantPlatformCreditApplicationID}",
+					app.GetMerchantPlatformCreditApplicationByIDHandler,
+				)
+		})
+
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)

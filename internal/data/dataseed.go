@@ -1030,6 +1030,15 @@ const (
 			'replace_merchant_platform_credit_eligible_fee_type_set',
 			'Allows atomically replacing the fee-type eligibility set for a merchant platform credit account'
 		),
+		-- Merchant Platform Credit Applications
+		(
+			'read_merchant_platform_credit_application',
+			'Allows privileged reading of a merchant platform credit application'
+		),
+		(
+			'list_merchant_platform_credit_applications',
+			'Allows privileged listing of merchant platform credit applications'
+		),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Allows creating merchant-owned payment method references'),
 		('read_merchant_payment_method', 'Allows reading a merchant-owned payment method reference'),
@@ -1222,6 +1231,10 @@ const (
 		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
 		('merchant_platform_credit_account', 'Platform-issued merchant commercial credit account entity'),
 		('merchant_platform_credit_eligible_fee_type', 'Merchant platform credit fee-type eligibility association'),
+		(
+			'merchant_platform_credit_application',
+			'Platform-issued merchant commercial credit application entity'
+		),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
@@ -1528,6 +1541,15 @@ const (
 		(
 			'replace_merchant_platform_credit_eligible_fee_type_set',
 			'Atomically replace the fee-type eligibility set for a merchant platform credit account'
+		),
+		-- Merchant Platform Credit Applications
+		(
+			'read_merchant_platform_credit_application',
+			'Read a merchant platform credit application'
+		),
+		(
+			'list_merchant_platform_credit_applications',
+			'List merchant platform credit applications'
 		),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Create a merchant payment method reference'),

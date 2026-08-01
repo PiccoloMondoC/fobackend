@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_platform_credit_applications.go data layer"
+git commit -m "write merchant_platform_credit_applications.go handler layer"
 git push
 
 | data layer | handler layer | services layer |
