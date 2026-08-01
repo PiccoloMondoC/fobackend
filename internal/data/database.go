@@ -1911,7 +1911,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		PRIMARY KEY (credit_account_id, fee_type)
 	);
 
-	
+
 	-- ===============================================================
 	-- Merchant Trust / Verification
 	-- ===============================================================
@@ -3672,27 +3672,49 @@ CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 		WHERE fee_type = 'merchant_setup_fee'
 		AND status IN ('approved', 'settled', 'waived');
 
+
+	-- Merchant Platform Credit Applications
 	CREATE TABLE IF NOT EXISTS merchant_platform_credit_applications (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		credit_account_id UUID NOT NULL REFERENCES merchant_platform_credit_accounts(id) ON DELETE RESTRICT,
-		fee_calculation_id UUID NOT NULL REFERENCES merchant_fee_calculations(id) ON DELETE RESTRICT,
+		credit_account_id UUID NOT NULL
+			CONSTRAINT merchant_platform_credit_applications_credit_account_id_fkey
+			REFERENCES merchant_platform_credit_accounts(id)
+			ON DELETE RESTRICT,
 
-		applied_amount NUMERIC(19,4) NOT NULL CHECK (applied_amount > 0),
+		fee_calculation_id UUID NOT NULL
+			CONSTRAINT merchant_platform_credit_applications_fee_calculation_id_fkey
+			REFERENCES merchant_fee_calculations(id)
+			ON DELETE RESTRICT,
+
+		applied_amount NUMERIC(19,4) NOT NULL
+			CONSTRAINT merchant_platform_credit_applications_applied_amount_positive_chk
+			CHECK (applied_amount > 0),
 
 		currency CHAR(3) NOT NULL DEFAULT 'USD'
+			CONSTRAINT merchant_platform_credit_applications_currency_format_chk
 			CHECK (currency ~ '^[A-Z]{3}$'),
 
 		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-		UNIQUE (credit_account_id, fee_calculation_id)
+		CONSTRAINT merchant_platform_credit_applications_account_fee_uniq
+			UNIQUE (credit_account_id, fee_calculation_id)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_platform_credit_applications_credit
-		ON merchant_platform_credit_applications(credit_account_id, applied_at DESC);
+		ON merchant_platform_credit_applications (
+			credit_account_id,
+			applied_at DESC,
+			id DESC
+		);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_platform_credit_applications_fee
-		ON merchant_platform_credit_applications(fee_calculation_id);
+		ON merchant_platform_credit_applications (
+			fee_calculation_id,
+			applied_at DESC,
+			id DESC
+		);
+
 
 	-- ===============================================================
 	-- DEFERRED: Settlement

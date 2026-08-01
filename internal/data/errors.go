@@ -165,6 +165,23 @@ var (
 		"merchant platform credit account mutation conflict",
 	)
 
+	// Merchant platform credit applications.
+	ErrMerchantPlatformCreditApplicationInvalidInput = errors.New(
+		"invalid merchant platform credit application input",
+	)
+	ErrMerchantPlatformCreditApplicationDuplicate = errors.New(
+		"merchant platform credit application already exists for this credit account and fee calculation",
+	)
+	ErrMerchantPlatformCreditApplicationCreditAccountNotFound = errors.New(
+		"merchant platform credit application references a nonexistent credit account",
+	)
+	ErrMerchantPlatformCreditApplicationFeeCalculationNotFound = errors.New(
+		"merchant platform credit application references a nonexistent fee calculation",
+	)
+	ErrMerchantPlatformCreditApplicationInvalidState = errors.New(
+		"merchant platform credit application violates a persisted integrity constraint",
+	)
+
 	// Merchant platform credit eligible fee types.
 	ErrMerchantPlatformCreditEligibleFeeTypeInvalidInput = errors.New(
 		"invalid merchant platform credit eligible fee type input",

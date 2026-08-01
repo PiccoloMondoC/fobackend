@@ -121,8 +121,8 @@ type Models struct {
 	MerchantProgramSubscription           MerchantProgramSubscriptionModel           // SPINE: Future Offering v1 — merchant program subscription lifecycle
 	MerchantProgramSubscriptionEvent      MerchantProgramSubscriptionEventModel      // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
 	MerchantPlatformCreditEligibleFeeType MerchantPlatformCreditEligibleFeeTypeModel // SPINE: Commerce Architecture — credit eligibility by canonical fee type
-
-	MerchantPlatformCreditAccount MerchantPlatformCreditAccountModel // SPINE: Commerce Architecture — platform-issued merchant commercial credit
+	MerchantPlatformCreditAccount         MerchantPlatformCreditAccountModel         // SPINE: Commerce Architecture — platform-issued merchant commercial credit
+	MerchantPlatformCreditApplication     MerchantPlatformCreditApplicationModel     // SPINE: Commerce Architecture — append-only credit application history
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
@@ -232,7 +232,8 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},      // SPINE: Future Offering v1
 		MerchantProgramSubscriptionEvent:      MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		MerchantPlatformCreditEligibleFeeType: MerchantPlatformCreditEligibleFeeTypeModel{DB: dbPool, Logger: logger},
-		MerchantPlatformCreditAccount:         MerchantPlatformCreditAccountModel{DB: dbPool, Logger: logger}, // SPINE: Commerce Architecture — platform-issued merchant commercial credit
+		MerchantPlatformCreditAccount:         MerchantPlatformCreditAccountModel{DB: dbPool, Logger: logger},     // SPINE: Commerce Architecture — platform-issued merchant commercial credit
+		MerchantPlatformCreditApplication:     MerchantPlatformCreditApplicationModel{DB: dbPool, Logger: logger}, // SPINE: Commerce Architecture — append-only credit application history
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 
