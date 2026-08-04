@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_platform_credit_applications.go handler layer"
+git commit -m "write merchant_billing_accounts.go data layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -66,3 +66,75 @@ go vet ./internal/server/cmd/api/...
 go test ./internal/data
 go test ./internal/services
 go test ./internal/server/cmd/api
+
+
+
+Before you decide whether or not to write a prompt, please first ask yourself whether the SE stage will genuinely discover something new. If the answer is yes, write the prompt for SE. Otherwise, skip the prompt and I go straight to the Chief Engineer implementation.
+
+# Projected Project Schedule:
+* Backend feature complete                        — October 2026
+* Frontend feature complete                       — June 2027
+* System integration & architecture validation    — July–August 2027
+* Production deployment                           — September 2027
+
+
+> Is there a way to make the website available for a select few before a launch day?
+
+2. Invite-only accounts
+
+Only approved users can sign in. Everyone else sees a launch page.
+
+Good for:
+
+controlled merchant onboarding;
+beta testing;
+tracking who has access;
+removing access individually.
+
+This is usually the best option for Sagrenti.
+
+# My recommendation for Sagrenti
+Use two layers:
+
+Public visitors
+    ↓
+Launch / waitlist page
+
+Approved users
+    ↓
+Authentication
+    ↓
+Private pre-launch platform
+
+You can call the phases:
+* Internal Preview
+* Private Alpha
+* Invite-Only Beta
+* Public Launch
+
+
+The public launch does not require replacing the website. You simply change configuration so public registration or public routes become available. That fits your doctrine well: engineering provides the access-control capability, while Administration controls whether the platform is private, invite-only, or public.
+
+
+Sagrenti does not disclose consumer identity to merchants as part of Future Offering engagement. Consumer identity remains under the consumer's control. When a Future Offering reaches a merchant-facing commercial stage, Sagrenti issues the consumer an authenticated engagement credential that the consumer may present to the merchant to establish a direct commercial relationship.
+
+
+Request an Early Access Pass
+Generate Pre-order Pass
+
+Our privacy posture would not allow us to give info about any consumer to a merchant. Only the consumer should be able to reach out to the merchant, not the other way around using a digital token. The token might be represented as:
+
+* QR code
+* Secure URL
+* Digital credential
+* One-time authorization code
+
+
+
+Early Access
+Reservation
+Pre-order
+Beta participation
+Event admission
+Launch-day priority
+Promotional entitlement

@@ -3530,22 +3530,29 @@ CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 	-- ===============================================================
 	-- Merchant Billing Account / Prepaid Balance
 	-- ===============================================================
-
+	
+	-- Merchant Billing Account
 	CREATE TABLE IF NOT EXISTS merchant_billing_accounts (
-		merchant_id UUID PRIMARY KEY REFERENCES merchants(id) ON DELETE CASCADE,
+		merchant_id UUID PRIMARY KEY
+			REFERENCES merchants(id) ON DELETE RESTRICT,
 
-		account_status TEXT NOT NULL DEFAULT 'active'
-			CHECK (account_status IN ('active', 'suspended', 'closed')),
+		status TEXT NOT NULL
+			CHECK (status IN ('active', 'suspended', 'closed')),
 
-		minimum_prepaid_balance NUMERIC(19,4) NOT NULL DEFAULT 0
-			CHECK (minimum_prepaid_balance >= 0),
-
-		currency CHAR(3) NOT NULL DEFAULT 'USD'
+		currency CHAR(3) NOT NULL
 			CHECK (currency ~ '^[A-Z]{3}$'),
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_billing_accounts_status_created
+		ON merchant_billing_accounts (
+			status,
+			created_at DESC,
+			merchant_id DESC
+		);
+
 
 	-- Balance is derived from this ledger, not manually trusted.
 	CREATE TABLE IF NOT EXISTS merchant_billing_ledger_entries (

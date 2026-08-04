@@ -53,10 +53,10 @@ Everything needed to let the platform commercially operate, even if all fees are
         Applies only to present-commerce Launch Campaign services where that commercial model is enabled.
 >       Subscription Fee (optional)
         Applies only when Plans and Subscriptions are enabled by Admin.
-- [ ] `merchant_platform_credit_applications.go`
 - [ ] `merchant_billing_accounts.go`
 - [ ] `merchant_billable_events.go`
 - [ ] `merchant_fee_calculations.go`
+- [ ] `merchant_platform_credit_applications.go`
 - [ ] `merchant_invoices.go`
 - [ ] `merchant_billing_ledger_entries.go`
 

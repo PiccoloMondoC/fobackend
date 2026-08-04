@@ -193,6 +193,23 @@ var (
 		"merchant platform credit eligible fee type not found",
 	)
 
+	// Merchant billing accounts.
+	ErrMerchantBillingAccountAlreadyExists = errors.New(
+		"merchant billing account already exists",
+	)
+	ErrMerchantBillingAccountNotFound = errors.New(
+		"merchant billing account not found",
+	)
+	ErrMerchantBillingAccountInvalidState = errors.New(
+		"invalid merchant billing account state",
+	)
+	ErrMerchantBillingAccountInvalidTransition = errors.New(
+		"invalid merchant billing account lifecycle transition",
+	)
+	ErrMerchantBillingAccountMutationConflict = errors.New(
+		"merchant billing account mutation conflict",
+	)
+
 	// Merchant payment methods.
 	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")
 	ErrMerchantPaymentMethodAlreadyExists   = errors.New("merchant payment method already exists")

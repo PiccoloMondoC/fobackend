@@ -530,6 +530,10 @@ Engineering is responsible for implementing complete operational capabilities to
 18.6B **Engineering invariants are not policy**
 Engineering invariants are not policy. Administrative configuration may govern commercial and operational behavior, but it must not weaken or override the engineering invariants that preserve the platform's correctness, security, integrity, auditability, or reliability.
 
+§18.6C **Consumer Identity Sovereignty**
+
+Engineering shall preserve consumer identity sovereignty throughout the Future Offering engagement lifecycle. Future Offering capabilities shall not disclose consumer identity or personal information to merchants as part of ordinary engagement. Where the platform supports progression to a merchant-facing commercial stage, engineering shall ensure that any transition to a direct merchant-consumer relationship occurs only through explicit consumer authorization using platform-authenticated capabilities. Administrative configuration shall not weaken or bypass this invariant.
+
 18.7 **Waiver-does-not-remove-capability rule**
 Engineering invariants are not administrative policy. Administrative configuration may govern commercial and operational behavior, but it must not weaken, disable, bypass, or override the engineering invariants that preserve the platform’s correctness, security, data integrity, auditability, reliability, authorization boundaries, transactional consistency, or other non-negotiable system guarantees.
 

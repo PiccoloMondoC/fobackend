@@ -949,3 +949,13 @@ Each layer has a single responsibility:
 That separation follows the Single Responsibility Principle nicely and avoids overloading any one subsystem.
 
 I think this naming also fits the broader philosophy that the backend should communicate **ownership and responsibility** through its structure. An engineer encountering `platform_commercial_promotions.go` immediately knows they're looking at a platform-administered commercial subsystem, not merchant-created promotional content.
+
+## Consumer Relationship Ownership
+
+Consumers engage with Future Offerings through Sagrenti. During the anticipation lifecycle, Sagrenti measures, aggregates, and reports Market Anticipation Intelligence while preserving the consumer relationship.
+
+Sagrenti does not disclose consumer identity to merchants as part of ordinary Future Offering engagement.
+
+When a consumer chooses to progress to a merchant-facing commercial stage, Sagrenti authenticates that engagement by issuing a consumer-controlled engagement credential. The consumer—not Sagrenti—presents that credential to the merchant to establish a direct commercial relationship.
+
+The meaning, benefits, and commercial consequences of a valid engagement credential are defined by the merchant's Future Offering and governed through platform capabilities rather than hard-coded platform policy.
