@@ -1030,6 +1030,31 @@ const (
 			'replace_merchant_platform_credit_eligible_fee_type_set',
 			'Allows atomically replacing the fee-type eligibility set for a merchant platform credit account'
 		),
+		-- Merchant Billing Accounts
+		(
+			'create_merchant_billing_account',
+			'Allows creating a merchant billing account'
+		),
+		(
+			'read_merchant_billing_account',
+			'Allows reading a merchant billing account'
+		),
+		(
+			'list_merchant_billing_accounts',
+			'Allows listing merchant billing accounts by status'
+		),
+		(
+			'suspend_merchant_billing_account',
+			'Allows suspending a merchant billing account'
+		),
+		(
+			'reactivate_merchant_billing_account',
+			'Allows reactivating a merchant billing account'
+		),
+		(
+			'close_merchant_billing_account',
+			'Allows terminally closing a merchant billing account'
+		),
 		-- Merchant Platform Credit Applications
 		(
 			'read_merchant_platform_credit_application',
@@ -1231,10 +1256,8 @@ const (
 		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
 		('merchant_platform_credit_account', 'Platform-issued merchant commercial credit account entity'),
 		('merchant_platform_credit_eligible_fee_type', 'Merchant platform credit fee-type eligibility association'),
-		(
-			'merchant_platform_credit_application',
-			'Platform-issued merchant commercial credit application entity'
-		),
+		('merchant_billing_account', 'Merchant billing relationship and canonical billing-currency entity'),
+		('merchant_platform_credit_application', 'Platform-issued merchant commercial credit application entity'),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
@@ -1541,6 +1564,31 @@ const (
 		(
 			'replace_merchant_platform_credit_eligible_fee_type_set',
 			'Atomically replace the fee-type eligibility set for a merchant platform credit account'
+		),
+		-- Merchant Billing Accounts
+		(
+			'create_merchant_billing_account',
+			'Create a merchant billing account'
+		),
+		(
+			'read_merchant_billing_account',
+			'Read a merchant billing account'
+		),
+		(
+			'list_merchant_billing_accounts',
+			'List merchant billing accounts by status'
+		),
+		(
+			'suspend_merchant_billing_account',
+			'Suspend a merchant billing account'
+		),
+		(
+			'reactivate_merchant_billing_account',
+			'Reactivate a merchant billing account'
+		),
+		(
+			'close_merchant_billing_account',
+			'Terminally close a merchant billing account'
 		),
 		-- Merchant Platform Credit Applications
 		(

@@ -774,6 +774,81 @@ func (app *Application) Routes() http.Handler {
 				)
 		})
 
+		// Merchant Billing Accounts
+		//
+		// merchant_id is the billing account's canonical primary key, so the
+		// per-merchant resource is singular. This surface is privileged and
+		// administrative; it does not expose merchant-held funds or payment
+		// execution.
+		v1.Route(
+			"/merchants/{merchantID}/billing-account",
+			func(mba chi.Router) {
+				mba.Use(app.AuthMiddleware)
+
+				mba.With(
+					app.RequirePermission(
+						"create_merchant_billing_account",
+					),
+				).Post(
+					"/",
+					app.CreateMerchantBillingAccountHandler,
+				)
+
+				mba.With(
+					app.RequirePermission(
+						"read_merchant_billing_account",
+					),
+				).Get(
+					"/",
+					app.GetMerchantBillingAccountByMerchantIDHandler,
+				)
+
+				mba.With(
+					app.RequirePermission(
+						"suspend_merchant_billing_account",
+					),
+				).Patch(
+					"/suspend",
+					app.SuspendMerchantBillingAccountHandler,
+				)
+
+				mba.With(
+					app.RequirePermission(
+						"reactivate_merchant_billing_account",
+					),
+				).Patch(
+					"/reactivate",
+					app.ReactivateMerchantBillingAccountHandler,
+				)
+
+				mba.With(
+					app.RequirePermission(
+						"close_merchant_billing_account",
+					),
+				).Patch(
+					"/close",
+					app.CloseMerchantBillingAccountHandler,
+				)
+			},
+		)
+
+		// Merchant Billing Accounts — cross-merchant administrative listing
+		v1.Route(
+			"/merchant-billing-accounts",
+			func(mba chi.Router) {
+				mba.Use(app.AuthMiddleware)
+
+				mba.With(
+					app.RequirePermission(
+						"list_merchant_billing_accounts",
+					),
+				).Get(
+					"/",
+					app.ListMerchantBillingAccountsByStatusHandler,
+				)
+			},
+		)
+
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)

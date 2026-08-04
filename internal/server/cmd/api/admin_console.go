@@ -18,9 +18,12 @@
 //	  permissions, or domain mutation behavior.
 //
 //	  Platform Settings, Platform Setting History, Merchant Accounts,
-//	  Merchant Program Plans, Merchant Program Entitlements, and Merchant
-//	  Program Subscriptions remain owned by their respective handler, data,
-//	  and service contracts.
+//	  Merchant Billing Accounts, Merchant Program Plans, Merchant Program
+//	  Entitlements, Merchant Program Fee Schedules, Merchant Program
+//	  Subscriptions, Merchant Platform Credit Accounts, Merchant Platform
+//	  Credit Applications, Merchant Platform Credit Eligible Fee Types, and
+//	  Merchant Payment Methods remain owned by their respective handler,
+//	  data, and service contracts.
 //
 //	  platform_settings_admin_enabled governs Platform Settings
 //	  administration only. It is reported by Admin Console but does not
@@ -92,6 +95,7 @@ type adminConsoleDomains struct {
 	PlatformSettings                       bool `json:"platform_settings"`
 	PlatformSettingHistory                 bool `json:"platform_setting_history"`
 	MerchantAccounts                       bool `json:"merchant_accounts"`
+	MerchantBillingAccounts                bool `json:"merchant_billing_accounts"`
 	MerchantProgramPlans                   bool `json:"merchant_program_plans"`
 	MerchantProgramEntitlements            bool `json:"merchant_program_entitlements"`
 	MerchantProgramFeeSchedules            bool `json:"merchant_program_fee_schedules"`
@@ -291,6 +295,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			PlatformSettings:                       true,
 			PlatformSettingHistory:                 true,
 			MerchantAccounts:                       true,
+			MerchantBillingAccounts:                true,
 			MerchantProgramPlans:                   true,
 			MerchantProgramEntitlements:            true,
 			MerchantProgramFeeSchedules:            true,
