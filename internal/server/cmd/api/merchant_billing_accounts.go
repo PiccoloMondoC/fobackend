@@ -56,9 +56,11 @@
 //
 // Handler Boundary:
 //
-//	This file implements only the merchant billing account HTTP boundary.
-//	It does not implement service orchestration, invoice generation, fee
-//	calculation, payment execution, async processing, or commercial policy.
+//	This file implements only the merchant billing account HTTP boundary. All
+//	domain operations delegate through app.InternalServices. It does not call
+//	app.Models.MerchantBillingAccount directly or implement service
+//	orchestration, invoice generation, fee calculation, payment execution,
+//	async processing, or commercial policy.
 //
 // SPINE Rule:
 //
@@ -81,6 +83,8 @@
 //	Block deployment if this file breaks build, authorization, audit
 //	accountability, lifecycle integrity, currency integrity, or pagination
 //	determinism.
+//	Never bypass app.InternalServices to call the merchant billing account
+//	data model directly.
 package main
 
 import (
@@ -408,11 +412,12 @@ func (app *Application) CreateMerchantBillingAccountHandler(
 	}
 
 	account, err :=
-		app.Models.MerchantBillingAccount.Insert(
-			ctx,
-			merchantID,
-			input.Currency,
-		)
+		app.InternalServices.
+			CreateMerchantBillingAccountInternal(
+				ctx,
+				merchantID,
+				input.Currency,
+			)
 	if err != nil {
 		logger.Error(
 			"Create merchant billing account failed",
@@ -536,8 +541,8 @@ func (app *Application) GetMerchantBillingAccountByMerchantIDHandler(
 	}
 
 	account, err :=
-		app.Models.MerchantBillingAccount.
-			GetByMerchantID(
+		app.InternalServices.
+			GetMerchantBillingAccountByMerchantIDInternal(
 				ctx,
 				merchantID,
 			)
@@ -681,8 +686,8 @@ func (app *Application) ListMerchantBillingAccountsByStatusHandler(
 	}
 
 	accounts, err :=
-		app.Models.MerchantBillingAccount.
-			ListByStatus(
+		app.InternalServices.
+			ListMerchantBillingAccountsByStatusInternal(
 				ctx,
 				status,
 				limit,
@@ -907,7 +912,7 @@ func (app *Application) SuspendMerchantBillingAccountHandler(
 		"Merchant billing account suspended successfully",
 		"Merchant billing account suspended, but audit logging failed",
 		data.MerchantBillingAccountStatusSuspended,
-		app.Models.MerchantBillingAccount.Suspend,
+		app.InternalServices.SuspendMerchantBillingAccountInternal,
 	)
 }
 
@@ -930,7 +935,7 @@ func (app *Application) ReactivateMerchantBillingAccountHandler(
 		"Merchant billing account reactivated successfully",
 		"Merchant billing account reactivated, but audit logging failed",
 		data.MerchantBillingAccountStatusActive,
-		app.Models.MerchantBillingAccount.Reactivate,
+		app.InternalServices.ReactivateMerchantBillingAccountInternal,
 	)
 }
 
@@ -955,6 +960,6 @@ func (app *Application) CloseMerchantBillingAccountHandler(
 		"Merchant billing account closed successfully",
 		"Merchant billing account closed, but audit logging failed",
 		data.MerchantBillingAccountStatusClosed,
-		app.Models.MerchantBillingAccount.Close,
+		app.InternalServices.CloseMerchantBillingAccountInternal,
 	)
 }

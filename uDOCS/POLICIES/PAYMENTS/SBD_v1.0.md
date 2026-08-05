@@ -1,3 +1,15 @@
+SBD v1.0
+
+1. Mission
+2. Platform Vision
+3. Core Architectural Principles
+    3.1 Future-Oriented Commerce
+    3.2 Merchant–Consumer Separation
+    3.3 Administration Governs; Engineering Implements
+    3.4 Automation-First
+    3.5 Consumer Identity Sovereignty
+    ...
+
 # Engineering creates the operational capability and extension points.
 # Admin enables, disables, and configures that capability without recompilation.
 
@@ -16,7 +28,6 @@ Its purpose is to help merchants understand market anticipation **before** produ
 
 The software—not people—performs the work.
 
----
 
 # 2. What Sagrenti is not
 
@@ -959,3 +970,134 @@ Sagrenti does not disclose consumer identity to merchants as part of ordinary Fu
 When a consumer chooses to progress to a merchant-facing commercial stage, Sagrenti authenticates that engagement by issuing a consumer-controlled engagement credential. The consumer—not Sagrenti—presents that credential to the merchant to establish a direct commercial relationship.
 
 The meaning, benefits, and commercial consequences of a valid engagement credential are defined by the merchant's Future Offering and governed through platform capabilities rather than hard-coded platform policy.
+
+## 22. Automation-First Operating Model
+
+### 22.1 Purpose
+
+Sagrenti shall be designed so that a single operator or a small operating team can manage substantial platform activity without operational workload increasing in direct proportion to platform growth.
+
+Automation is therefore a core platform requirement, not an optional convenience.
+
+The purpose of automation is to reduce repetitive manual work, preserve operational consistency, prevent missed obligations, and allow the platform to scale before substantial staffing becomes available.
+
+### 22.2 Operating Principle
+
+The platform shall automate recurring, deterministic, and safely governable work wherever automation is more reliable than repeated manual execution.
+
+Human operators should primarily:
+
+* configure policy;
+* review exceptions;
+* investigate failures;
+* approve sensitive actions where required;
+* resolve cases that cannot be completed safely by software.
+
+Human operators should not be required to repeatedly execute routine platform processes that software can perform reliably.
+
+### 22.3 Expected Automation Scope
+
+Automation should progressively support:
+
+* merchant onboarding;
+* billing-account readiness;
+* Future Offering activation workflows;
+* invoice generation;
+* payment collection;
+* failed-payment retries;
+* notification delivery;
+* subscription renewal and expiration;
+* Anticipation Intelligence report generation;
+* fraud and risk review support;
+* payment and provider reconciliation;
+* lifecycle housekeeping;
+* operational monitoring;
+* exception alerts;
+* audit recording and review support.
+
+This list defines expected areas of automation. It does not require every capability to be implemented asynchronously or in the first release.
+
+### 22.4 Capability Before Staffing
+
+Sagrenti shall not depend on immediate access to a large operational workforce.
+
+Engineering decisions should favor platform capabilities that:
+
+* reduce repetitive administrative effort;
+* make routine work deterministic;
+* preserve clear exception queues;
+* allow one operator to understand current platform state;
+* provide actionable alerts rather than requiring constant manual inspection;
+* allow additional staff to be added later without redesigning core workflows.
+
+### 22.5 Human Oversight
+
+Automation does not remove governance.
+
+Administration remains responsible for configuring commercial and operational behavior within engineering-defined safe boundaries.
+
+Automation may execute approved behavior, but it must not invent policy, weaken engineering invariants, or bypass required authorization.
+
+### 22.6 Incremental Implementation
+
+Automation shall be introduced when a concrete operational responsibility exists.
+
+The absence of an async implementation for a particular domain does not mean that Sagrenti rejects automation.
+
+It means only that the domain does not yet own work that must execute later, independently, repeatedly, or durably.
+
+The platform should avoid empty automation placeholders, speculative workers, and domain-specific scheduling mechanisms without an approved responsibility.
+
+### Emerging Architectural Principles
+
+✓ Engineering Implements; Administration Governs
+✓ Engineering Invariants Cannot Be Weakened
+✓ Consumer Identity Sovereignty
+✓ Automation-First
+✓ Async Qualification Rule
+✓ Durable Automation Foundation
+
+> The architecture shall be designed so that operational complexity grows significantly more slowly than business scale.
+
+
+### Automation-First Principle
+
+Sagrenti is designed to automate operational work wherever reliable engineering can safely replace repetitive human execution.
+
+The objective is not to eliminate human oversight, but to eliminate repetitive manual operation.
+
+Engineering should therefore favor platform capabilities that:
+
+* execute deterministic work automatically;
+* present operators with exceptions rather than routine work;
+* preserve complete auditability;
+* remain observable and governable;
+* scale operationally without requiring proportional staffing growth.
+
+Automation is a core architectural characteristic of the platform and shall be considered during domain design, service design, and operational architecture.
+
+## Participant Info Entitlements
+Watch grants the participant access to the full available intelligence view for a Future Offering. Each other active engagement grants access only to information relevant to that engagement. A participant with no active engagement receives no ongoing Future Offering intelligence.
+
+Watch active
+    → Full Future Offering intelligence
+    → Watch totals
+    → Waitlist totals
+    → Beta totals
+    → Reservation totals
+    → Preorder Intent totals
+    → Merchant updates and relevant movement
+
+No active engagement
+    → No ongoing information entitlement
+
+Watch inactive + Waitlist active
+    → Waitlist-specific information only
+
+Watch inactive + Beta active
+    → Beta-specific information only
+
+Watch inactive + Reservation Interest active
+    → Reservation-specific information only
+
+

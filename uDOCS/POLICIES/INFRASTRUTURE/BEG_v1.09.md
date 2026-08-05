@@ -14,7 +14,6 @@
 
 1.5 BEG exists to keep backend systems production-grade, explicit, secure, maintainable, scalable, auditable, and architecturally coherent.
 
----
 
 ### 2. Scope
 
@@ -580,7 +579,128 @@ This doctrine applies to pricing, fees, credits, promotional programs, onboardin
 
 20.8 Event payloads must preserve the correct actor and ownership semantics where relevant.
 
----
+## 20A. Durable Automation and Asynchronous Processing
+
+### 20A.1 Platform Doctrine
+
+Sagrenti shall provide a common Automation Foundation for durable background work.
+
+Individual domains may create asynchronous work, but they must not independently reinvent worker execution, scheduling, retries, locking, failure handling, or shutdown behavior.
+
+The Automation Foundation should provide shared capabilities for:
+
+* durable jobs;
+* workers;
+* database-backed scheduling;
+* retries;
+* exponential or governed backoff;
+* terminal-failure and dead-letter handling;
+* idempotency;
+* safe concurrent claiming;
+* distributed execution coordination;
+* observability;
+* graceful shutdown.
+
+### 20A.2 No Cron Dependency
+
+Sagrenti shall not depend on operating-system cron as its canonical application scheduling mechanism.
+
+Time-based work should be represented through durable application state, such as a `due_at`, `run_at`, or equivalent timestamp, and claimed by governed workers.
+
+External infrastructure may wake or scale workers, but the authoritative schedule and execution state must remain visible, durable, and auditable within the platform.
+
+### 20A.3 Async Qualification Rule
+
+A domain-specific async responsibility is warranted only when the domain owns concrete work that must execute:
+
+* after the initiating request;
+* independently of the initiating request;
+* repeatedly;
+* at or after a future time;
+* after a transient failure;
+* in bounded batches;
+* in response to a durable event, queue message, or provider callback;
+* or in a manner that must survive process restart.
+
+The existence of ordinary create, read, update, delete, or lifecycle methods does not by itself justify an async file.
+
+### 20A.4 Required Async Contract
+
+Every asynchronous responsibility must define:
+
+* the trigger;
+* the producer;
+* the consumer;
+* the durable payload or reference;
+* the idempotency key;
+* eligibility for retry;
+* retry delay and maximum attempts;
+* permanent-failure handling;
+* ordering requirements;
+* concurrency and claim rules;
+* transaction boundaries;
+* shutdown behavior;
+* observability and alerting;
+* governing authorization and policy source.
+
+A worker without these boundaries is not production-ready.
+
+### 20A.5 Durable Job Pattern
+
+The preferred execution pattern is:
+
+```text
+Domain transaction
+    → durable job or outbox record committed
+    → worker safely claims eligible work
+    → worker executes idempotently
+    → success is recorded
+    → transient failure is rescheduled
+    → terminal failure is surfaced for review
+```
+
+Where job creation must remain consistent with a domain mutation, the domain mutation and durable job or outbox insertion must commit atomically.
+
+### 20A.6 Scheduling Without Cron
+
+Time-based execution should follow this pattern:
+
+```text
+work stored with due time
+    → worker queries eligible due work
+    → worker claims a bounded set safely
+    → claimed work is processed
+    → completion, retry, or terminal failure is persisted
+```
+
+Workers must not depend on in-memory timers as the sole record of scheduled work.
+
+### 20A.7 Policy Boundary
+
+Automation executes approved capability. It does not create commercial or operational policy.
+
+Engineering may implement:
+
+* reliable execution;
+* bounded retries;
+* idempotency;
+* concurrency safety;
+* durable state;
+* failure escalation;
+* invariant enforcement.
+
+Administration governs configurable behavior within those boundaries, including whether an approved automated capability is enabled and how it operates where configuration is permitted.
+
+Administrative configuration must not weaken safety, security, integrity, auditability, or reliability invariants.
+
+### 20A.8 Domain Ownership
+
+Async files should exist only in domains that own genuine asynchronous responsibilities.
+
+Shared worker machinery belongs to the Automation Foundation.
+
+Domain async code should define domain-specific job behavior and delegation, not reproduce the common worker engine.
+
 
 ### 21. Audit and Observability Doctrine
 
