@@ -123,6 +123,7 @@ type Models struct {
 	MerchantPlatformCreditEligibleFeeType MerchantPlatformCreditEligibleFeeTypeModel // SPINE: Commerce Architecture — credit eligibility by canonical fee type
 	MerchantPlatformCreditAccount         MerchantPlatformCreditAccountModel         // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 	MerchantBillingAccount                MerchantBillingAccountModel                // SPINE: Commerce Architecture — merchant billing relationship and currency anchor
+	MerchantBillableEvent                 MerchantBillableEventModel                 // SPINE: Commerce Architecture — canonical source-linked billable-occurrence record
 	MerchantPlatformCreditApplication     MerchantPlatformCreditApplicationModel     // SPINE: Commerce Architecture — append-only credit application history
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
@@ -235,6 +236,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantPlatformCreditEligibleFeeType: MerchantPlatformCreditEligibleFeeTypeModel{DB: dbPool, Logger: logger},
 		MerchantPlatformCreditAccount:         MerchantPlatformCreditAccountModel{DB: dbPool, Logger: logger},     // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 		MerchantBillingAccount:                MerchantBillingAccountModel{DB: dbPool, Logger: logger},            // SPINE: Commerce Architecture — merchant billing relationship and currency anchor
+		MerchantBillableEvent:                 MerchantBillableEventModel{DB: dbPool, Logger: logger},             // SPINE: Commerce Architecture — canonical billable-occurrence ledger
 		MerchantPlatformCreditApplication:     MerchantPlatformCreditApplicationModel{DB: dbPool, Logger: logger}, // SPINE: Commerce Architecture — append-only credit application history
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED

@@ -1750,6 +1750,65 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		ON merchant_program_subscriptions(merchant_id)
 		WHERE deleted_at IS NULL;
 
+
+	-- Merchant Program Subscription Periods
+	CREATE TABLE IF NOT EXISTS merchant_program_subscription_periods (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		subscription_id UUID NOT NULL
+			CONSTRAINT fk_merchant_program_subscription_periods_subscription
+			REFERENCES merchant_program_subscriptions(id)
+			ON DELETE RESTRICT,
+
+		plan_id UUID NOT NULL
+			CONSTRAINT fk_merchant_program_subscription_periods_plan
+			REFERENCES merchant_program_plans(id)
+			ON DELETE RESTRICT,
+
+		billing_period TEXT NOT NULL
+			CONSTRAINT chk_merchant_program_subscription_periods_billing_period
+			CHECK (
+				billing_period IN (
+					'monthly',
+					'annual',
+					'custom'
+				)
+			),
+
+		period_start TIMESTAMPTZ NOT NULL,
+		period_end TIMESTAMPTZ NOT NULL,
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT chk_merchant_program_subscription_periods_window
+			CHECK (
+				period_end > period_start
+			),
+
+		CONSTRAINT uq_merchant_program_subscription_periods_subscription_start
+			UNIQUE (
+				subscription_id,
+				period_start
+			)
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_program_subscription_periods_subscription_timeline
+	ON merchant_program_subscription_periods (
+		subscription_id,
+		period_start DESC,
+		id DESC
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_program_subscription_periods_period_start
+	ON merchant_program_subscription_periods (
+		period_start,
+		id
+	);
+
+
+	-- Merchant Program Subscription Events
 	CREATE TABLE IF NOT EXISTS merchant_program_subscription_events (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -2152,32 +2211,48 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		WHERE is_active = TRUE;
 
 
+	-- Merchant Future Offerings Events
 	CREATE TABLE IF NOT EXISTS merchant_future_offerings_events (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		future_offering_id UUID NOT NULL REFERENCES merchant_future_offerings(id) ON DELETE CASCADE,
-		event_type TEXT NOT NULL CHECK (event_type IN (
-			'created',
-			'submitted',
-			'sent_to_trust_review',
-			'changes_requested',
-			'approved',
-			'published',
-			'paused',
-			'expired',
-			'rejected',
-			'unpublished',
-			'archived',
-			'restored'
-		)),
+
+		future_offering_id UUID NOT NULL
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE CASCADE,
+
+		event_type TEXT NOT NULL
+			CHECK (event_type IN (
+				'created',
+				'submitted_for_activation',
+				'sent_to_trust_review',
+				'changes_requested',
+				'approved',
+				'activation_payment_satisfied',
+				'activated',
+				'published',
+				'paused',
+				'expired',
+				'rejected',
+				'unpublished',
+				'archived',
+				'restored'
+			)),
+
 		from_status TEXT,
 		to_status TEXT,
 		note TEXT,
-		performed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+
+		performed_by UUID
+			REFERENCES users(id)
+			ON DELETE SET NULL,
+
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_future_offerings_events_future_offering
-		ON merchant_future_offerings_events(future_offering_id, created_at DESC);
+		ON merchant_future_offerings_events (
+			future_offering_id,
+			created_at DESC
+		);
 
 
 	-- =====================================================================
@@ -2411,38 +2486,52 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	FOR EACH ROW EXECUTE FUNCTION public.enforce_trend_offer();
 
 
+	-- User Trend Engagement Events
 	CREATE TABLE IF NOT EXISTS user_trend_engagement_events (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
 		engagement_id UUID NOT NULL
-			REFERENCES user_trend_engagements(id) ON DELETE CASCADE,
+			REFERENCES user_trend_engagements(id)
+			ON DELETE CASCADE,
 
-		event_type TEXT NOT NULL CHECK (event_type IN (
-			'watched',
-			'muted',
-			'unmuted',
-			'unwatched',
-			'notification_enabled',
-			'notification_disabled',
-			'waitlisted',
-			'early_access_requested',
-			'preorder_interest_recorded',
-			'engagement_removed',
-			'expired'
-		)),
+		event_type TEXT NOT NULL
+			CHECK (event_type IN (
+				'watched',
+				'muted',
+				'unmuted',
+				'unwatched',
+				'notification_enabled',
+				'notification_disabled',
 
-		source_surface TEXT CHECK (source_surface IS NULL OR source_surface IN (
-			'trend_card',
-			'trend_detail',
-			'notification',
-			'direct'
-		)),
+				'waitlisted',
+				'early_access_requested',
+				'beta_joined',
+				'reservation_interest_recorded',
+				'preorder_intent_recorded',
+
+				'engagement_removed',
+				'expired'
+			)),
+
+		source_surface TEXT
+			CHECK (
+				source_surface IS NULL
+				OR source_surface IN (
+					'trend_card',
+					'trend_detail',
+					'notification',
+					'direct'
+				)
+			),
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_user_trend_engagement_events_engagement
-		ON user_trend_engagement_events(engagement_id, created_at DESC);
+		ON user_trend_engagement_events (
+			engagement_id,
+			created_at DESC
+		);
 
 
 	-- ===============================================================
@@ -3592,51 +3681,173 @@ CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 
 	CREATE TABLE IF NOT EXISTS merchant_billable_events (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
 
-		commerce_route_event_id UUID REFERENCES commerce_route_events(id) ON DELETE SET NULL,
-		coupon_usage_id UUID REFERENCES coupon_usages(id) ON DELETE SET NULL,
-		trend_engagement_event_id UUID
-			REFERENCES user_trend_engagement_events(id) ON DELETE SET NULL,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE RESTRICT,
 
-		billable_event_type TEXT NOT NULL CHECK (billable_event_type IN (
-			'merchant_onboarding',
-			'subscription_period',
+		future_offering_event_id UUID
+			REFERENCES merchant_future_offerings_events(id)
+			ON DELETE RESTRICT,
 
-			'deal_affiliate_click',
-			'deal_campaign_click',
-			'deal_merchant_confirmed_conversion',
+		subscription_period_id UUID
+			CONSTRAINT fk_merchant_billable_events_subscription_period
+			REFERENCES merchant_program_subscription_periods(id)
+			ON DELETE RESTRICT,
 
-			'trend_watch',
-			'trend_waitlist',
-			'trend_early_access_request',
-			'trend_preorder_interest',
+		engagement_event_id UUID
+			REFERENCES user_trend_engagement_events(id)
+			ON DELETE RESTRICT,
 
-			'merchant_confirmed_conversion'
-		)),
+		billable_event_type TEXT NOT NULL
+			CHECK (billable_event_type IN (
+				'activation',
+				'subscription_period',
+				'watch',
+				'waitlist',
+				'early_access_request',
+				'beta',
+				'reservation_interest',
+				'preorder_intent'
+			)),
 
 		gross_event_value NUMERIC(19,4)
-			CHECK (gross_event_value IS NULL OR gross_event_value >= 0),
+			CHECK (
+				gross_event_value IS NULL
+				OR gross_event_value >= 0
+			),
 
-		currency CHAR(3) NOT NULL DEFAULT 'USD'
-			CHECK (currency ~ '^[A-Z]{3}$'),
+		currency CHAR(3)
+			CHECK (
+				currency IS NULL
+				OR currency ~ '^[A-Z]{3}$'
+			),
 
-		reported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		occurred_at TIMESTAMPTZ NOT NULL,
+
 		confirmed_at TIMESTAMPTZ,
+		rejected_at TIMESTAMPTZ,
+		reversed_at TIMESTAMPTZ,
 
-		status TEXT NOT NULL DEFAULT 'reported'
-			CHECK (status IN ('reported', 'confirmed', 'rejected', 'settled', 'reversed')),
+		status TEXT NOT NULL DEFAULT 'pending'
+			CHECK (status IN (
+				'pending',
+				'confirmed',
+				'rejected',
+				'reversed'
+			)),
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-		CONSTRAINT chk_merchant_billable_events_confirmed_at
+		CONSTRAINT chk_merchant_billable_events_source_count
 			CHECK (
-				status <> 'confirmed'
-				OR confirmed_at IS NOT NULL
+				num_nonnulls(
+					future_offering_event_id,
+					subscription_period_id,
+					engagement_event_id
+				) = 1
+			),
+
+		CONSTRAINT chk_merchant_billable_events_source_type
+			CHECK (
+				(
+					billable_event_type = 'activation'
+					AND future_offering_event_id IS NOT NULL
+				)
+				OR
+				(
+					billable_event_type = 'subscription_period'
+					AND subscription_period_id IS NOT NULL
+				)
+				OR
+				(
+					billable_event_type IN (
+						'watch',
+						'waitlist',
+						'early_access_request',
+						'beta',
+						'reservation_interest',
+						'preorder_intent'
+					)
+					AND engagement_event_id IS NOT NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_billable_events_value_currency
+			CHECK (
+				(
+					gross_event_value IS NULL
+					AND currency IS NULL
+				)
+				OR
+				(
+					gross_event_value IS NOT NULL
+					AND currency IS NOT NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_billable_events_status_timestamps
+			CHECK (
+				(
+					status = 'pending'
+					AND confirmed_at IS NULL
+					AND rejected_at IS NULL
+					AND reversed_at IS NULL
+				)
+				OR
+				(
+					status = 'confirmed'
+					AND confirmed_at IS NOT NULL
+					AND rejected_at IS NULL
+					AND reversed_at IS NULL
+				)
+				OR
+				(
+					status = 'rejected'
+					AND confirmed_at IS NULL
+					AND rejected_at IS NOT NULL
+					AND reversed_at IS NULL
+				)
+				OR
+				(
+					status = 'reversed'
+					AND confirmed_at IS NOT NULL
+					AND rejected_at IS NULL
+					AND reversed_at IS NOT NULL
+				)
 			)
 	);
 
+	CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_billable_events_future_offering_event
+		ON merchant_billable_events (future_offering_event_id)
+		WHERE future_offering_event_id IS NOT NULL;
+
+	CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_billable_events_subscription_period
+		ON merchant_billable_events (subscription_period_id)
+		WHERE subscription_period_id IS NOT NULL;
+
+	CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_billable_events_engagement_event
+		ON merchant_billable_events (engagement_event_id)
+		WHERE engagement_event_id IS NOT NULL;
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_billable_events_merchant_occurred
+		ON merchant_billable_events (
+			merchant_id,
+			occurred_at DESC,
+			id DESC
+		);
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_billable_events_merchant_status_occurred
+		ON merchant_billable_events (
+			merchant_id,
+			status,
+			occurred_at DESC,
+			id DESC
+		);
+
+
+	-- Merchant Fee Calculations
 	CREATE TABLE IF NOT EXISTS merchant_fee_calculations (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 

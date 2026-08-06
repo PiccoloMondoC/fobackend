@@ -210,6 +210,35 @@ var (
 		"merchant billing account mutation conflict",
 	)
 
+	// Merchant billable events.
+	ErrMerchantBillableEventInvalidInput = errors.New(
+		"invalid merchant billable event input",
+	)
+	ErrMerchantBillableEventNotFound = errors.New(
+		"merchant billable event not found",
+	)
+	ErrMerchantBillableEventInvalidState = errors.New(
+		"invalid merchant billable event state",
+	)
+	ErrMerchantBillableEventDuplicateSource = errors.New(
+		"merchant billable event already exists for this source occurrence",
+	)
+	ErrMerchantBillableEventMerchantNotFound = errors.New(
+		"merchant billable event references a nonexistent merchant",
+	)
+	ErrMerchantBillableEventFutureOfferingEventNotFound = errors.New(
+		"merchant billable event references a nonexistent future offering event",
+	)
+	ErrMerchantBillableEventSubscriptionPeriodNotFound = errors.New(
+		"merchant billable event references a nonexistent subscription period",
+	)
+	ErrMerchantBillableEventEngagementEventNotFound = errors.New(
+		"merchant billable event references a nonexistent engagement event",
+	)
+	ErrMerchantBillableEventInvalidTransition = errors.New(
+		"invalid merchant billable event lifecycle transition",
+	)
+
 	// Merchant payment methods.
 	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")
 	ErrMerchantPaymentMethodAlreadyExists   = errors.New("merchant payment method already exists")
