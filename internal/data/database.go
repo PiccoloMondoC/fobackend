@@ -1789,6 +1789,12 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			UNIQUE (
 				subscription_id,
 				period_start
+			),
+
+		CONSTRAINT excl_merchant_program_subscription_periods_no_overlap
+			EXCLUDE USING gist (
+				subscription_id WITH =,
+				tstzrange(period_start, period_end, '[)') WITH &&
 			)
 	);
 
@@ -1799,14 +1805,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		period_start DESC,
 		id DESC
 	);
-
-	CREATE INDEX IF NOT EXISTS
-		idx_merchant_program_subscription_periods_period_start
-	ON merchant_program_subscription_periods (
-		period_start,
-		id
-	);
-
 
 	-- Merchant Program Subscription Events
 	CREATE TABLE IF NOT EXISTS merchant_program_subscription_events (

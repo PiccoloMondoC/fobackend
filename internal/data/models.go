@@ -119,6 +119,7 @@ type Models struct {
 	MerchantProgramFeeSchedule            MerchantProgramFeeScheduleModel            // SPINE: Future Offering v1 — effective-dated merchant monetization policy
 	MerchantProgramEntitlement            MerchantProgramEntitlementModel            // SPINE: Future Offering v1 — merchant program entitlement/capability gate
 	MerchantProgramSubscription           MerchantProgramSubscriptionModel           // SPINE: Future Offering v1 — merchant program subscription lifecycle
+	MerchantProgramSubscriptionPeriod     MerchantProgramSubscriptionPeriodModel     // SPINE: Future Offering v1 — immutable subscription commercial periods
 	MerchantProgramSubscriptionEvent      MerchantProgramSubscriptionEventModel      // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
 	MerchantPlatformCreditEligibleFeeType MerchantPlatformCreditEligibleFeeTypeModel // SPINE: Commerce Architecture — credit eligibility by canonical fee type
 	MerchantPlatformCreditAccount         MerchantPlatformCreditAccountModel         // SPINE: Commerce Architecture — platform-issued merchant commercial credit
@@ -227,11 +228,12 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 			DB:     dbPool,
 			Logger: logger,
 		}, // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
-		MerchantType:                          MerchantTypeModel{DB: dbPool, Logger: logger},                     // SPINE: minimal foundation
-		MerchantProgramPlan:                   MerchantProgramPlanModel{DB: dbPool, Logger: logger},              // SPINE: Future Offering v1
-		MerchantProgramFeeSchedule:            MerchantProgramFeeScheduleModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
-		MerchantProgramEntitlement:            MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},       // SPINE: Future Offering v1
-		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},      // SPINE: Future Offering v1
+		MerchantType:                          MerchantTypeModel{DB: dbPool, Logger: logger},                // SPINE: minimal foundation
+		MerchantProgramPlan:                   MerchantProgramPlanModel{DB: dbPool, Logger: logger},         // SPINE: Future Offering v1
+		MerchantProgramFeeSchedule:            MerchantProgramFeeScheduleModel{DB: dbPool, Logger: logger},  // SPINE: Future Offering v1
+		MerchantProgramEntitlement:            MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},  // SPINE: Future Offering v1
+		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
+		MerchantProgramSubscriptionPeriod:     MerchantProgramSubscriptionPeriodModel{DB: dbPool, Logger: logger},
 		MerchantProgramSubscriptionEvent:      MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		MerchantPlatformCreditEligibleFeeType: MerchantPlatformCreditEligibleFeeTypeModel{DB: dbPool, Logger: logger},
 		MerchantPlatformCreditAccount:         MerchantPlatformCreditAccountModel{DB: dbPool, Logger: logger},     // SPINE: Commerce Architecture — platform-issued merchant commercial credit

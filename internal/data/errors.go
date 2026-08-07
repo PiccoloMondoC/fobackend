@@ -42,6 +42,9 @@ const (
 
 	// SQLSTATE 23514: check_violation.
 	sqlStateCheckViolation = "23514"
+
+	// SQLSTATE 23P01: exclusion_violation.
+	sqlStateExclusionViolation = "23P01"
 )
 
 // Persistence and domain sentinel errors.
@@ -141,6 +144,20 @@ var (
 	ErrMerchantApplicationStatusAlreadyInactive = errors.New("merchant application status already inactive")
 	ErrMerchantPromotionNotFound                = errors.New("merchant promotion not found")
 	ErrMerchantFollowNotFound                   = errors.New("merchant follow not found")
+
+	// Merchant program subscription periods.
+	ErrMerchantProgramSubscriptionPeriodAlreadyExists = errors.New(
+		"merchant program subscription period already exists",
+	)
+	ErrMerchantProgramSubscriptionPeriodOverlap = errors.New(
+		"merchant program subscription period overlaps an existing period",
+	)
+	ErrMerchantProgramSubscriptionPeriodSubscriptionNotFound = errors.New(
+		"merchant program subscription period subscription not found",
+	)
+	ErrMerchantProgramSubscriptionPeriodPlanNotFound = errors.New(
+		"merchant program subscription period plan not found",
+	)
 
 	// Merchant platform credit accounts.
 	ErrMerchantPlatformCreditAccountNotFound = errors.New(
@@ -312,6 +329,12 @@ func IsNotNullViolation(err error) bool {
 // IsCheckViolation reports whether err wraps a PostgreSQL CHECK-constraint violation.
 func IsCheckViolation(err error) bool {
 	return IsPgErrorCode(err, sqlStateCheckViolation)
+}
+
+// IsExclusionViolation reports whether err wraps a PostgreSQL
+// exclusion-constraint violation.
+func IsExclusionViolation(err error) bool {
+	return IsPgErrorCode(err, sqlStateExclusionViolation)
 }
 
 // IsPgErrorCode reports whether err wraps a pgconn.PgError with the supplied SQLSTATE code.

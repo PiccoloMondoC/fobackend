@@ -55,7 +55,10 @@ Everything needed to let the platform commercially operate, even if all fees are
 >       Subscription Fee (optional)
         Applies only when Plans and Subscriptions are enabled by Admin.
 - [x] `merchant_billing_accounts.go`                     — Done
-- [ ] `merchant_billable_events.go`
+
+- [ ] `merchant_billable_events.go`    paused after data layer to work on 
+                                `merchant_program_subscription_periods.go`
+
 - [ ] `merchant_fee_calculations.go`
 - [ ] `merchant_platform_credit_applications.go`
 - [ ] `merchant_invoices.go`
