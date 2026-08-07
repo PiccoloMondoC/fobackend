@@ -5,29 +5,30 @@
 //
 // GTM:
 //
-//	Layer: 3.1 API / Administrative Control Plane
-//	Release Class: SPINE
-//	Reason:
-//	  Admin Console is the privileged administrative entry surface for
-//	  release-critical platform governance and completed SPINE domains.
+//		Layer: 3.1 API / Administrative Control Plane
+//		Release Class: SPINE
+//		Reason:
+//		  Admin Console is the privileged administrative entry surface for
+//		  release-critical platform governance and completed SPINE domains.
 //
-//	  This file provides a bounded control-plane overview by composing
-//	  existing domain state through canonical models and shared API
-//	  infrastructure. It does not own business persistence, lifecycle rules,
-//	  commercial calculations, release classification, route registration,
-//	  permissions, or domain mutation behavior.
+//		  This file provides a bounded control-plane overview by composing
+//		  existing domain state through canonical models and shared API
+//		  infrastructure. It does not own business persistence, lifecycle rules,
+//		  commercial calculations, release classification, route registration,
+//		  permissions, or domain mutation behavior.
 //
-//	  Platform Settings, Platform Setting History, Merchant Accounts,
-//	  Merchant Billing Accounts, Merchant Program Plans, Merchant Program
-//	  Entitlements, Merchant Program Fee Schedules, Merchant Program
-//	  Subscriptions, Merchant Platform Credit Accounts, Merchant Platform
-//	  Credit Applications, Merchant Platform Credit Eligible Fee Types, and
-//	  Merchant Payment Methods remain owned by their respective handler,
-//	  data, and service contracts.
+//		  Platform Settings, Platform Setting History, Merchant Accounts,
+//		  Merchant Billing Accounts, Merchant Program Plans, Merchant Program
+//		  Entitlements, Merchant Program Fee Schedules, Merchant Program
+//		  Subscriptions, Merchant Program Subscription Periods, Merchant
+//	   Platform Credit Accounts, Merchant Platform Credit Applications,
+//	   Merchant Platform Credit Eligible Fee Types, and Merchant Payment
+//	   Methods remain owned by their respective handler, data, and service
+//	   contracts.
 //
-//	  platform_settings_admin_enabled governs Platform Settings
-//	  administration only. It is reported by Admin Console but does not
-//	  enable or disable the entire administrative control plane.
+//		  platform_settings_admin_enabled governs Platform Settings
+//		  administration only. It is reported by Admin Console but does not
+//		  enable or disable the entire administrative control plane.
 //
 // SPINE Rule:
 //
@@ -100,6 +101,7 @@ type adminConsoleDomains struct {
 	MerchantProgramEntitlements            bool `json:"merchant_program_entitlements"`
 	MerchantProgramFeeSchedules            bool `json:"merchant_program_fee_schedules"`
 	MerchantProgramSubscriptions           bool `json:"merchant_program_subscriptions"`
+	MerchantProgramSubscriptionPeriods     bool `json:"merchant_program_subscription_periods"`
 	MerchantPlatformCreditAccounts         bool `json:"merchant_platform_credit_accounts"`
 	MerchantPlatformCreditApplications     bool `json:"merchant_platform_credit_applications"`
 	MerchantPlatformCreditEligibleFeeTypes bool `json:"merchant_platform_credit_eligible_fee_types"`
@@ -300,6 +302,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			MerchantProgramEntitlements:            true,
 			MerchantProgramFeeSchedules:            true,
 			MerchantProgramSubscriptions:           true,
+			MerchantProgramSubscriptionPeriods:     true,
 			MerchantPlatformCreditAccounts:         true,
 			MerchantPlatformCreditApplications:     true,
 			MerchantPlatformCreditEligibleFeeTypes: true,

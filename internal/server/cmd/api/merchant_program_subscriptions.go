@@ -253,6 +253,25 @@ func (app *Application) auditMerchantProgramSubscription(
 	return nil
 }
 
+// getMerchantProgramSubscriptionForRelatedRead retrieves the canonical,
+// non-deleted parent subscription for subordinate subscription-domain reads.
+//
+// Related resources such as lifecycle events and billing periods must not use
+// their own presence as proof that the canonical subscription exists. This
+// preserves the distinction between an existing subscription with no related
+// records and a nonexistent subscription.
+func (app *Application) getMerchantProgramSubscriptionForRelatedRead(
+	ctx context.Context,
+	subscriptionID uuid.UUID,
+) (*data.MerchantProgramSubscription, error) {
+	return app.Models.
+		MerchantProgramSubscription.
+		GetByID(
+			ctx,
+			subscriptionID,
+		)
+}
+
 // CreateMerchantProgramSubscriptionHandler creates a merchant program subscription.
 func (app *Application) CreateMerchantProgramSubscriptionHandler(w http.ResponseWriter, r *http.Request) {
 	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("CreateMerchantProgramSubscriptionHandler")

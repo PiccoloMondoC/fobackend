@@ -42,12 +42,13 @@
 package main
 
 import (
+	"net/http"
+	"strings"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"net/http"
-	"strings"
 )
 
 func (app *Application) Routes() http.Handler {
@@ -624,11 +625,30 @@ func (app *Application) Routes() http.Handler {
 			mps.With(app.RequirePermission("restore_merchant_program_subscription")).
 				Patch("/{merchantProgramSubscriptionID}/restore", app.RestoreMerchantProgramSubscriptionHandler)
 
+			// Merchant Program Subscription Events
+
 			mps.With(app.RequirePermission("list_merchant_program_subscription_events")).
 				Get("/{merchantProgramSubscriptionID}/events/latest", app.GetLatestMerchantProgramSubscriptionEventHandler)
 
 			mps.With(app.RequirePermission("list_merchant_program_subscription_events")).
 				Get("/{merchantProgramSubscriptionID}/events", app.ListMerchantProgramSubscriptionEventsHandler)
+
+			// Merchant Program Subscription Periods
+			//
+			// Period history is privileged and read-only. Period creation is
+			// service/orchestration-owned and is not exposed through HTTP.
+			// Merchant actors must not receive these permissions until canonical
+			// merchant-account ownership/delegation enforcement exists for this
+			// route family.
+
+			mps.With(app.RequirePermission("list_merchant_program_subscription_periods")).
+				Get("/{merchantProgramSubscriptionID}/periods/latest", app.GetLatestMerchantProgramSubscriptionPeriodHandler)
+
+			mps.With(app.RequirePermission("read_merchant_program_subscription_period")).
+				Get("/{merchantProgramSubscriptionID}/periods/at-instant", app.GetMerchantProgramSubscriptionPeriodAtInstantHandler)
+
+			mps.With(app.RequirePermission("list_merchant_program_subscription_periods")).
+				Get("/{merchantProgramSubscriptionID}/periods", app.ListMerchantProgramSubscriptionPeriodsHandler)
 		})
 
 		// Merchant Program Subscription Events
@@ -644,6 +664,26 @@ func (app *Application) Routes() http.Handler {
 
 				events.With(app.RequirePermission("read_merchant_program_subscription_event")).
 					Get("/{eventID}", app.GetMerchantProgramSubscriptionEventByIDHandler)
+			})
+
+		// Merchant Program Subscription Periods
+		//
+		// Canonical direct lookup of one immutable subscription-period fact.
+		// Period creation, update, deletion, restoration, and purge are not
+		// exposed through HTTP.
+		v1.Route(
+			"/merchant-program-subscription-periods",
+			func(periods chi.Router) {
+				periods.Use(app.AuthMiddleware)
+
+				periods.With(
+					app.RequirePermission(
+						"read_merchant_program_subscription_period",
+					),
+				).Get(
+					"/{merchantProgramSubscriptionPeriodID}",
+					app.GetMerchantProgramSubscriptionPeriodByIDHandler,
+				)
 			})
 
 		// Merchant Platform Credit Accounts

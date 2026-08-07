@@ -224,24 +224,6 @@ func parseMerchantProgramSubscriptionEventPagination(
 	return limit, offset, nil
 }
 
-// getMerchantProgramSubscriptionForEventHistory verifies that the canonical,
-// non-deleted subscription exists before its event timeline is returned.
-//
-// Event presence must not be used as proof that the canonical subscription
-// exists. This also preserves the distinction between an existing
-// subscription with no events and a nonexistent subscription.
-func (app *Application) getMerchantProgramSubscriptionForEventHistory(
-	ctx context.Context,
-	subscriptionID uuid.UUID,
-) (*data.MerchantProgramSubscription, error) {
-	return app.Models.
-		MerchantProgramSubscription.
-		GetByID(
-			ctx,
-			subscriptionID,
-		)
-}
-
 // auditMerchantProgramSubscriptionEvent records one governance audit entry
 // without allowing an audit failure to erase a successfully completed read.
 //
@@ -478,7 +460,7 @@ func (app *Application) ListMerchantProgramSubscriptionEventsHandler(
 	}
 
 	subscription, err :=
-		app.getMerchantProgramSubscriptionForEventHistory(
+		app.getMerchantProgramSubscriptionForRelatedRead(
 			ctx,
 			subscriptionID,
 		)
@@ -747,7 +729,7 @@ func (app *Application) GetLatestMerchantProgramSubscriptionEventHandler(
 	}
 
 	subscription, err :=
-		app.getMerchantProgramSubscriptionForEventHistory(
+		app.getMerchantProgramSubscriptionForRelatedRead(
 			ctx,
 			subscriptionID,
 		)

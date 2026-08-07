@@ -1,4 +1,6 @@
-I realize you stated: "The correct handler-layer completion boundary for this project is:
+I realize you stated: 
+
+The correct handler-layer completion boundary for this project is:
 
 * the domain handler file;
 * canonical route registration;

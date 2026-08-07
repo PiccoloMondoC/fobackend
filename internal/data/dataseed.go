@@ -996,6 +996,15 @@ const (
 			'list_merchant_program_subscription_events',
 			'Allows listing immutable lifecycle events for a merchant program subscription'
 		),
+		-- Merchant Program Subscription Periods
+		(
+			'read_merchant_program_subscription_period',
+			'Allows reading immutable merchant program subscription billing-period facts'
+		),
+		(
+			'list_merchant_program_subscription_periods',
+			'Allows listing immutable billing periods for a merchant program subscription'
+		),
 		-- Merchant Platform Credit Accounts
 		('create_merchant_platform_credit_account', 'Allows creating merchant platform credit accounts'),
 		('read_merchant_platform_credit_account', 'Allows reading merchant platform credit accounts'),
@@ -1254,6 +1263,7 @@ const (
 		('merchant_program_plan', 'Merchant program plan entity'),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
 		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
+		('merchant_program_subscription_period', 'Immutable merchant program subscription billing period entity'),
 		('merchant_platform_credit_account', 'Platform-issued merchant commercial credit account entity'),
 		('merchant_platform_credit_eligible_fee_type', 'Merchant platform credit fee-type eligibility association'),
 		('merchant_billing_account', 'Merchant billing relationship and canonical billing-currency entity'),
@@ -1534,6 +1544,23 @@ const (
 		('read_merchant_program_subscription_event', 'Read one immutable merchant program subscription lifecycle event'),
 		('list_merchant_program_subscription_events', 'List immutable lifecycle events for a merchant program subscription'),
 		('read_latest_merchant_program_subscription_event', 'Read the latest immutable lifecycle event for a merchant program subscription'),
+		-- Merchant Program Subscription Periods
+		(
+			'read_merchant_program_subscription_period',
+			'Read one immutable merchant program subscription billing period'
+		),
+		(
+			'list_merchant_program_subscription_periods',
+			'List immutable billing periods for a merchant program subscription'
+		),
+		(
+			'read_latest_merchant_program_subscription_period',
+			'Read the latest immutable billing period for a merchant program subscription'
+		),
+		(
+			'read_merchant_program_subscription_period_at_instant',
+			'Read the billing period containing a given instant for a merchant program subscription'
+		),
 		-- Merchant Platform Credit Account
 		('create_merchant_platform_credit_account', 'Create a platform-issued merchant commercial credit account'),
 		('read_merchant_platform_credit_account', 'Read a platform-issued merchant commercial credit account'),
