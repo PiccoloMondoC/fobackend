@@ -42,7 +42,7 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_program_entitlements.go`                 — Done
 - [x] `merchant_program_fee_schedules.go`                — Done
 - [x] `merchant_program_subscriptions.go`                — Done
-- [ ] `merchant_program_subscription_periods.go`         
+- [x] `merchant_program_subscription_periods.go`         — Done
 - [x] `merchant_program_subscription_events.go`          — Done
 - [x] `merchant_platform_credit_accounts.go`             — Done
 - [x] `merchant_platform_credit_eligible_fee_types.go`   — Done
@@ -66,7 +66,7 @@ Everything needed to let the platform commercially operate, even if all fees are
 
 ### Phase 5 — Merchant Payments Architecture
 #### Direct Payment Mode — SPINE — v1
-- [x] `merchant_payment_methods.go` — Done
+- [x] `merchant_payment_methods.go`                      — Done
 - [ ] `merchant_payment_method_provider_links.go`
 - [ ] `merchant_payments.go`
 - [ ] `platform_commercial_promotions.go`

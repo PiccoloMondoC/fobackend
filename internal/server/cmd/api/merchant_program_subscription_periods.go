@@ -321,9 +321,8 @@ func (app *Application) GetMerchantProgramSubscriptionPeriodByIDHandler(
 	}
 
 	period, err :=
-		app.Models.
-			MerchantProgramSubscriptionPeriod.
-			GetByID(
+		app.InternalServices.
+			ResolveMerchantProgramSubscriptionPeriodByIDInternal(
 				ctx,
 				periodID,
 			)
@@ -509,9 +508,8 @@ func (app *Application) ListMerchantProgramSubscriptionPeriodsHandler(
 	}
 
 	periods, err :=
-		app.Models.
-			MerchantProgramSubscriptionPeriod.
-			ListBySubscriptionID(
+		app.InternalServices.
+			ListMerchantProgramSubscriptionPeriodsBySubscriptionInternal(
 				ctx,
 				subscriptionID,
 				limit,
@@ -707,9 +705,8 @@ func (app *Application) GetLatestMerchantProgramSubscriptionPeriodHandler(
 	}
 
 	period, err :=
-		app.Models.
-			MerchantProgramSubscriptionPeriod.
-			GetLatestBySubscriptionID(
+		app.InternalServices.
+			ResolveLatestMerchantProgramSubscriptionPeriodInternal(
 				ctx,
 				subscriptionID,
 			)
@@ -893,9 +890,8 @@ func (app *Application) GetMerchantProgramSubscriptionPeriodAtInstantHandler(
 	}
 
 	period, err :=
-		app.Models.
-			MerchantProgramSubscriptionPeriod.
-			GetContainingInstant(
+		app.InternalServices.
+			ResolveMerchantProgramSubscriptionPeriodAtInstantInternal(
 				ctx,
 				subscriptionID,
 				instant,
