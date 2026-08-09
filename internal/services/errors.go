@@ -42,4 +42,11 @@ var (
 	ErrMerchantProgramSubscriptionPlanUnchanged = errors.New(
 		"merchant program subscription plan is unchanged",
 	)
+	ErrMerchantBillableEventSourceNotFound = errors.New(
+		"merchant billable event authoritative source not found",
+	)
+
+	ErrMerchantBillableEventSourceIneligible = errors.New(
+		"merchant billable event authoritative source is ineligible",
+	)
 )

@@ -457,6 +457,37 @@ type merchantBillableEventQueryRower interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// MerchantBillableEventActivationSourceFact contains the minimum authoritative
+// source data required by service orchestration to validate an activation
+// billable occurrence.
+//
+// This is a cross-table persistence projection, not a second Future Offering
+// domain model.
+type MerchantBillableEventActivationSourceFact struct {
+	MerchantID uuid.UUID
+	EventType  string
+	OccurredAt time.Time
+}
+
+// MerchantBillableEventSubscriptionPeriodSourceFact contains the minimum
+// authoritative source data required by service orchestration to validate a
+// subscription-period billable occurrence.
+type MerchantBillableEventSubscriptionPeriodSourceFact struct {
+	MerchantID uuid.UUID
+	OccurredAt time.Time
+}
+
+// MerchantBillableEventEngagementSourceFact contains the minimum authoritative
+// source data required by service orchestration to validate a positive consumer
+// engagement billable occurrence.
+//
+// It deliberately contains no consumer identifier or engagement contents.
+type MerchantBillableEventEngagementSourceFact struct {
+	MerchantID uuid.UUID
+	EventType  string
+	OccurredAt time.Time
+}
+
 func (m *MerchantBillableEventModel) validateBase() error {
 	if m == nil {
 		return errors.New("merchant billable event model is required")
@@ -1001,6 +1032,378 @@ func validateMerchantBillableEventBeforeCursor(
 	}
 
 	return nil
+}
+
+// -----------------------------------------------------------------------------
+// Authoritative source-fact resolution
+// -----------------------------------------------------------------------------
+
+func (m *MerchantBillableEventModel) getActivationSourceFactViaQuerier(
+	ctx context.Context,
+	querier merchantBillableEventQueryRower,
+	futureOfferingEventID uuid.UUID,
+) (*MerchantBillableEventActivationSourceFact, error) {
+	const query = `
+		SELECT
+			mfo.merchant_id,
+			mfoe.event_type,
+			mfoe.created_at
+		FROM merchant_future_offerings_events AS mfoe
+		JOIN merchant_future_offerings AS mfo
+		  ON mfo.id = mfoe.future_offering_id
+		WHERE mfoe.id = $1
+	`
+
+	var fact MerchantBillableEventActivationSourceFact
+
+	err := querier.QueryRow(
+		ctx,
+		query,
+		futureOfferingEventID,
+	).Scan(
+		&fact.MerchantID,
+		&fact.EventType,
+		&fact.OccurredAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &fact, nil
+}
+
+// GetActivationSourceFact retrieves the authoritative source facts needed to
+// validate one activation billable occurrence.
+//
+// Absence returns nil, nil.
+func (m *MerchantBillableEventModel) GetActivationSourceFact(
+	ctx context.Context,
+	futureOfferingEventID uuid.UUID,
+) (*MerchantBillableEventActivationSourceFact, error) {
+	if err := m.validatePool(); err != nil {
+		return nil, err
+	}
+
+	if err := validateMerchantBillableEventSourceID(
+		futureOfferingEventID,
+		"future_offering_event_id",
+	); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	fact, err := m.getActivationSourceFactViaQuerier(
+		ctx,
+		m.DB,
+		futureOfferingEventID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get merchant billable activation source fact: %w",
+			err,
+		)
+	}
+
+	return fact, nil
+}
+
+// GetActivationSourceFactTx is the transaction-aware form of
+// GetActivationSourceFact.
+//
+// It performs the authoritative source read exclusively through tx and does
+// not begin, commit, or roll back the caller-owned transaction.
+//
+// The caller owns the transaction and overall workflow context. The data layer
+// retains its normal per-statement dbTimeout so an individual database
+// operation cannot remain blocked indefinitely.
+func (m *MerchantBillableEventModel) GetActivationSourceFactTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	futureOfferingEventID uuid.UUID,
+) (*MerchantBillableEventActivationSourceFact, error) {
+	if err := m.validateBase(); err != nil {
+		return nil, err
+	}
+
+	if tx == nil {
+		return nil, merchantBillableEventInvalidInput(
+			"transaction is required",
+		)
+	}
+
+	if err := validateMerchantBillableEventSourceID(
+		futureOfferingEventID,
+		"future_offering_event_id",
+	); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	fact, err := m.getActivationSourceFactViaQuerier(
+		ctx,
+		tx,
+		futureOfferingEventID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get merchant billable activation source fact in transaction: %w",
+			err,
+		)
+	}
+
+	return fact, nil
+}
+
+func (m *MerchantBillableEventModel) getSubscriptionPeriodSourceFactViaQuerier(
+	ctx context.Context,
+	querier merchantBillableEventQueryRower,
+	subscriptionPeriodID uuid.UUID,
+) (*MerchantBillableEventSubscriptionPeriodSourceFact, error) {
+	const query = `
+		SELECT
+			mps.merchant_id,
+			mpsp.period_start
+		FROM merchant_program_subscription_periods AS mpsp
+		JOIN merchant_program_subscriptions AS mps
+		  ON mps.id = mpsp.subscription_id
+		WHERE mpsp.id = $1
+	`
+
+	var fact MerchantBillableEventSubscriptionPeriodSourceFact
+
+	err := querier.QueryRow(
+		ctx,
+		query,
+		subscriptionPeriodID,
+	).Scan(
+		&fact.MerchantID,
+		&fact.OccurredAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &fact, nil
+}
+
+// GetSubscriptionPeriodSourceFact retrieves the authoritative source facts
+// needed to validate one subscription-period billable occurrence.
+//
+// Historical ownership is resolved through the referenced subscription. A
+// subscription's current soft-delete state does not erase historical ownership.
+//
+// Absence returns nil, nil.
+func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFact(
+	ctx context.Context,
+	subscriptionPeriodID uuid.UUID,
+) (*MerchantBillableEventSubscriptionPeriodSourceFact, error) {
+	if err := m.validatePool(); err != nil {
+		return nil, err
+	}
+
+	if err := validateMerchantBillableEventSourceID(
+		subscriptionPeriodID,
+		"subscription_period_id",
+	); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	fact, err := m.getSubscriptionPeriodSourceFactViaQuerier(
+		ctx,
+		m.DB,
+		subscriptionPeriodID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get merchant billable subscription-period source fact: %w",
+			err,
+		)
+	}
+
+	return fact, nil
+}
+
+// GetSubscriptionPeriodSourceFactTx is the transaction-aware form of
+// GetSubscriptionPeriodSourceFact.
+//
+// The caller owns the transaction and overall workflow context. The data layer
+// retains its normal per-statement dbTimeout.
+func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFactTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	subscriptionPeriodID uuid.UUID,
+) (*MerchantBillableEventSubscriptionPeriodSourceFact, error) {
+	if err := m.validateBase(); err != nil {
+		return nil, err
+	}
+
+	if tx == nil {
+		return nil, merchantBillableEventInvalidInput(
+			"transaction is required",
+		)
+	}
+
+	if err := validateMerchantBillableEventSourceID(
+		subscriptionPeriodID,
+		"subscription_period_id",
+	); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	fact, err := m.getSubscriptionPeriodSourceFactViaQuerier(
+		ctx,
+		tx,
+		subscriptionPeriodID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get merchant billable subscription-period source fact in transaction: %w",
+			err,
+		)
+	}
+
+	return fact, nil
+}
+
+func (m *MerchantBillableEventModel) getEngagementSourceFactViaQuerier(
+	ctx context.Context,
+	querier merchantBillableEventQueryRower,
+	engagementEventID uuid.UUID,
+) (*MerchantBillableEventEngagementSourceFact, error) {
+	const query = `
+		SELECT
+			mfo.merchant_id,
+			utee.event_type,
+			utee.created_at
+		FROM user_trend_engagement_events AS utee
+		JOIN user_trend_engagements AS ute
+		  ON ute.id = utee.engagement_id
+		JOIN merchant_future_offerings AS mfo
+		  ON mfo.offer_id = ute.offer_id
+		WHERE utee.id = $1
+	`
+
+	var fact MerchantBillableEventEngagementSourceFact
+
+	err := querier.QueryRow(
+		ctx,
+		query,
+		engagementEventID,
+	).Scan(
+		&fact.MerchantID,
+		&fact.EventType,
+		&fact.OccurredAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &fact, nil
+}
+
+// GetEngagementSourceFact retrieves the authoritative source facts required to
+// validate one consumer-engagement billable occurrence.
+//
+// The projection deliberately traverses engagement_event -> engagement ->
+// Future Offering and returns no consumer identifier.
+//
+// Absence returns nil, nil.
+func (m *MerchantBillableEventModel) GetEngagementSourceFact(
+	ctx context.Context,
+	engagementEventID uuid.UUID,
+) (*MerchantBillableEventEngagementSourceFact, error) {
+	if err := m.validatePool(); err != nil {
+		return nil, err
+	}
+
+	if err := validateMerchantBillableEventSourceID(
+		engagementEventID,
+		"engagement_event_id",
+	); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	fact, err := m.getEngagementSourceFactViaQuerier(
+		ctx,
+		m.DB,
+		engagementEventID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get merchant billable engagement source fact: %w",
+			err,
+		)
+	}
+
+	return fact, nil
+}
+
+// GetEngagementSourceFactTx is the transaction-aware form of
+// GetEngagementSourceFact.
+//
+// The authoritative source read executes exclusively through tx. The caller
+// owns the transaction and overall workflow context while the data layer
+// retains its normal per-statement dbTimeout.
+func (m *MerchantBillableEventModel) GetEngagementSourceFactTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	engagementEventID uuid.UUID,
+) (*MerchantBillableEventEngagementSourceFact, error) {
+	if err := m.validateBase(); err != nil {
+		return nil, err
+	}
+
+	if tx == nil {
+		return nil, merchantBillableEventInvalidInput(
+			"transaction is required",
+		)
+	}
+
+	if err := validateMerchantBillableEventSourceID(
+		engagementEventID,
+		"engagement_event_id",
+	); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	fact, err := m.getEngagementSourceFactViaQuerier(
+		ctx,
+		tx,
+		engagementEventID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"get merchant billable engagement source fact in transaction: %w",
+			err,
+		)
+	}
+
+	return fact, nil
 }
 
 // -----------------------------------------------------------------------------
