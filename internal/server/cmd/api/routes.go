@@ -889,6 +889,53 @@ func (app *Application) Routes() http.Handler {
 			},
 		)
 
+		// Merchant Billable Events
+		//
+		// Privileged, source-linked commercial-history and reconciliation surface.
+		// Creation and lifecycle mutation are not exposed through HTTP. Merchant
+		// actors must not receive these permissions unless a future route family has
+		// canonical ownership/delegation enforcement and an explicitly approved
+		// merchant-facing requirement.
+		v1.Route("/merchant-billable-events", func(mbe chi.Router) {
+			mbe.Use(app.AuthMiddleware)
+
+			mbe.With(app.RequirePermission("read_merchant_billable_event")).
+				Get(
+					"/by-future-offering-event/{futureOfferingEventID}",
+					app.GetMerchantBillableEventByFutureOfferingEventIDHandler,
+				)
+
+			mbe.With(app.RequirePermission("read_merchant_billable_event")).
+				Get(
+					"/by-subscription-period/{subscriptionPeriodID}",
+					app.GetMerchantBillableEventBySubscriptionPeriodIDHandler,
+				)
+
+			mbe.With(app.RequirePermission("read_merchant_billable_event")).
+				Get(
+					"/by-engagement-event/{engagementEventID}",
+					app.GetMerchantBillableEventByEngagementEventIDHandler,
+				)
+
+			mbe.With(app.RequirePermission("list_merchant_billable_events")).
+				Get(
+					"/by-merchant/{merchantID}/status",
+					app.ListMerchantBillableEventsByMerchantAndStatusHandler,
+				)
+
+			mbe.With(app.RequirePermission("list_merchant_billable_events")).
+				Get(
+					"/by-merchant/{merchantID}",
+					app.ListMerchantBillableEventsByMerchantHandler,
+				)
+
+			mbe.With(app.RequirePermission("read_merchant_billable_event")).
+				Get(
+					"/{merchantBillableEventID}",
+					app.GetMerchantBillableEventByIDHandler,
+				)
+		})
+
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)

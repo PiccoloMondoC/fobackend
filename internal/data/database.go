@@ -2070,6 +2070,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			'experience'
 		)),
 
+		project_name TEXT NOT NULL CHECK (btrim(project_name) <> ''),
 		title TEXT NOT NULL CHECK (btrim(title) <> ''),
 		summary TEXT NOT NULL DEFAULT '',
 		description TEXT,

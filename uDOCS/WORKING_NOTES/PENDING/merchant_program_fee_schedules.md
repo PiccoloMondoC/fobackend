@@ -19,8 +19,23 @@ A global Campaign Performance Fee schedule must exist.
 
 It would **not** say:
 
-Standard costs $49.
-Future Offering fee is $25.
+Anticipation Intelligence Activation Fee $49.
+Anticipation Intelligence Fee is $25.
+    Rather:
+    | Billable Event       | Possible Commercial Model               |
+    | -------------------- | --------------------------------------- |
+    | Activation           | Fixed one-time fee                      |
+    | Subscription Period  | Fixed recurring fee                     |
+    | Watch                | Cost per qualified watch                |
+    | Waitlist             | Cost per qualified waitlist join        |
+    | Early Access Request | Cost per qualified request              |
+    | Beta                 | Cost per qualified beta participant     |
+    | Reservation Interest | Cost per qualified reservation interest |
+    | Preorder Intent      | Cost per qualified preorder intent      |
+
+        * 
 Campaign Performance Fee is 8%.
+
+
 
 The first list defines **which fee policies are required**. The actual amounts remain operational commercial data stored in `merchant_program_fee_schedules`.
