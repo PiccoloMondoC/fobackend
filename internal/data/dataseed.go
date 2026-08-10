@@ -782,6 +782,15 @@ const (
 	ON CONFLICT (plan_id, entitlement_code) DO NOTHING;
 	`
 
+	insertMerchantFeeTypesQuery = `
+	INSERT INTO merchant_fee_types (code, display_name) VALUES
+		('anticipation_intelligence_activation_fee', 'Anticipation Intelligence Activation Fee'),
+		('anticipation_intelligence_fee', 'Anticipation Intelligence Fee'),
+		('campaign_performance_fee', 'Campaign Performance Fee'),
+		('subscription_fee', 'Subscription Fee')
+	ON CONFLICT (code) DO NOTHING;
+	`
+
 	insertRolesQuery = `
 	INSERT INTO roles (name, description, hierarchy_level, is_internal, assignable_at_signup, approval_required) VALUES
 		('admin', 'Role for managing users, products, merchants, and more.', 3, TRUE, FALSE, FALSE),

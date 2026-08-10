@@ -1949,23 +1949,35 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	AND expires_at IS NOT NULL;
 
 
+	CREATE TABLE IF NOT EXISTS merchant_fee_types (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		code TEXT NOT NULL UNIQUE
+			CHECK (btrim(code) <> ''),
+
+		display_name TEXT NOT NULL
+			CHECK (btrim(display_name) <> ''),
+
+		is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+
 	-- Merchant Platform Credit Eligible Fee Types
 	CREATE TABLE IF NOT EXISTS merchant_platform_credit_eligible_fee_types (
 		credit_account_id UUID NOT NULL
 			REFERENCES merchant_platform_credit_accounts(id)
 			ON DELETE CASCADE,
 
-		fee_type TEXT NOT NULL
-			CHECK (fee_type IN (
-				'anticipation_intelligence_activation_fee',
-				'anticipation_intelligence_fee',
-				'campaign_performance_fee',
-				'subscription_fee'
-			)),
+		fee_type_id UUID NOT NULL
+			REFERENCES merchant_fee_types(id)
+			ON DELETE RESTRICT,
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-		PRIMARY KEY (credit_account_id, fee_type)
+		PRIMARY KEY (credit_account_id, fee_type_id)
 	);
 
 
@@ -2265,20 +2277,25 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	--   DEFERRED. Not routed, not serviced, not release-blocking for v1.
 	-- =====================================================================
 
+	-- Merchant Program Benefits
 	CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		code TEXT NOT NULL UNIQUE,
-		name TEXT NOT NULL,
+		code TEXT NOT NULL UNIQUE
+			CHECK (btrim(code) <> ''),
+
+		name TEXT NOT NULL
+			CHECK (btrim(name) <> ''),
+
 		description TEXT NOT NULL DEFAULT '',
 
-		benefit_type TEXT NOT NULL CHECK (benefit_type IN (
-			'setup_fee_waiver',
-			'subscription_free_months',
-			'future_offering_credit',
-			'future_offering_fee_waiver',
-			'future_offering_fee_discount'
-		)),
+		benefit_type TEXT NOT NULL
+			CHECK (benefit_type IN (
+				'fee_waiver',
+				'fee_discount',
+				'fee_credit',
+				'subscription_free_period'
+			)),
 
 		value_json JSONB NOT NULL DEFAULT '{}'::jsonb,
 
@@ -2291,6 +2308,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		CONSTRAINT chk_merchant_program_benefits_code_format
 			CHECK (code ~ '^[a-z][a-z0-9_]*$')
 	);
+
 
 	CREATE TABLE IF NOT EXISTS merchant_program_plan_benefits (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2329,24 +2347,34 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			UNIQUE (merchant_id, benefit_id, starts_at)
 	);
 
+
+	-- Merchant Fee Credits
 	CREATE TABLE IF NOT EXISTS merchant_fee_credits (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		benefit_grant_id UUID REFERENCES merchant_benefit_grants(id) ON DELETE SET NULL,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-		credit_type TEXT NOT NULL CHECK (credit_type IN (
-			'future_offering_credit',
-			'subscription_credit',
-			'setup_fee_credit'
-		)),
+		benefit_grant_id UUID
+			REFERENCES merchant_benefit_grants(id)
+			ON DELETE SET NULL,
 
-		amount NUMERIC(19,4) NOT NULL CHECK (amount >= 0),
-		currency TEXT NOT NULL DEFAULT 'USD',
+		fee_type_id UUID NOT NULL
+			REFERENCES merchant_fee_types(id)
+			ON DELETE RESTRICT,
 
-		remaining_amount NUMERIC(19,4) NOT NULL CHECK (remaining_amount >= 0),
+		amount NUMERIC(19,4) NOT NULL
+			CHECK (amount >= 0),
+
+		currency CHAR(3) NOT NULL DEFAULT 'USD'
+			CHECK (currency ~ '^[A-Z]{3}$'),
+
+		remaining_amount NUMERIC(19,4) NOT NULL
+			CHECK (remaining_amount >= 0),
 
 		expires_at TIMESTAMPTZ,
+
 		is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -2357,26 +2385,35 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			CHECK (remaining_amount <= amount)
 	);
 
+
+	-- Merchant Fee Waivers
 	CREATE TABLE IF NOT EXISTS merchant_fee_waivers (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		benefit_grant_id UUID REFERENCES merchant_benefit_grants(id) ON DELETE SET NULL,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-		fee_type TEXT NOT NULL CHECK (fee_type IN (
-			'setup_fee',
-			'subscription_fee',
-			'future_offering_fee'
-		)),
+		benefit_grant_id UUID
+			REFERENCES merchant_benefit_grants(id)
+			ON DELETE SET NULL,
 
-		waiver_type TEXT NOT NULL CHECK (waiver_type IN (
-			'full',
-			'percentage',
-			'fixed_amount'
-		)),
+		fee_type_id UUID NOT NULL
+			REFERENCES merchant_fee_types(id)
+			ON DELETE RESTRICT,
 
-		waiver_value NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (waiver_value >= 0),
-		currency TEXT NOT NULL DEFAULT 'USD',
+		waiver_type TEXT NOT NULL
+			CHECK (waiver_type IN (
+				'full',
+				'percentage',
+				'fixed_amount'
+			)),
+
+		waiver_value NUMERIC(19,4) NOT NULL DEFAULT 0
+			CHECK (waiver_value >= 0),
+
+		currency CHAR(3) NOT NULL DEFAULT 'USD'
+			CHECK (currency ~ '^[A-Z]{3}$'),
 
 		starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		ends_at TIMESTAMPTZ,
@@ -2385,24 +2422,25 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
+		deleted_at TIMESTAMPTZ,
+
+		CONSTRAINT chk_merchant_fee_waivers_effective_window
+			CHECK (
+				ends_at IS NULL
+				OR ends_at > starts_at
+			)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_program_benefits_active
-		ON merchant_program_benefits(code)
-		WHERE deleted_at IS NULL AND is_active = TRUE;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_benefit_grants_merchant_active
-		ON merchant_benefit_grants(merchant_id)
-		WHERE deleted_at IS NULL AND is_active = TRUE;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_fee_credits_merchant_active
-		ON merchant_fee_credits(merchant_id)
-		WHERE deleted_at IS NULL AND is_active = TRUE;
-
 	CREATE INDEX IF NOT EXISTS idx_merchant_fee_waivers_merchant_active
-		ON merchant_fee_waivers(merchant_id)
-		WHERE deleted_at IS NULL AND is_active = TRUE;
+		ON merchant_fee_waivers (
+			merchant_id,
+			fee_type_id,
+			starts_at DESC
+		)
+		WHERE (
+			deleted_at IS NULL
+			AND is_active = TRUE
+		);
 
 
 	-- ===============================================================
@@ -3400,219 +3438,194 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	-- are constrained to billing_interval = 'event'.
 	-- ===============================================================
 
+	-- Merchant Program Fee Schedules
 	CREATE TABLE IF NOT EXISTS merchant_program_fee_schedules (
-	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-	fee_scope TEXT NOT NULL DEFAULT 'plan'
-		CHECK (fee_scope IN ('global', 'plan')),
+		fee_scope TEXT NOT NULL DEFAULT 'plan'
+			CHECK (fee_scope IN ('global', 'plan')),
 
-	plan_id UUID REFERENCES merchant_program_plans(id) ON DELETE RESTRICT,
+		plan_id UUID
+			REFERENCES merchant_program_plans(id)
+			ON DELETE RESTRICT,
 
-	fee_type TEXT NOT NULL CHECK (fee_type IN (
-		'merchant_setup_fee',
-		'subscription_fee',
-		'campaign_performance_fee',
-		'future_offering_fee',
-		'adjustment_fee',
-		'refund',
-		'reversal'
-	)),
+		fee_type_id UUID NOT NULL
+			REFERENCES merchant_fee_types(id)
+			ON DELETE RESTRICT,
 
-	billing_interval TEXT NOT NULL CHECK (billing_interval IN (
-		'one_time',
-		'monthly',
-		'annual',
-		'event'
-	)),
+		billing_interval TEXT NOT NULL
+			CHECK (billing_interval IN (
+				'one_time',
+				'monthly',
+				'annual',
+				'event'
+			)),
 
-	calculation_method TEXT NOT NULL CHECK (calculation_method IN (
-		'flat',
-		'percentage',
-		'hybrid',
-		'negotiated'
-	)),
+		calculation_method TEXT NOT NULL
+			CHECK (calculation_method IN (
+				'flat',
+				'percentage',
+				'hybrid',
+				'negotiated'
+			)),
 
-	flat_amount NUMERIC(19,4)
-		CHECK (
-			flat_amount IS NULL
-			OR flat_amount >= 0
-		),
+		flat_amount NUMERIC(19,4)
+			CHECK (
+				flat_amount IS NULL
+				OR flat_amount >= 0
+			),
 
-	percentage_rate NUMERIC(9,6)
-		CHECK (
-			percentage_rate IS NULL
-			OR percentage_rate >= 0
-		),
+		percentage_rate NUMERIC(9,6)
+			CHECK (
+				percentage_rate IS NULL
+				OR percentage_rate >= 0
+			),
 
-	minimum_fee NUMERIC(19,4)
-		CHECK (
-			minimum_fee IS NULL
-			OR minimum_fee >= 0
-		),
+		minimum_fee NUMERIC(19,4)
+			CHECK (
+				minimum_fee IS NULL
+				OR minimum_fee >= 0
+			),
 
-	maximum_fee NUMERIC(19,4)
-		CHECK (
-			maximum_fee IS NULL
-			OR maximum_fee >= 0
-		),
+		maximum_fee NUMERIC(19,4)
+			CHECK (
+				maximum_fee IS NULL
+				OR maximum_fee >= 0
+			),
 
-	included_seats INTEGER NOT NULL DEFAULT 1
-		CHECK (included_seats >= 1),
+		included_seats INTEGER NOT NULL DEFAULT 1
+			CHECK (included_seats >= 1),
 
-	extra_seat_fee NUMERIC(19,4)
-		CHECK (
-			extra_seat_fee IS NULL
-			OR extra_seat_fee >= 0
-		),
+		extra_seat_fee NUMERIC(19,4)
+			CHECK (
+				extra_seat_fee IS NULL
+				OR extra_seat_fee >= 0
+			),
 
-	currency CHAR(3) NOT NULL DEFAULT 'USD'
-		CHECK (currency ~ '^[A-Z]{3}$'),
+		currency CHAR(3) NOT NULL DEFAULT 'USD'
+			CHECK (currency ~ '^[A-Z]{3}$'),
 
-	is_active BOOLEAN NOT NULL DEFAULT TRUE,
+		is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
-	effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	effective_to TIMESTAMPTZ,
+		effective_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		effective_to TIMESTAMPTZ,
 
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	deleted_at TIMESTAMPTZ,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		deleted_at TIMESTAMPTZ,
 
-	CONSTRAINT chk_fee_schedule_scope_plan
-		CHECK (
-			(
-				fee_scope = 'global'
-				AND plan_id IS NULL
-			)
-			OR
-			(
-				fee_scope = 'plan'
-				AND plan_id IS NOT NULL
-			)
-		),
-
-	CONSTRAINT chk_fee_schedule_effective_window
-		CHECK (
-			effective_to IS NULL
-			OR effective_to > effective_from
-		),
-
-	CONSTRAINT chk_fee_schedule_min_max
-		CHECK (
-			maximum_fee IS NULL
-			OR minimum_fee IS NULL
-			OR maximum_fee >= minimum_fee
-		),
-
-	CONSTRAINT chk_fee_schedule_flat_requires_amount
-		CHECK (
-			calculation_method <> 'flat'
-			OR flat_amount IS NOT NULL
-		),
-
-	CONSTRAINT chk_fee_schedule_percentage_requires_rate
-		CHECK (
-			calculation_method <> 'percentage'
-			OR percentage_rate IS NOT NULL
-		),
-
-	CONSTRAINT chk_fee_schedule_hybrid_requires_both
-		CHECK (
-			calculation_method <> 'hybrid'
-			OR (
-				flat_amount IS NOT NULL
-				AND percentage_rate IS NOT NULL
-			)
-		),
-
-	CONSTRAINT chk_fee_schedule_type_interval
-		CHECK (
-			(
-				fee_type = 'merchant_setup_fee'
-				AND billing_interval = 'one_time'
-			)
-			OR
-			(
-				fee_type = 'subscription_fee'
-				AND billing_interval IN ('monthly', 'annual')
-			)
-			OR
-			(
-				fee_type IN (
-					'campaign_performance_fee',
-					'future_offering_fee',
-					'adjustment_fee',
-					'refund',
-					'reversal'
+		CONSTRAINT chk_fee_schedule_scope_plan
+			CHECK (
+				(
+					fee_scope = 'global'
+					AND plan_id IS NULL
 				)
-				AND billing_interval = 'event'
+				OR
+				(
+					fee_scope = 'plan'
+					AND plan_id IS NOT NULL
+				)
+			),
+
+		CONSTRAINT chk_fee_schedule_effective_window
+			CHECK (
+				effective_to IS NULL
+				OR effective_to > effective_from
+			),
+
+		CONSTRAINT chk_fee_schedule_min_max
+			CHECK (
+				maximum_fee IS NULL
+				OR minimum_fee IS NULL
+				OR maximum_fee >= minimum_fee
+			),
+
+		CONSTRAINT chk_fee_schedule_flat_requires_amount
+			CHECK (
+				calculation_method <> 'flat'
+				OR flat_amount IS NOT NULL
+			),
+
+		CONSTRAINT chk_fee_schedule_percentage_requires_rate
+			CHECK (
+				calculation_method <> 'percentage'
+				OR percentage_rate IS NOT NULL
+			),
+
+		CONSTRAINT chk_fee_schedule_hybrid_requires_both
+			CHECK (
+				calculation_method <> 'hybrid'
+				OR (
+					flat_amount IS NOT NULL
+					AND percentage_rate IS NOT NULL
+				)
+			),
+
+		CONSTRAINT excl_merchant_program_fee_schedules_active_window
+			EXCLUDE USING gist (
+				fee_scope WITH =,
+
+				(
+					COALESCE(
+						plan_id,
+						'00000000-0000-0000-0000-000000000000'::uuid
+					)
+				) WITH =,
+
+				fee_type_id WITH =,
+
+				billing_interval WITH =,
+
+				(
+					tstzrange(
+						effective_from,
+						effective_to,
+						'[)'
+					)
+				) WITH &&
 			)
-		),
+			WHERE (
+				is_active = TRUE
+				AND deleted_at IS NULL
+			)
+	);
 
-	CONSTRAINT excl_merchant_program_fee_schedules_active_window
-		EXCLUDE USING gist (
-			fee_scope WITH =,
+	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_plan
+		ON merchant_program_fee_schedules (
+			plan_id,
+			fee_type_id,
+			billing_interval,
+			effective_from DESC
+		)
+		WHERE (
+			fee_scope = 'plan'
+			AND deleted_at IS NULL
+		);
 
-			(
-				COALESCE(
-					plan_id,
-					'00000000-0000-0000-0000-000000000000'::uuid
-				)
-			) WITH =,
+	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_global
+		ON merchant_program_fee_schedules (
+			fee_type_id,
+			billing_interval,
+			effective_from DESC
+		)
+		WHERE (
+			fee_scope = 'global'
+			AND plan_id IS NULL
+			AND deleted_at IS NULL
+		);
 
-			fee_type WITH =,
-
-			billing_interval WITH =,
-
-			(
-				tstzrange(
-					effective_from,
-					effective_to,
-					'[)'
-				)
-			) WITH &&
+	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
+		ON merchant_program_fee_schedules (
+			fee_scope,
+			fee_type_id,
+			billing_interval,
+			effective_from,
+			effective_to
 		)
 		WHERE (
 			is_active = TRUE
 			AND deleted_at IS NULL
-		)
-);
-
-CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_plan
-	ON merchant_program_fee_schedules (
-		plan_id,
-		fee_type,
-		billing_interval,
-		effective_from DESC
-	)
-	WHERE (
-		fee_scope = 'plan'
-		AND deleted_at IS NULL
-	);
-
-CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_global
-	ON merchant_program_fee_schedules (
-		fee_type,
-		billing_interval,
-		effective_from DESC
-	)
-	WHERE (
-		fee_scope = 'global'
-		AND plan_id IS NULL
-		AND deleted_at IS NULL
-	);
-
-CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
-	ON merchant_program_fee_schedules (
-		fee_scope,
-		fee_type,
-		billing_interval,
-		effective_from,
-		effective_to
-	)
-	WHERE (
-		is_active = TRUE
-		AND deleted_at IS NULL
-	);
+		);
 
 
 	-- ===============================================================
@@ -3645,24 +3658,30 @@ CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 	-- Balance is derived from this ledger, not manually trusted.
 	CREATE TABLE IF NOT EXISTS merchant_billing_ledger_entries (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
 
-		entry_type TEXT NOT NULL CHECK (entry_type IN (
-			'deposit_credit',
-			'platform_credit_grant',
-			'platform_credit_application',
-			'setup_fee_debit',
-			'subscription_fee_debit',
-			'campaign_performance_fee_debit',
-			'future_offering_fee_debit',
-			'refund_credit',
-			'adjustment_credit',
-			'adjustment_debit',
-			'reversal_credit',
-			'reversal_debit'
-		)),
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-		amount NUMERIC(19,4) NOT NULL CHECK (amount > 0),
+		entry_type TEXT NOT NULL
+			CHECK (entry_type IN (
+				'deposit_credit',
+				'platform_credit_grant',
+				'platform_credit_application',
+				'fee_debit',
+				'refund_credit',
+				'adjustment_credit',
+				'adjustment_debit',
+				'reversal_credit',
+				'reversal_debit'
+			)),
+
+		fee_type_id UUID
+			REFERENCES merchant_fee_types(id)
+			ON DELETE RESTRICT,
+
+		amount NUMERIC(19,4) NOT NULL
+			CHECK (amount > 0),
 
 		currency CHAR(3) NOT NULL DEFAULT 'USD'
 			CHECK (currency ~ '^[A-Z]{3}$'),
@@ -3671,8 +3690,23 @@ CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 		reference_id UUID,
 
 		note TEXT,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT chk_merchant_billing_ledger_fee_type
+			CHECK (
+				(
+					entry_type = 'fee_debit'
+					AND fee_type_id IS NOT NULL
+				)
+				OR
+				(
+					entry_type <> 'fee_debit'
+					AND fee_type_id IS NULL
+				)
+			)
 	);
+
 
 	-- ===============================================================
 	-- Billable Events / Fee Calculations
@@ -3850,44 +3884,216 @@ CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 	CREATE TABLE IF NOT EXISTS merchant_fee_calculations (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		billable_event_id UUID REFERENCES merchant_billable_events(id) ON DELETE CASCADE,
-		fee_schedule_id UUID REFERENCES merchant_program_fee_schedules(id) ON DELETE SET NULL,
+		merchant_id UUID NOT NULL
+			CONSTRAINT fk_merchant_fee_calculations_merchant
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-		fee_type TEXT NOT NULL CHECK (fee_type IN (
-			'merchant_setup_fee',
-			'subscription_fee',
-			'campaign_performance_fee',
-			'future_offering_fee',
-			'adjustment_fee',
-			'refund',
-			'reversal'
-		)),
+		billable_event_id UUID NOT NULL
+			CONSTRAINT fk_merchant_fee_calculations_billable_event
+			REFERENCES merchant_billable_events(id)
+			ON DELETE RESTRICT,
 
-		fee_rate NUMERIC(9,6) CHECK (fee_rate IS NULL OR fee_rate >= 0),
-		flat_fee_amount NUMERIC(19,4) CHECK (flat_fee_amount IS NULL OR flat_fee_amount >= 0),
+		fee_schedule_id UUID
+			CONSTRAINT fk_merchant_fee_calculations_fee_schedule
+			REFERENCES merchant_program_fee_schedules(id)
+			ON DELETE RESTRICT,
 
-		calculated_fee_amount NUMERIC(19,4) NOT NULL CHECK (calculated_fee_amount >= 0),
+		fee_type_id UUID NOT NULL
+			CONSTRAINT fk_merchant_fee_calculations_fee_type
+			REFERENCES merchant_fee_types(id)
+			ON DELETE RESTRICT,
+
+		calculation_method TEXT NOT NULL
+			CONSTRAINT chk_merchant_fee_calculations_calculation_method
+			CHECK (
+				calculation_method IN (
+					'flat',
+					'percentage',
+					'hybrid',
+					'negotiated'
+				)
+			),
+
+		fee_rate NUMERIC(9,6)
+			CONSTRAINT chk_merchant_fee_calculations_fee_rate
+			CHECK (
+				fee_rate IS NULL
+				OR fee_rate >= 0
+			),
+
+		flat_fee_amount NUMERIC(19,4)
+			CONSTRAINT chk_merchant_fee_calculations_flat_fee_amount
+			CHECK (
+				flat_fee_amount IS NULL
+				OR flat_fee_amount >= 0
+			),
+
+		calculated_fee_amount NUMERIC(19,4) NOT NULL
+			CONSTRAINT chk_merchant_fee_calculations_calculated_fee_amount
+			CHECK (calculated_fee_amount >= 0),
 
 		currency CHAR(3) NOT NULL DEFAULT 'USD'
+			CONSTRAINT chk_merchant_fee_calculations_currency
 			CHECK (currency ~ '^[A-Z]{3}$'),
 
-		calculation_basis JSONB NOT NULL DEFAULT '{}'::jsonb,
+		calculation_basis JSONB NOT NULL DEFAULT '{}'::jsonb
+			CONSTRAINT chk_merchant_fee_calculations_basis_object
+			CHECK (jsonb_typeof(calculation_basis) = 'object'),
 
 		calculated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
 		status TEXT NOT NULL DEFAULT 'pending'
-			CHECK (status IN ('pending', 'approved', 'settled', 'waived', 'reversed')),
+			CONSTRAINT chk_merchant_fee_calculations_status
+			CHECK (
+				status IN (
+					'pending',
+					'approved',
+					'settled',
+					'waived',
+					'reversed'
+				)
+			),
+
+		approved_at TIMESTAMPTZ,
+		settled_at TIMESTAMPTZ,
+		waived_at TIMESTAMPTZ,
+		reversed_at TIMESTAMPTZ,
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT chk_merchant_fee_calculations_method_inputs
+			CHECK (
+				(
+					calculation_method = 'flat'
+					AND flat_fee_amount IS NOT NULL
+					AND fee_rate IS NULL
+				)
+				OR (
+					calculation_method = 'percentage'
+					AND fee_rate IS NOT NULL
+					AND flat_fee_amount IS NULL
+				)
+				OR (
+					calculation_method = 'hybrid'
+					AND fee_rate IS NOT NULL
+					AND flat_fee_amount IS NOT NULL
+				)
+				OR calculation_method = 'negotiated'
+			),
+
+		CONSTRAINT chk_merchant_fee_calculations_status_timestamps
+			CHECK (
+				(
+					status = 'pending'
+					AND approved_at IS NULL
+					AND settled_at IS NULL
+					AND waived_at IS NULL
+					AND reversed_at IS NULL
+				)
+				OR (
+					status = 'approved'
+					AND approved_at IS NOT NULL
+					AND settled_at IS NULL
+					AND waived_at IS NULL
+					AND reversed_at IS NULL
+				)
+				OR (
+					status = 'settled'
+					AND approved_at IS NOT NULL
+					AND settled_at IS NOT NULL
+					AND waived_at IS NULL
+					AND reversed_at IS NULL
+				)
+				OR (
+					status = 'waived'
+					AND settled_at IS NULL
+					AND waived_at IS NOT NULL
+					AND reversed_at IS NULL
+				)
+				OR (
+					status = 'reversed'
+					AND reversed_at IS NOT NULL
+					AND (
+						(
+							settled_at IS NULL
+							AND waived_at IS NULL
+						)
+						OR (
+							approved_at IS NOT NULL
+							AND settled_at IS NOT NULL
+							AND waived_at IS NULL
+						)
+						OR (
+							settled_at IS NULL
+							AND waived_at IS NOT NULL
+						)
+					)
+				)
+			),
+
+		CONSTRAINT chk_merchant_fee_calculations_lifecycle_times
+			CHECK (
+				(approved_at IS NULL OR approved_at >= calculated_at)
+				AND (
+					settled_at IS NULL
+					OR (
+						approved_at IS NOT NULL
+						AND settled_at >= approved_at
+					)
+				)
+				AND (
+					waived_at IS NULL
+					OR waived_at >= COALESCE(
+						approved_at,
+						calculated_at
+					)
+				)
+				AND (
+					reversed_at IS NULL
+					OR reversed_at >= COALESCE(
+						settled_at,
+						waived_at,
+						approved_at,
+						calculated_at
+					)
+				)
+			)
 	);
 
-	-- One successful setup fee per merchant lifecycle.
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_one_successful_merchant_setup_fee
-		ON merchant_fee_calculations(merchant_id)
-		WHERE fee_type = 'merchant_setup_fee'
-		AND status IN ('approved', 'settled', 'waived');
+	CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_fee_calculations_billable_event_fee_type_active
+		ON merchant_fee_calculations (
+			billable_event_id,
+			fee_type_id
+		)
+		WHERE status <> 'reversed';
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_fee_calculations_merchant_timeline
+		ON merchant_fee_calculations (
+			merchant_id,
+			calculated_at DESC,
+			id DESC
+		);
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_fee_calculations_merchant_status_timeline
+		ON merchant_fee_calculations (
+			merchant_id,
+			status,
+			calculated_at DESC,
+			id DESC
+		);
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_fee_calculations_billable_event_timeline
+		ON merchant_fee_calculations (
+			billable_event_id,
+			calculated_at DESC,
+			id DESC
+		);
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_fee_calculations_fee_schedule
+		ON merchant_fee_calculations (fee_schedule_id)
+		WHERE fee_schedule_id IS NOT NULL;
 
 
 	-- Merchant Platform Credit Applications

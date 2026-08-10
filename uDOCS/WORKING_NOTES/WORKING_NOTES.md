@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_billable_events_internal.go services layer"
+git commit -m "write merchant_fee_calculations.go data layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -138,3 +138,15 @@ Beta participation
 Event admission
 Launch-day priority
 Promotional entitlement
+
+
+
+
+The SE review should serve as an input into your own independent CE review. Your review should challenge the completed slice against the canonical table and the underlying doctrine, with special attention to any drift introduced while the architecture evolves.
+
+
+
+I agree with SE’s overall verdict, but I’m tightening two points before issuing code: the merchant/billable-event ownership check needs an explicit transaction-aware primitive, and the stale DB-error contract must be removed so handlers/services cannot inherit a false guarantee. I’m also folding in the small lifecycle-validation, logging, and deterministic-read fixes now so this slice is genuinely closed before we move upward.
+
+
+

@@ -256,6 +256,35 @@ var (
 		"invalid merchant billable event lifecycle transition",
 	)
 
+	// Merchant fee calculations.
+	ErrMerchantFeeCalculationInvalidInput = errors.New(
+		"invalid merchant fee calculation input",
+	)
+	ErrMerchantFeeCalculationNotFound = errors.New(
+		"merchant fee calculation not found",
+	)
+	ErrMerchantFeeCalculationInvalidState = errors.New(
+		"invalid merchant fee calculation state",
+	)
+	ErrMerchantFeeCalculationDuplicate = errors.New(
+		"an active merchant fee calculation already exists for this billable event and fee type",
+	)
+	ErrMerchantFeeCalculationMerchantNotFound = errors.New(
+		"merchant fee calculation references a nonexistent merchant",
+	)
+	ErrMerchantFeeCalculationBillableEventNotFound = errors.New(
+		"merchant fee calculation references a nonexistent billable event",
+	)
+	ErrMerchantFeeCalculationFeeScheduleNotFound = errors.New(
+		"merchant fee calculation references a nonexistent fee schedule",
+	)
+	ErrMerchantFeeCalculationFeeTypeNotFound = errors.New(
+		"merchant fee calculation references a nonexistent fee type",
+	)
+	ErrMerchantFeeCalculationInvalidTransition = errors.New(
+		"invalid merchant fee calculation lifecycle transition",
+	)
+
 	// Merchant payment methods.
 	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")
 	ErrMerchantPaymentMethodAlreadyExists   = errors.New("merchant payment method already exists")
