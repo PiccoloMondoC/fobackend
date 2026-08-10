@@ -936,6 +936,49 @@ func (app *Application) Routes() http.Handler {
 				)
 		})
 
+		// Merchant Fee Calculations
+		//
+		// Privileged durable monetary-result history and reconciliation surface.
+		// Creation and lifecycle mutation remain Commerce/service orchestration
+		// responsibilities and are not exposed through HTTP.
+		//
+		// Merchant actors must not receive these permissions unless a future route
+		// family has canonical ownership/delegation enforcement and an explicitly
+		// approved merchant-facing requirement.
+		v1.Route("/merchant-fee-calculations", func(mfc chi.Router) {
+			mfc.Use(app.AuthMiddleware)
+
+			mfc.With(app.RequirePermission("read_merchant_fee_calculation")).
+				Get(
+					"/by-billable-event/{billableEventID}/fee-type/{feeTypeID}/active",
+					app.GetActiveMerchantFeeCalculationByBillableEventAndFeeTypeHandler,
+				)
+
+			mfc.With(app.RequirePermission("list_merchant_fee_calculations")).
+				Get(
+					"/by-billable-event/{billableEventID}",
+					app.ListMerchantFeeCalculationsByBillableEventIDHandler,
+				)
+
+			mfc.With(app.RequirePermission("list_merchant_fee_calculations")).
+				Get(
+					"/by-merchant/{merchantID}/status",
+					app.ListMerchantFeeCalculationsByMerchantAndStatusHandler,
+				)
+
+			mfc.With(app.RequirePermission("list_merchant_fee_calculations")).
+				Get(
+					"/by-merchant/{merchantID}",
+					app.ListMerchantFeeCalculationsByMerchantHandler,
+				)
+
+			mfc.With(app.RequirePermission("read_merchant_fee_calculation")).
+				Get(
+					"/{merchantFeeCalculationID}",
+					app.GetMerchantFeeCalculationByIDHandler,
+				)
+		})
+
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)

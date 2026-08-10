@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_fee_calculations.go data layer"
+git commit -m "write merchant_fee_calculations.go handler layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -149,4 +149,4 @@ The SE review should serve as an input into your own independent CE review. Your
 I agree with SE’s overall verdict, but I’m tightening two points before issuing code: the merchant/billable-event ownership check needs an explicit transaction-aware primitive, and the stale DB-error contract must be removed so handlers/services cannot inherit a false guarantee. I’m also folding in the small lifecycle-validation, logging, and deterministic-read fixes now so this slice is genuinely closed before we move upward.
 
 
-
+I’ve got the SE review now. I’m doing the independent CE pass against the completed handler, the canonical data contract, and the current Commerce/Payments doctrine—not just accepting SE’s “documentation-only” conclusion at face value.

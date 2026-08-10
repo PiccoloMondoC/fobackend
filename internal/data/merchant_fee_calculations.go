@@ -186,8 +186,13 @@ const (
 	// been accepted as the current commercial obligation candidate.
 	MerchantFeeCalculationStatusApproved MerchantFeeCalculationStatus = "approved"
 
-	// MerchantFeeCalculationStatusSettled indicates that downstream Commerce and
-	// Payments orchestration has reported the obligation settled.
+	// MerchantFeeCalculationStatusSettled indicates that Commerce orchestration
+	// has recorded this calculation's commercial obligation as settled.
+	//
+	// This is a Commerce-layer lifecycle fact, not a payment-provider transaction
+	// status. Service orchestration owns the conditions and coordination required
+	// before entering this state, including any Merchant Payments interaction
+	// required by the applicable workflow.
 	MerchantFeeCalculationStatusSettled MerchantFeeCalculationStatus = "settled"
 
 	// MerchantFeeCalculationStatusWaived indicates that downstream commercial

@@ -1076,6 +1076,9 @@ const (
 		-- Merchant Billable Events
 		('read_merchant_billable_event', 'Allows privileged reading of merchant billable-event history'),
 		('list_merchant_billable_events', 'Allows privileged listing of merchant billable-event history'),
+		-- Merchant Fee Calculations
+		('read_merchant_fee_calculation', 'Allows privileged reading of a merchant fee calculation'),
+		('list_merchant_fee_calculations', 'Allows privileged listing of merchant fee calculation history'),
 		-- Merchant Platform Credit Applications
 		(
 			'read_merchant_platform_credit_application',
@@ -1280,6 +1283,7 @@ const (
 		('merchant_platform_credit_eligible_fee_type', 'Merchant platform credit fee-type eligibility association'),
 		('merchant_billing_account', 'Merchant billing relationship and canonical billing-currency entity'),
 		('merchant_billable_event', 'Canonical source-linked merchant billable-occurrence history'),
+		('merchant_fee_calculation', 'Canonical durable merchant fee calculation monetary-result history'),
 		('merchant_platform_credit_application', 'Platform-issued merchant commercial credit application entity'),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
@@ -1615,6 +1619,9 @@ const (
 		-- Merchant Billable Events
 		('read_merchant_billable_event', 'Read merchant billable-event history'),
 		('list_merchant_billable_events', 'List merchant billable-event history'),
+		-- Merchant Fee Calculations
+		('read_merchant_fee_calculation', 'Read a merchant fee calculation'),
+		('list_merchant_fee_calculations', 'List merchant fee calculation history'),
 		-- Merchant Platform Credit Applications
 		('read_merchant_platform_credit_application', 'Read a merchant platform credit application'),
 		('list_merchant_platform_credit_applications', 'List merchant platform credit applications'),
