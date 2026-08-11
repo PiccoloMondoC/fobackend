@@ -75,6 +75,40 @@ func validateMerchantPlatformCreditAccountService(s *Service) error {
 	return nil
 }
 
+func validateMerchantPlatformCreditAccountTxService(
+	s *Service,
+) error {
+	if s == nil {
+		return fmt.Errorf(
+			"%w: service is nil",
+			ErrInvalidServiceConfiguration,
+		)
+	}
+
+	if s.Logger == nil {
+		return fmt.Errorf(
+			"%w: logger is nil",
+			ErrInvalidServiceConfiguration,
+		)
+	}
+
+	if s.Models == nil {
+		return fmt.Errorf(
+			"%w: models is nil",
+			ErrInvalidServiceConfiguration,
+		)
+	}
+
+	if s.Models.MerchantPlatformCreditAccount.Logger == nil {
+		return fmt.Errorf(
+			"%w: merchant platform credit account model logger is nil",
+			ErrInvalidServiceConfiguration,
+		)
+	}
+
+	return nil
+}
+
 func (s *Service) merchantPlatformCreditAccountContext(
 	ctx context.Context,
 ) (context.Context, context.CancelFunc, error) {
@@ -331,11 +365,12 @@ func (s *Service) ConsumeMerchantPlatformCreditAccountInternal(
 }
 
 // ConsumeMerchantPlatformCreditAccountTxInternal is the transaction-aware
-// consumption boundary for future credit-application, fee-calculation,
+// consumption boundary for credit-application, fee-calculation,
 // billing-ledger, and invoice orchestration.
 //
 // The supplied transaction remains owned by the caller. This method never
-// commits or rolls it back.
+// begins, commits, rolls back, or replaces tx and applies no independent
+// timeout. The complete caller-owned transaction retains one outer deadline.
 func (s *Service) ConsumeMerchantPlatformCreditAccountTxInternal(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -343,11 +378,13 @@ func (s *Service) ConsumeMerchantPlatformCreditAccountTxInternal(
 	amount string,
 	currency string,
 ) (*data.MerchantPlatformCreditAccount, error) {
-	dbCtx, cancel, err := s.merchantPlatformCreditAccountContext(ctx)
-	if err != nil {
+	if ctx == nil {
+		return nil, ErrNilContext
+	}
+
+	if err := validateMerchantPlatformCreditAccountTxService(s); err != nil {
 		return nil, err
 	}
-	defer cancel()
 
 	if tx == nil {
 		return nil, fmt.Errorf(
@@ -356,18 +393,20 @@ func (s *Service) ConsumeMerchantPlatformCreditAccountTxInternal(
 		)
 	}
 
-	account, err := s.Models.MerchantPlatformCreditAccount.ConsumeTx(
-		dbCtx,
-		tx,
-		id,
-		amount,
-		currency,
-	)
+	account, err :=
+		s.Models.MerchantPlatformCreditAccount.ConsumeTx(
+			ctx,
+			tx,
+			id,
+			amount,
+			currency,
+		)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"consume merchant platform credit account in transaction: %w",
 			err,
 		)
 	}
+
 	return account, nil
 }

@@ -49,4 +49,15 @@ var (
 	ErrMerchantBillableEventSourceIneligible = errors.New(
 		"merchant billable event authoritative source is ineligible",
 	)
+	ErrMerchantPlatformCreditApplicationFeeCalculationNotApproved = errors.New(
+		"merchant platform credit application requires an approved fee calculation",
+	)
+
+	ErrMerchantPlatformCreditApplicationExceedsObligation = errors.New(
+		"merchant platform credit application would exceed the fee calculation obligation",
+	)
+
+	ErrMerchantPlatformCreditApplicationMerchantMismatch = errors.New(
+		"merchant platform credit account and fee calculation belong to different merchants",
+	)
 )

@@ -1010,6 +1010,69 @@ func (m *MerchantFeeCalculationModel) GetByID(
 	return calc, nil
 }
 
+// GetByIDForUpdateTx retrieves one merchant fee calculation through the
+// caller-owned transaction and locks the row using SELECT ... FOR UPDATE.
+//
+// This is the canonical serialization primitive for downstream financial
+// composition against one fee calculation. Callers must acquire this lock
+// before reading transaction-scoped aggregates whose correctness depends on
+// every concurrent writer against the same calculation serializing through
+// one authoritative row.
+//
+// The caller owns transaction lifetime and timeout. This method never begins,
+// commits, rolls back, or applies an independent transaction timeout.
+//
+// Absence returns (nil, nil), consistent with GetByID.
+func (m *MerchantFeeCalculationModel) GetByIDForUpdateTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+) (*MerchantFeeCalculation, error) {
+	if err := m.validateBase(); err != nil {
+		return nil, err
+	}
+
+	if tx == nil {
+		return nil,
+			merchantFeeCalculationInvalidInput(
+				"transaction is required",
+			)
+	}
+
+	if err := validateMerchantFeeCalculationID(id); err != nil {
+		return nil, err
+	}
+
+	const query = `
+		SELECT ` + merchantFeeCalculationSelectColumns + `
+		FROM merchant_fee_calculations
+		WHERE id = $1
+		FOR UPDATE
+	`
+
+	var calc MerchantFeeCalculation
+
+	if err := scanMerchantFeeCalculation(
+		tx.QueryRow(ctx, query, id),
+		&calc,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf(
+			"get merchant fee calculation by ID for update in transaction: %w",
+			err,
+		)
+	}
+
+	if err := validateMerchantFeeCalculationPersistedState(&calc); err != nil {
+		return nil, err
+	}
+
+	return &calc, nil
+}
+
 // GetActiveByBillableEventAndFeeType retrieves the current non-reversed
 // calculation for a billable-event/fee-type identity. Absence returns nil, nil.
 func (m *MerchantFeeCalculationModel) GetActiveByBillableEventAndFeeType(

@@ -227,9 +227,10 @@ func (app *Application) parseMerchantPlatformCreditApplicationID(r *http.Request
 // parseFeeCalculationIDPathParam extracts and validates a fee calculation ID
 // supplied as a path parameter under the trusted key "feeCalculationID".
 //
-// merchant_fee_calculations was not supplied to this implementation, so this
-// handler treats the fee calculation ID as an opaque, structurally validated
-// UUID and performs no cross-entity validation against it.
+// This historical-read handler treats feeCalculationID as an opaque,
+// structurally validated UUID. Cross-entity monetary and lifecycle validation
+// belongs to merchant_fee_calculations persistence and trusted service
+// orchestration, not to this read-only handler.
 func (app *Application) parseFeeCalculationIDPathParam(r *http.Request) (uuid.UUID, error) {
 	raw := strings.TrimSpace(chi.URLParam(r, "feeCalculationID"))
 	if raw == "" {

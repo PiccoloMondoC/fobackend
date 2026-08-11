@@ -79,15 +79,13 @@
 // Currency and Ownership Boundary:
 //
 //	This model validates applied_amount and currency structurally (positive
-//	NUMERIC(19,4)-compatible decimal string; uppercase three-letter
-//	currency). It does not and cannot verify, at the database level, that
-//	the application currency matches the credit account currency, that it
-//	matches the fee calculation currency, or that the credit account and fee
-//	calculation belong to the same merchant, because merchant_fee_calculations
-//	was not supplied to this implementation. Callers composing InsertTx with
-//	ConsumeTx must pass the identical normalized currency value that
-//	ConsumeTx validated against the account. Cross-entity ownership
-//	validation belongs to the service transaction that reads both entities.
+//	NUMERIC(19,4)-compatible decimal string; uppercase three-letter currency).
+//
+//	The application table does not duplicate merchant ownership and cannot
+//	relationally prove that the credit account and fee calculation belong to
+//	the same merchant or use the same currency. Those cross-entity invariants
+//	are therefore enforced by the service transaction that reads the
+//	authoritative fee calculation and consumes the authoritative credit account.
 //
 // SPINE Rule:
 //
@@ -305,9 +303,10 @@ func validateMerchantPlatformCreditApplicationForInsert(
 // InsertTx creates a new merchant platform credit application record within
 // an existing, caller-owned transaction.
 //
-// InsertTx applies dbTimeout only to this database operation. The service that
-// owns the transaction must impose the outer deadline for the complete
-// multi-model transaction so aggregate lock-hold time remains bounded.
+// InsertTx inherits the caller-owned transaction context unchanged. The
+// service that owns the transaction must impose the outer deadline for the
+// complete multi-model transaction so aggregate lock-hold time remains
+// bounded.
 //
 // InsertTx does not commit or roll back tx; the caller retains ownership of
 // the transaction boundary and must compose this call with
@@ -337,9 +336,6 @@ func (m *MerchantPlatformCreditApplicationModel) InsertTx(
 	tx pgx.Tx,
 	application *MerchantPlatformCreditApplication,
 ) (*MerchantPlatformCreditApplication, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
 	logger := m.Logger.
 		GetLoggerWithContextFromContext(ctx).
 		WithFunctionName("InsertMerchantPlatformCreditApplicationTx")
@@ -688,4 +684,69 @@ func (m *MerchantPlatformCreditApplicationModel) ListByFeeCalculation(
 	}
 
 	return applications, nil
+}
+
+// SumAppliedAmountByFeeCalculationTx returns the exact aggregate amount of
+// platform credit applications already persisted against feeCalculationID,
+// using only the supplied caller-owned transaction.
+//
+// This method performs no locking. The caller must first lock the canonical
+// merchant_fee_calculations row for feeCalculationID in the same transaction.
+// That lock is the serialization point that makes this aggregate safe under
+// concurrent applications from different credit accounts.
+//
+// The caller owns transaction lifetime and timeout.
+//
+// No application rows returns "0".
+func (m *MerchantPlatformCreditApplicationModel) SumAppliedAmountByFeeCalculationTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	feeCalculationID uuid.UUID,
+) (string, error) {
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName(
+			"SumMerchantPlatformCreditApplicationAppliedAmountByFeeCalculationTx",
+		)
+
+	if tx == nil {
+		err := merchantPlatformCreditApplicationInvalidInput(
+			"transaction is required",
+		)
+		logger.Warn("validation failed", "error", err)
+		return "", err
+	}
+
+	if feeCalculationID == uuid.Nil {
+		err := merchantPlatformCreditApplicationInvalidInput(
+			"fee_calculation_id is required",
+		)
+		logger.Warn("validation failed", "error", err)
+		return "", err
+	}
+
+	const query = `
+		SELECT COALESCE(SUM(applied_amount), 0)::text
+		FROM merchant_platform_credit_applications
+		WHERE fee_calculation_id = $1
+	`
+
+	var amount string
+
+	if err := tx.QueryRow(
+		ctx,
+		query,
+		feeCalculationID,
+	).Scan(&amount); err != nil {
+		logger.Error(
+			"sum merchant platform credit applications failed",
+			"error",
+			err,
+			"fee_calculation_id",
+			feeCalculationID,
+		)
+		return "", err
+	}
+
+	return amount, nil
 }

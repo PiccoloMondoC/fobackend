@@ -4114,7 +4114,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			CONSTRAINT merchant_platform_credit_applications_applied_amount_positive_chk
 			CHECK (applied_amount > 0),
 
-		currency CHAR(3) NOT NULL DEFAULT 'USD'
+		currency CHAR(3) NOT NULL
 			CONSTRAINT merchant_platform_credit_applications_currency_format_chk
 			CHECK (currency ~ '^[A-Z]{3}$'),
 

@@ -56,8 +56,8 @@ Everything needed to let the platform commercially operate, even if all fees are
         Applies only when Plans and Subscriptions are enabled by Admin.
 - [x] `merchant_billing_accounts.go`                     — Done
 - [x] `merchant_billable_events.go`                      — Done
-- [ ] `merchant_fee_calculations.go`
-- [ ] `merchant_platform_credit_applications.go`
+- [x] `merchant_fee_calculations.go`                     — Done
+- [x] `merchant_platform_credit_applications.go`         — Done
 - [ ] `merchant_invoices.go`
 - [ ] `merchant_billing_ledger_entries.go`
 

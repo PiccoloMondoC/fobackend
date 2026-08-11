@@ -181,6 +181,9 @@ var (
 	ErrMerchantPlatformCreditAccountMutationConflict = errors.New(
 		"merchant platform credit account mutation conflict",
 	)
+	ErrMerchantPlatformCreditAccountNotConsumable = errors.New(
+		"merchant platform credit account is not consumable",
+	)
 
 	// Merchant platform credit applications.
 	ErrMerchantPlatformCreditApplicationInvalidInput = errors.New(

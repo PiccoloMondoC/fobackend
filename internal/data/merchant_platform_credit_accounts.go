@@ -1162,34 +1162,14 @@ func (m *MerchantPlatformCreditAccountModel) ExpireBatch(
 // Atomic consumption
 // -----------------------------------------------------------------------------
 
-// Consume atomically consumes amount from a currently usable account using
-// the model's connection pool.
+// Consume atomically decrements remaining_amount by amount only when the
+// account is currently usable for that exact currency and has sufficient
+// remaining credit.
 //
-// Use ConsumeTx when the decrement must commit atomically with a future credit
-// application, fee calculation, billing-ledger, or invoice mutation.
-//
-// Idempotency boundary:
-//
-//	This method prevents overspending and negative balances under concurrent
-//	callers. It does not deduplicate repeated business operations. A durable
-//	idempotency key belongs to the future credit-application or billing record
-//	that explains why the credit was consumed.
+// This pool-backed entrypoint owns the timeout for this standalone database
+// operation.
 func (m *MerchantPlatformCreditAccountModel) Consume(
 	ctx context.Context,
-	id uuid.UUID,
-	amount string,
-	currency string,
-) (*MerchantPlatformCreditAccount, error) {
-	return m.ConsumeTx(ctx, m.DB, id, amount, currency)
-}
-
-// ConsumeTx is the transaction-aware form of Consume.
-//
-// q may be *pgxpool.Pool or pgx.Tx. Callers that require atomic composition
-// must pass their existing transaction rather than invoking Consume.
-func (m *MerchantPlatformCreditAccountModel) ConsumeTx(
-	ctx context.Context,
-	q merchantPlatformCreditAccountQuerier,
 	id uuid.UUID,
 	amount string,
 	currency string,
@@ -1197,15 +1177,57 @@ func (m *MerchantPlatformCreditAccountModel) ConsumeTx(
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
+	return m.consume(
+		ctx,
+		m.DB,
+		id,
+		amount,
+		currency,
+	)
+}
+
+// ConsumeTx is the transaction-aware form of Consume.
+//
+// The caller owns transaction lifetime and timeout. ConsumeTx inherits ctx
+// unchanged and never begins, commits, rolls back, or replaces the supplied
+// transaction.
+func (m *MerchantPlatformCreditAccountModel) ConsumeTx(
+	ctx context.Context,
+	q merchantPlatformCreditAccountQuerier,
+	id uuid.UUID,
+	amount string,
+	currency string,
+) (*MerchantPlatformCreditAccount, error) {
+	return m.consume(
+		ctx,
+		q,
+		id,
+		amount,
+		currency,
+	)
+}
+
+// consume performs the canonical guarded platform-credit consumption through
+// the supplied query executor.
+//
+// The caller determines whether q is the database pool or an existing
+// transaction and owns the applicable timeout boundary.
+func (m *MerchantPlatformCreditAccountModel) consume(
+	ctx context.Context,
+	q merchantPlatformCreditAccountQuerier,
+	id uuid.UUID,
+	amount string,
+	currency string,
+) (*MerchantPlatformCreditAccount, error) {
 	logger := m.Logger.
 		GetLoggerWithContextFromContext(ctx).
 		WithFunctionName("ConsumeMerchantPlatformCreditAccount")
 
 	if q == nil {
 		err := merchantPlatformCreditAccountInvalidInput(
-			"querier is required",
+			"query executor is required",
 		)
-		logger.Error("validation failed", err)
+		logger.Warn("validation failed", "error", err)
 		return nil, err
 	}
 
@@ -1213,23 +1235,24 @@ func (m *MerchantPlatformCreditAccountModel) ConsumeTx(
 		err := merchantPlatformCreditAccountInvalidInput(
 			"id is required",
 		)
-		logger.Error("validation failed", err)
+		logger.Warn("validation failed", "error", err)
 		return nil, err
 	}
 
 	amount = normalizeMerchantPlatformCreditAmount(amount)
+
 	if err := validatePositiveMerchantPlatformCreditAmount(amount); err != nil {
-		logger.Error("validation failed", err)
+		logger.Warn("validation failed", "error", err)
 		return nil, err
 	}
 
 	currency = normalizeMerchantPlatformCreditCurrency(currency)
 	if err := validateMerchantPlatformCreditCurrency(currency); err != nil {
-		logger.Error("validation failed", err)
+		logger.Warn("validation failed", "error", err)
 		return nil, err
 	}
 
-	const consumeQuery = `
+	const query = `
 		UPDATE merchant_platform_credit_accounts
 		SET
 			remaining_amount = remaining_amount - $2::numeric,
@@ -1240,104 +1263,62 @@ func (m *MerchantPlatformCreditAccountModel) ConsumeTx(
 			END,
 			updated_at = NOW()
 		WHERE id = $1
-		  AND currency = $3
-		  AND status = 'active'
-		  AND remaining_amount >= $2::numeric
-		  AND starts_at <= NOW()
-		  AND (
-				expires_at IS NULL
-				OR expires_at > NOW()
-		  )
-		RETURNING ` + merchantPlatformCreditAccountSelectColumns
-
-	var account MerchantPlatformCreditAccount
-	err := scanMerchantPlatformCreditAccount(
-		q.QueryRow(ctx, consumeQuery, id, amount, currency),
-		&account,
-	)
-	if err == nil {
-		logger.Info(
-			"consume merchant platform credit account successful",
-			"merchant_platform_credit_account_id", account.ID,
-			"merchant_id", account.MerchantID,
-			"status", account.Status,
-			"currency", account.Currency,
-		)
-		return &account, nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		err = classifyMerchantPlatformCreditAccountWriteError(err)
-		logger.Error(
-			"consume merchant platform credit account failed",
-			err,
-			"merchant_platform_credit_account_id", id,
-			"currency", currency,
-		)
-		return nil, err
-	}
-
-	// The guarded mutation matched no row. This diagnostic provides a useful
-	// current-state classification. Under concurrent mutation, it must not be
-	// interpreted as a historical proof of the exact state at the instant the
-	// guarded UPDATE was evaluated.
-	const diagnosticQuery = `
-		SELECT
+			AND status = 'active'
+			AND currency = $3
+			AND starts_at <= NOW()
+			AND (expires_at IS NULL OR expires_at > NOW())
+			AND remaining_amount >= $2::numeric
+		RETURNING
+			id,
+			merchant_id,
+			original_amount::text,
+			remaining_amount::text,
 			currency,
 			status,
-			remaining_amount >= $2::numeric AS has_sufficient_balance,
-			starts_at <= NOW()
-				AND (
-					expires_at IS NULL
-					OR expires_at > NOW()
-				) AS inside_validity_window
-		FROM merchant_platform_credit_accounts
-		WHERE id = $1
+			starts_at,
+			expires_at,
+			source_code,
+			note,
+			created_at,
+			updated_at
 	`
 
-	var persistedCurrency string
-	var status MerchantPlatformCreditAccountStatus
-	var hasSufficientBalance bool
-	var insideValidityWindow bool
+	var account MerchantPlatformCreditAccount
 
-	err = q.QueryRow(
+	err := q.QueryRow(
 		ctx,
-		diagnosticQuery,
+		query,
 		id,
 		amount,
+		currency,
 	).Scan(
-		&persistedCurrency,
-		&status,
-		&hasSufficientBalance,
-		&insideValidityWindow,
+		&account.ID,
+		&account.MerchantID,
+		&account.OriginalAmount,
+		&account.RemainingAmount,
+		&account.Currency,
+		&account.Status,
+		&account.StartsAt,
+		&account.ExpiresAt,
+		&account.SourceCode,
+		&account.Note,
+		&account.CreatedAt,
+		&account.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrMerchantPlatformCreditAccountNotFound
+			return nil, ErrMerchantPlatformCreditAccountNotConsumable
 		}
 
 		logger.Error(
-			"diagnose merchant platform credit account consumption failure failed",
+			"consume merchant platform credit account failed",
+			"error",
 			err,
-			"merchant_platform_credit_account_id", id,
+			"merchant_platform_credit_account_id",
+			id,
 		)
 		return nil, err
 	}
 
-	switch {
-	case persistedCurrency != currency:
-		return nil, ErrMerchantPlatformCreditAccountCurrencyMismatch
-
-	case status != MerchantPlatformCreditAccountStatusActive ||
-		!insideValidityWindow:
-		return nil, ErrMerchantPlatformCreditAccountNotUsable
-
-	case !hasSufficientBalance:
-		return nil, ErrMerchantPlatformCreditAccountInsufficientBalance
-
-	default:
-		// A concurrent mutation may have changed the row between the guarded
-		// UPDATE and this read. The safe result is a mutation conflict; callers
-		// must not assume that retrying is idempotent.
-		return nil, ErrMerchantPlatformCreditAccountMutationConflict
-	}
+	return &account, nil
 }
