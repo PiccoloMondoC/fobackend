@@ -185,23 +185,6 @@ var (
 		"merchant platform credit account is not consumable",
 	)
 
-	// Merchant platform credit applications.
-	ErrMerchantPlatformCreditApplicationInvalidInput = errors.New(
-		"invalid merchant platform credit application input",
-	)
-	ErrMerchantPlatformCreditApplicationDuplicate = errors.New(
-		"merchant platform credit application already exists for this credit account and fee calculation",
-	)
-	ErrMerchantPlatformCreditApplicationCreditAccountNotFound = errors.New(
-		"merchant platform credit application references a nonexistent credit account",
-	)
-	ErrMerchantPlatformCreditApplicationFeeCalculationNotFound = errors.New(
-		"merchant platform credit application references a nonexistent fee calculation",
-	)
-	ErrMerchantPlatformCreditApplicationInvalidState = errors.New(
-		"merchant platform credit application violates a persisted integrity constraint",
-	)
-
 	// Merchant platform credit eligible fee types.
 	ErrMerchantPlatformCreditEligibleFeeTypeInvalidInput = errors.New(
 		"invalid merchant platform credit eligible fee type input",
@@ -286,6 +269,46 @@ var (
 	)
 	ErrMerchantFeeCalculationInvalidTransition = errors.New(
 		"invalid merchant fee calculation lifecycle transition",
+	)
+
+	// Merchant platform credit applications.
+	ErrMerchantPlatformCreditApplicationInvalidInput = errors.New(
+		"invalid merchant platform credit application input",
+	)
+	ErrMerchantPlatformCreditApplicationDuplicate = errors.New(
+		"merchant platform credit application already exists for this credit account and fee calculation",
+	)
+	ErrMerchantPlatformCreditApplicationCreditAccountNotFound = errors.New(
+		"merchant platform credit application references a nonexistent credit account",
+	)
+	ErrMerchantPlatformCreditApplicationFeeCalculationNotFound = errors.New(
+		"merchant platform credit application references a nonexistent fee calculation",
+	)
+	ErrMerchantPlatformCreditApplicationInvalidState = errors.New(
+		"merchant platform credit application violates a persisted integrity constraint",
+	)
+
+	// Merchant invoices.
+	ErrMerchantInvoiceInvalidInput = errors.New(
+		"invalid merchant invoice input",
+	)
+	ErrMerchantInvoiceNotFound = errors.New(
+		"merchant invoice not found",
+	)
+	ErrMerchantInvoiceInvalidState = errors.New(
+		"invalid merchant invoice state",
+	)
+	ErrMerchantInvoiceDuplicateNumber = errors.New(
+		"merchant invoice number already exists",
+	)
+	ErrMerchantInvoiceMerchantNotFound = errors.New(
+		"merchant invoice references a nonexistent merchant",
+	)
+	ErrMerchantInvoiceInvalidTransition = errors.New(
+		"invalid merchant invoice lifecycle transition",
+	)
+	ErrMerchantInvoicePaymentExceedsBalance = errors.New(
+		"merchant invoice payment exceeds remaining balance",
 	)
 
 	// Merchant payment methods.

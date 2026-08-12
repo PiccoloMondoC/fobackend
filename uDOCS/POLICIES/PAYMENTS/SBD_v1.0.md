@@ -1,1103 +1,429 @@
-SBD v1.0
-
-1. Mission
-2. Platform Vision
-3. Core Architectural Principles
-    3.1 Future-Oriented Commerce
-    3.2 Merchant–Consumer Separation
-    3.3 Administration Governs; Engineering Implements
-    3.4 Automation-First
-    3.5 Consumer Identity Sovereignty
-    ...
-
-# Engineering creates the operational capability and extension points.
-# Admin enables, disables, and configures that capability without recompilation.
-
-
-I think we've reached a point where the vision has become internally consistent. There are no obvious contradictions left between the business model, the product, the architecture, and the commercial model.
-
-I'd summarize our agreements as follows.
-
-# Sagrenti Business Doctrine v1.0
+# Sagrenti Business Doctrine — Consolidated Summary
 
 ## 1. What Sagrenti is
 
-Sagrenti is a **Future Offering Platform** that delivers **Market Anticipation Intelligence as a Service**.
+Sagrenti is a **Future Offering Platform that delivers Market Anticipation Intelligence as a Service**.
 
-Its purpose is to help merchants understand market anticipation **before** products, services, or experiences are launched.
+Its central purpose is to help businesses understand what the market is saying **before launch**.
 
-The software—not people—performs the work.
+The defining question is:
 
+> **What is the market telling us before launch?**
 
-# 2. What Sagrenti is not
+Sagrenti is fundamentally a software platform. It is not a consulting company, marketing agency, managed-service provider, product-development firm, or research consultancy. The software performs the measurement, analysis, reporting, and intelligence functions. 
 
-Sagrenti is **not**:
+## 2. The Future Offering belongs to the merchant
 
-* a consulting company,
-* a marketing agency,
-* a managed-service provider,
-* a product development firm,
-* a research consultancy.
+Every Future Offering is a merchant-owned project.
 
-Merchants are never paying people to perform engagements.
+The merchant decides what it intends to offer, the target market, duration, goals, launch strategy, and which supported consumer engagement opportunities to make available.
 
-They are paying the platform.
+Sagrenti does **not** sell the Future Offering to the merchant.
 
----
+Sagrenti provides the intelligence infrastructure surrounding it.
 
-# 3. The merchant owns the Future Offering
+This gives us the fundamental ownership distinction:
 
-The Future Offering belongs entirely to the merchant.
+> **The Future Offering belongs to the merchant. Market Anticipation Intelligence is the Sagrenti SaaS product.** 
 
-The merchant determines:
+## 3. Market Anticipation Intelligence is the product
 
-* what to build,
-* target audience,
-* duration,
-* engagement strategy,
-* goals,
-* launch strategy.
+The canonical product/category name is:
 
-Sagrenti does not own or manage the Future Offering.
+> **Market Anticipation Intelligence**
 
----
+Sagrenti measures and interprets market anticipation surrounding a Future Offering.
 
-# 4. Sagrenti's product
+The intelligence may include:
 
-Sagrenti provides a Market Anticipation Intelligence platform.
-
-The SaaS product consists of:
-
-* anticipation measurement,
-* analytics,
-* anticipation intelligence,
-* reporting,
-* insights,
+* anticipation measurement;
+* engagement analytics;
+* trends and momentum;
+* progress against merchant-defined goals;
+* reporting;
+* insights;
 * recommendations.
 
-Everything the merchant pays for belongs to this layer.
+“Market” matters because the intelligence is not fundamentally **Merchant Intelligence** or **Consumer Intelligence**. Consumers generate signals, merchants consume the resulting intelligence, but **market anticipation is what Sagrenti measures**.
 
----
+For shorter operational and commercial terminology, **Anticipation Intelligence** is appropriate.
 
-# 5. Market Anticipation Intelligence is the product
+## 4. Consumer anticipation signals
 
-The merchant is **not** paying for a Future Offering.
+Every Future Offering supports **Watch** as a platform-owned anticipation signal.
 
-The merchant is paying for:
+Depending upon the Future Offering, the merchant may additionally enable supported engagement opportunities such as:
 
-Market Anticipation Intelligence
+* Waitlist;
+* Early Access Request;
+* Beta Application;
+* Reservation Interest;
+* Preorder Intent.
 
-That is the commercial product.
+A Future Offering need not support every engagement type.
 
----
+The intelligence comes from observing the relevant signals over time—not merely displaying cumulative counters.
 
-# 6. Future Offering lifecycle
+## 5. Anticipation Intelligence Reports
 
+While Anticipation Intelligence services operate, Sagrenti produces reporting around the Future Offering.
 
-Merchant creates Future Offering
-        │
-        ▼
-Anticipation Intelligence Activation Fee
-        │
-        ▼
-Future Offering activated
-        │
-        ▼
-Platform measures anticipation
-        │
-        ▼
-Anticipation Intelligence Reports
-        │
-        ▼
-Anticipation Intelligence Fees
-        │
-        ▼
-Launch
+A report may show, for the engagement types applicable to that Future Offering:
 
+```text
+                         Goal       Achieved
 
-# 7. Anticipation Intelligence Reports
+Watch                   50,000       31,000
+Waitlist                  5,000        3,860
+Early Access              2,500        1,540
+Beta Applications         1,000          542
+Reservation Interest        500          241
+Preorder Intent              250          128
+```
 
-Reports are issued every billing cycle.
+But raw counts are only the foundation.
 
-A report contains:
+The eventual value proposition includes trends, momentum, changes, interpretation, insights, and recommendations.
 
-* merchant goals,
-* achieved results,
-* engagement metrics,
-* trends,
-* recommendations,
-* insights.
+This is what makes the SaaS model particularly compelling: a merchant can repeatedly return to Sagrenti to understand how market anticipation is developing.
 
-Example:
+## 6. Merchant goals are intelligence inputs, not billing triggers
 
+Merchants may establish goals for their Future Offerings.
+
+Goals support:
+
+* measurement;
+* progress analysis;
+* reporting;
+* insights;
+* recommendations.
+
+They do **not** determine whether Sagrenti gets paid.
+
+We therefore rejected milestone billing.
+
+A merchant cannot avoid an invoice simply because a goal was not reached, nor should an artificially ambitious goal distort Sagrenti's revenue.
+
+## 7. Billing and reporting are related but independent
+
+Each billing cycle can produce two conceptually distinct artifacts:
+
+```text
 Anticipation Intelligence Report
-
-                     Goal     Achieved
-
-Watch              50,000      31,000
-Waitlist            5,000       3,860
-Early Access        2,500       1,540
-Beta Applications   1,000         542
-Reservations           500         241
-Preorder Intent        250         128
-
-
-The report demonstrates value.
-
-It does **not** determine payment.
-
-# 8. Merchant goals
-
-Goals belong to the merchant.
-
-Goals:
-
-* measure success,
-* guide reporting,
-* support analytics,
-* enable recommendations.
-
-Goals do **not** trigger invoices.
-
-
-# 9. Billing philosophy
-
-Invoices are based on platform usage.
-
-Not on:
-
-* milestone completion,
-* goal achievement,
-* merchant success.
-
-This creates predictable SaaS revenue.
-
-
-# 10. Commercial fees
-
-Current fee taxonomy:
-
-
-Anticipation Intelligence Activation Fee
-
-
-One-time fee when Market Anticipation Intelligence services are activated for a Future Offering.
-
----
-
-Anticipation Intelligence Fee
-
-Recurring fee while Anticipation Intelligence services continue operating.
-
----
-
-Subscription Fee
-
-Optional.
-
-Only applies when Plans and Subscriptions are enabled.
-
-
-Campaign Performance Fee
-
-
-Applies only to Launch Campaign commercial models where appropriate.
-
-
-# 11. Plans
-
-Plans are **not** an architectural dependency.
-
-Plans are a commercial packaging mechanism.
-
-
-When Plans are disabled:
-
-Merchant Account
         │
-        ▼
-Platform Capabilities
+        └── What is the market telling the merchant?
 
-Any merchant may use:
+Anticipation Intelligence Invoice
+        │
+        └── What does the merchant owe Sagrenti?
+```
 
-* Future Offering
-* Launch Campaign
+The report demonstrates and explains value.
 
-without belonging to:
+The invoice records the commercial obligation.
 
-* Pay-As-You-Go
-* Standard
-* Premium
-* Enterprise
+Goal achievement does not release the invoice.
 
----
+## 8. Canonical fee taxonomy
 
-When Plans are enabled:
+We have reduced the core commercial taxonomy to four fees:
 
-Plans become optional commercial packages.
+| Fee                                          | Purpose                                                                                           |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **Anticipation Intelligence Activation Fee** | One-time activation of Anticipation Intelligence services for a Future Offering                   |
+| **Anticipation Intelligence Fee**            | Ongoing Anticipation Intelligence measurement, analytics, reporting, insights and recommendations |
+| **Campaign Performance Fee**                 | Present-commerce Launch Campaign activity only                                                    |
+| **Subscription Fee**                         | Optional; applies only when the configured commercial model uses subscriptions                    |
 
-Admin may configure any number of plans.
+The category is **Market Anticipation Intelligence**, while the commercial fee names deliberately use the shorter **Anticipation Intelligence** terminology. 
 
-Examples:
+This replaces older terminology including **Setup Fee**, **Future Offering Fee**, and **Launch Intelligence Fee**.
 
-* Starter
-* Standard
-* Premium
-* Enterprise
-* Founding Merchant
+## 9. Plans are capability, not mandatory business policy
 
-No engineering changes are required.
+Sagrenti has built Merchant Program Plans as a complete platform capability.
 
----
+That does **not** mean Sagrenti must always operate using plans.
 
-# 12. Subscriptions
+When Plans are disabled, merchants can use applicable platform capabilities without being classified as Pay-As-You-Go, Standard, Premium, Enterprise, etc.
 
-Subscriptions are also optional.
+When Plans are enabled, Admin may configure commercial packages such as those—or different plans in the future.
 
-Admin may enable or disable them.
+Therefore:
 
-When disabled:
+> **Merchant Plans are optional commercial packaging of platform capabilities, not an architectural prerequisite for using those capabilities.**
 
-Merchants simply use the platform and pay applicable usage fees.
+## 10. Subscriptions are equally optional
 
-This is similar to cloud-service platforms.
+The Subscription capability remains production-ready even if Sagrenti launches without requiring subscriptions.
 
----
+This is especially important because Future Offering activity can be episodic: a merchant may run a Future Offering, disappear for months, and return when it has another project.
 
-# 13. Commercial policy
+Present-commerce Launch Campaign activity may be much more continuous.
 
-Commercial policy belongs in configuration.
+The architecture therefore does not force one commercial model onto both.
+
+Admin can enable Plans and Subscriptions when their economics make sense and disable them when they do not.
+
+## 11. Commercial policy is configuration
+
+This became one of the central architectural doctrines.
+
+Engineering creates the capability.
+
+Administration determines how the business currently uses that capability.
 
 Examples include:
 
-* Plans enabled/disabled
-* Subscriptions enabled/disabled
-* Anticipation Intelligence Activation Fee enabled/disabled
-* Activation fee rebates
-* Anticipation Intelligence fee schedules
-* Commercial promotions
+* Plans enabled/disabled;
+* Subscriptions enabled/disabled;
+* fee schedules;
+* fee enablement or waiver;
+* rebates and discounts;
+* commercial promotions;
+* merchant-specific commercial adjustments;
+* credit eligibility;
+* billing policy;
+* supported provider selection.
 
-Changing commercial policy should not require software changes.
+Changing these supported policies should not require changing source code.
 
----
+BEG §18.6A now formalizes this: Engineering must implement complete operational capabilities and governed extension points, while Administration operates those capabilities through configuration. 
 
-# 14. Merchant Payments Architecture
+## 12. But Admin is not sovereign over engineering
 
-The payments architecture remains intentionally lean.
+This was the important companion doctrine we subsequently identified.
 
-Responsibilities:
+> **Engineering invariants are not policy.**
 
-* payment methods,
-* payment collection,
-* invoicing,
-* bank connectivity.
+Admin's configurable authority exists **inside boundaries established by Engineering**.
 
-No merchant treasury.
+Administration must never be able to configure away such things as:
 
-No deposits.
+* security;
+* authorization;
+* data integrity;
+* transactional consistency;
+* required auditability;
+* canonical validation;
+* cryptographic guarantees;
+* invariant lifecycle correctness;
+* other fundamental system-safety requirements.
 
-No escrow.
+Hence the §18.6A/§18.6B relationship:
 
-No embedded banking.
+> **Engineering builds complete capabilities and defines their safe operating boundaries. Administration governs commercial and operational behavior within those boundaries.**
 
-These remain future implementation options if ever required.
+That prevents both extremes: commercial policy frozen into code and an Admin Console powerful enough to undermine the platform.
 
----
+## 13. Standard pricing, platform promotions and merchant adjustments are distinct
 
-# 15. Bank connectivity
-
-The architecture defines:
-
-```text
-Bank Connectivity
-```
-
-The implementation uses:
-
-```text
-Plaid
-```
-
-The architecture remains vendor-neutral.
-
----
-
-# 16. Anticipation Intelligence Reports and invoices
-
-Every billing cycle produces two independent outputs:
+We've also separated three commercial concepts:
 
 ```text
-Anticipation Intelligence Report
-```
-
-and
-
-```text
-Anticipation Intelligence Invoice
-```
-
-The report demonstrates value.
-
-The invoice represents the commercial obligation.
-
-They are related.
-
-They are not the same thing.
-
----
-
-# 17. Future Offering engagement model
-
-Watch is universal.
-
-Other engagement types are merchant-selected.
-
-Possible engagement types include:
-
-* Watch
-* Waitlist
-* Early Access Request
-* Beta Application
-* Reservation Interest
-* Preorder Intent
-
-Reports only include engagement types relevant to that Future Offering.
-
----
-
-# 18. Design philosophy
-
-Every architectural decision should simplify the platform.
-
-Complexity that does not strengthen the core product should be deferred.
-
-This resulted in removing:
-
-* Merchant Deposits
-* Milestone Billing
-* Escrow
-* Embedded Banking
-
-from the governing architecture.
-
----
-
-# 19. Platform philosophy
-
-Sagrenti follows the philosophy of infrastructure companies.
-
-The platform performs the work.
-
-The merchant uses the platform.
-
-The platform scales because software—not people—delivers the value.
-
----
-
-# 20. Monetization philosophy
-
-Advertising should feel like discovery, not interruption.
-
-Rather than loud display ads, Sagrenti prefers relevant recommendations and sponsorships that complement the merchant or consumer journey, closer in spirit to Amazon's recommendation model than Google's traditional display advertising.
-
----
-
-# 21. Core value proposition
-
-The platform exists to answer one fundamental question:
-
-> **"What is the market telling us before launch?"**
-
-Everything else—payments, plans, subscriptions, reports, recommendations, and administration—exists to support that single objective.
-
----
-
-## One sentence that now defines the entire company
-
-> **Sagrenti is a SaaS Market Anticipation Intelligence platform that enables merchants to create Future Offerings, measure consumer anticipation before launch, receive ongoing analytics and actionable insights, and commercialize those capabilities through a configurable, usage-based model.**
-
-Looking back over the last several days, I think the biggest change is not in the technology but in the clarity of the business. Earlier, there was a tendency to think in terms of financial mechanisms (treasury, deposits, milestones, escrow) or service delivery (managed engagements). Those have all fallen away. What's left is a much sharper identity: **the merchant owns the Future Offering, and Sagrenti owns the Market Anticipation Intelligence platform that measures and explains market anticipation around it.** That single distinction now drives the product, the architecture, and the commercial model.
-
-
-
-Absolutely.
-
-In fact, I think that's not just desirable—it's almost essential if the Admin Console is going to be a real commercial management tool.
-
-The important distinction is between **global pricing** and **merchant-specific commercial adjustments**.
-
-For example:
-
-## Global policy
-
-Applies to everyone.
-
-```text
-Anticipation Intelligence Activation Fee
-
-Base Fee: $500
-```
-
-or
-
-```text
-Founding Merchant Promotion
-
-50% rebate
-```
-
-Every eligible merchant receives the same adjustment.
-
----
-
-## Merchant-specific adjustment
-
-Applies to one merchant.
-
-For example:
-
-```text
-Merchant: ABC Electronics
-
-Base Fee: $500
-
-Special Discount: 100%
-
-Net Fee: $0
-
-Reason:
-Enterprise sales concession
-```
-
-or
-
-```text
-Merchant: XYZ Motors
-
-Base Fee: $500
-
-Discount: 25%
-
-Net Fee: $375
-
-Reason:
-Strategic partner
-```
-
----
-
-## Why this matters
-
-This gives Admin enormous flexibility.
-
-Examples:
-
-* Win a major brand.
-* Resolve a customer service issue.
-* Honor a promised commercial concession.
-* Reward an early adopter.
-* Support a nonprofit.
-* Execute a negotiated enterprise agreement.
-* Run an invite-only pilot.
-
-None of these should require changing the global fee schedule.
-
----
-
-## I wouldn't put the discount on the merchant record
-
-Instead, I'd think of it as a **commercial adjustment**.
-
-Conceptually:
-
-```text
-Merchant
+Standard Fee Schedule
         │
         ▼
-Commercial Adjustment
+Platform Commercial Promotion
+        │
+        ▼
+Merchant Commercial Adjustment
         │
         ▼
 Fee Calculation
 ```
 
-That way, a merchant can have multiple adjustments over time.
+**Fee schedules** answer:
 
-For example:
+> What do we ordinarily charge?
+
+**Platform commercial promotions** answer:
+
+> What commercial campaign is Sagrenti offering to eligible merchants?
+
+Examples include a Founding Merchant Promotion or Early Adopter Promotion.
+
+These belong to:
 
 ```text
-Jan–Mar
-100% Activation Fee rebate
-
-Apr–Jun
-50% Anticipation Intelligence Fee discount
-
-Jul onward
-Standard pricing
+platform_commercial_promotions.go
 ```
 
-Everything remains auditable.
+**Merchant commercial adjustments** answer:
 
----
+> What exceptional commercial treatment has Sagrenti granted this particular merchant?
 
-## I think we should broaden the terminology slightly
-
-Instead of only saying:
-
-> **Activation Fee Rebate**
-
-I'd use:
-
-> **Commercial Adjustment**
-
-A Commercial Adjustment can be:
-
-* percentage discount,
-* fixed-amount discount,
-* full waiver,
-* rebate,
-* promotional credit,
-* negotiated pricing,
-* temporary concession.
-
-Then the fee engine simply applies the adjustment during fee calculation.
-
----
-
-## Architecturally
-
-I don't think this belongs inside the fee schedule itself.
-
-The fee schedule answers:
-
-> **What does the platform normally charge?**
-
-A commercial adjustment answers:
-
-> **Why is this merchant paying something different?**
-
-Those are separate concerns.
-
-I actually think this deserves its own domain object in the Commerce Architecture, something like:
+These belong to:
 
 ```text
 merchant_commercial_adjustments.go
 ```
 
-Its responsibility would be to record merchant-specific pricing exceptions in a structured, auditable way.
+Thus a 50% Founding Merchant promotion and a negotiated 25% discount for one particular merchant are not the same thing.
 
-That keeps the pricing architecture clean:
+## 14. Platform credits remain a separate capability
+
+Platform Credits should not be confused with promotions or merchant-specific adjustments.
+
+They represent credit value that can reduce an eligible commercial obligation.
+
+So we retain separate concepts:
+
+* standard pricing;
+* commercial promotions;
+* merchant-specific adjustments;
+* platform credits.
+
+That distinction preserves auditability and prevents pricing policy from becoming one undifferentiated discount mechanism.
+
+## 15. Merchant Payments Architecture
+
+We abandoned **Merchant Treasury Architecture** because “treasury” described a much broader financial domain than Sagrenti needs.
+
+The governing domain is now:
+
+> **Merchant Payments Architecture**
+
+Its essential question is:
+
+> **Now that Commerce Architecture has determined what the merchant owes, how does the merchant satisfy that obligation?**
+
+Commerce Architecture determines the commercial obligation.
+
+Merchant Payments Architecture fulfills it. 
+
+The v1 architecture remains deliberately lean:
+
+* merchant payment methods;
+* provider connectivity;
+* payment execution;
+* payment recording;
+* payment collection.
+
+We do not need a treasury platform simply to collect money owed to Sagrenti.
+
+## 16. Direct payment is the v1 collection model
+
+The immediate operating model is invoice-and-collect/direct payment.
+
+Payment may ultimately involve appropriate supported methods such as cards and bank payments.
+
+We explored merchant deposits, prefunded balances, milestone payments, escrow, embedded banking, and treasury-style balances. Those discussions helped clarify the problem, but those mechanisms are **not required parts of the governing v1 business architecture**.
+
+They remain possible engineering options if future economics, scale, regulation, or payment risk justify them.
+
+## 17. Bank connectivity belongs inside Payments Architecture
+
+Bank connectivity is a platform capability rather than a Plaid-specific domain concept.
+
+The current implementation direction uses **Plaid**, while preserving a provider-neutral architecture.
+
+The separation is:
 
 ```text
-Fee Schedule
+merchant_payment_methods.go
         │
         ▼
-Commercial Adjustment (optional)
+merchant_payment_method_provider_links.go
         │
         ▼
-Fee Calculation
-        │
-        ▼
-Invoice
+merchant_payments.go
 ```
 
-I like this model because it scales naturally. Today it can support an individual merchant discount. Tomorrow it can support partner agreements, promotional campaigns, enterprise contracts, or even salesperson-negotiated concessions—without ever compromising the integrity of the standard fee schedules.
+`merchant_payment_method_provider_links.go` provides the seam through which Plaid—and potentially another provider later—can connect merchant payment methods without making Plaid itself part of the canonical payment-domain contract. 
 
+## 18. Sagrenti remains SaaS, not managed services
 
+We considered whether Sagrenti might operate Future Offering engagements on behalf of merchants.
 
-I think this is where we should distinguish **pricing** from **promotions**.
+We rejected that direction.
 
-Right now we have three different concepts mixed together:
+Sagrenti provides the platform.
 
-1. **Standard pricing** (what the platform normally charges)
-2. **Platform-wide promotions** (everyone or an eligible group gets a discount)
-3. **Merchant-specific concessions** (one merchant gets a special deal)
+Merchants conduct their Future Offering businesses using the software.
 
-Those should be three separate concepts.
+That is important economically and strategically: Sagrenti should be able to grow its merchant base without proportionally increasing staff performing merchant work.
 
----
+Software performs the repeatable work so the company can continue investing in the intelligence product.
 
-## Standard pricing
+## 19. Why SaaS now matters more
 
-This is what we've already designed.
+The move toward SaaS became much more compelling once we clarified **what the SaaS actually delivers**.
+
+The compelling experience isn't merely having access to software.
+
+It's being able to open Sagrenti and see the market moving around a planned launch:
 
 ```text
-Anticipation Intelligence Activation Fee
-
-Base Fee:
-$500
+Watch                 ↑
+Waitlist               ↑
+Reservation Interest   ↑
+Preorder Intent        ↑
 ```
 
-This comes from:
+and eventually receive meaningful interpretation of those movements.
 
-```text
-merchant_program_fee_schedules.go
-```
+The merchant's reason to return becomes:
 
-Nothing special here.
+> **What is the market telling me today?**
 
----
+For a small business owner deciding whether a product has genuine demand—or an executive planning a major launch—that information can carry real emotional intensity because significant commercial decisions depend upon it.
 
-## Platform-wide promotion
+The product should create that engagement through **valuable evidence and insight**, not through artificial addictive mechanics.
 
-This is where **Founding Merchant Promotion** belongs.
+## 20. Consumer identity remains protected
 
-It is **not** a fee schedule.
+Consumer participation generates anticipation intelligence, but consumer identity is not itself the product sold to merchants.
 
-It is **not** a merchant-specific adjustment.
+The architecture preserves consumer identity sovereignty.
 
-It's a temporary commercial campaign.
+Future Offering engagement does not ordinarily disclose consumer identity to the merchant. Where a commercial transition eventually requires interaction with the merchant, that transition should occur through consumer-authorized mechanisms.
 
-For example:
+Thus Sagrenti can sell intelligence about market anticipation without turning individual consumer identities into merchant data.
 
-```text
-Promotion
+## 21. The business in one architecture
 
-Founding Merchant Promotion
-
-Eligibility
-
-First 1,000 merchants
-
-Benefit
-
-100% Anticipation Intelligence Activation Fee rebate
-
-Effective
-
-Jan 1 - Mar 31
-```
-
-When the fee engine calculates the fee:
-
-```text
-Base Fee
-
-↓
-
-Promotion applies?
-
-↓
-
-Yes
-
-↓
-
-100% rebate
-
-↓
-
-Invoice = $0
-```
-
-Notice what's happened.
-
-We never changed the fee.
-
-We changed the promotion.
-
-That feels much cleaner.
-
----
-
-## Merchant-specific concession
-
-Entirely separate.
-
-For example:
+I think the clearest representation of where we've landed is:
 
 ```text
 Merchant
-
-ABC Electronics
-
-↓
-
-Commercial Adjustment
-
-↓
-
-Activation Fee
-
-100% waiver
+   │
+   ▼
+Creates Future Offering
+   │
+   ▼
+Sagrenti activates Anticipation Intelligence services
+   │
+   ▼
+Consumers generate anticipation signals
+   │
+   ▼
+Sagrenti measures those signals
+   │
+   ▼
+Market Anticipation Intelligence
+   │
+   ├── Measurement
+   ├── Analytics
+   ├── Reports
+   ├── Insights
+   └── Recommendations
+   │
+   ▼
+Merchant makes better pre-launch decisions
 ```
 
-This affects only that merchant.
+Sagrenti monetizes **its intelligence service**, not ownership of the merchant's Future Offering and not the identity of participating consumers.
 
----
+## Final doctrine
 
-## So I think we actually have three layers
+If I had to compress the entire SBD into three statements now, they would be:
 
-```text
-Base Fee Schedule
-        │
-        ▼
-Platform Promotion
-        │
-        ▼
-Merchant Adjustment
-        │
-        ▼
-Fee Calculation
-        │
-        ▼
-Invoice
-```
+> **The Future Offering belongs to the merchant. Market Anticipation Intelligence belongs to Sagrenti.**
 
-Each layer has a different responsibility.
+> **Sagrenti is a Future Offering Platform that delivers Market Anticipation Intelligence as a Service, helping merchants understand what the market is telling them before launch.**
 
-### Fee Schedule
+> **Engineering builds complete, production-ready capabilities and defines their invariant safety boundaries; Administration governs how those capabilities are commercially and operationally exercised through configuration within those boundaries.**
 
-"What do we normally charge?"
-
----
-
-### Promotion
-
-"What campaign is the platform currently running?"
-
-Examples:
-
-* Founding Merchant Promotion
-* Black Friday Promotion
-* Summer Launch Promotion
-
----
-
-### Merchant Adjustment
-
-"What exception has been negotiated for this merchant?"
-
-Examples:
-
-* Enterprise concession
-* Customer recovery
-* Strategic partner
-
----
-
-## I actually don't think Founding Merchant belongs in the fee schedule
-
-Earlier I suggested rebates inside fee schedules.
-
-I think this conversation has shown that's not the best model.
-
-Founding Merchant is really a **marketing campaign**.
-
-Marketing campaigns should probably live in their own area.
-
-Something like:
-
-```text
-merchant_promotions.go
-```
-
-or
-
-```text
-merchant_commercial_promotions.go
-```
-
-Then Admin can create things like:
-
-```text
-Promotion Name
-
-Founding Merchant
-
-Type
-
-Activation Fee Rebate
-
-Value
-
-100%
-
-Eligibility
-
-First 1,000 merchants
-
-Start
-
-Jan 1
-
-End
-
-Mar 31
-
-Maximum Redemptions
-
-1,000
-```
-
-That is much richer than trying to force it into a fee schedule.
-
----
-
-## I think we've now arrived at the commercial hierarchy
-
-```text
-Fee Schedule
-        │
-        ▼
-Promotions
-        │
-        ▼
-Merchant Adjustments
-        │
-        ▼
-Invoice
-```
-
-I actually like this much better because each layer answers a different business question:
-
-* **Fee Schedule** — *What is our standard pricing?*
-* **Promotion** — *What campaign are we running for the market?*
-* **Merchant Adjustment** — *What exception have we granted this specific merchant?*
-
-They're no longer competing with each other.
-
-I also think this aligns with the broader architecture philosophy. Instead of overloading one subsystem to handle every pricing scenario, each concept has a single, well-defined responsibility. That tends to produce a cleaner Admin Console and a simpler mental model for the engineering team.
-
-
-The existing `merchant_promotions.go` has a completely different responsibility:
-
-> **How merchants market their own offerings to consumers.**
-
-Those are business promotions such as:
-
-* launch promotions,
-* discounts,
-* coupons,
-* special offers,
-* limited-time campaigns.
-
-Those belong to the merchant's commerce domain.
-
-What we've been discussing is completely different.
-
-It's about **how Sagrenti prices its own services**.
-
-That's a platform commercial concern, not a merchant commerce concern.
-
-So I would keep those domains separate.
-
-| Domain                                             | Responsibility                                                   |
-| -------------------------------------------------- | ---------------------------------------------------------------- |
-| `merchant_promotions.go`                           | Merchant promotions presented to consumers.                      |
-| `merchant_program_fee_schedules.go`                | Standard platform pricing.                                       |
-| `platform_commercial_promotions.go` *(or similar)* | Platform-wide commercial campaigns that modify standard pricing. |
-| `merchant_commercial_adjustments.go`               | Merchant-specific pricing exceptions.                            |
-
-
-## I actually like "Commercial Promotions"
-
-platform_commercial_promotions.go
-
-is a strong candidate because it clearly distinguishes the platform's commercial campaigns from merchant marketing promotions.
-
-Examples would include:
-
-* Founding Merchant Promotion
-* Launch Promotion
-* Black Friday Merchant Promotion
-* Invite-only Beta Promotion
-* Enterprise Growth Promotion
-
-Each one changes how the platform charges merchants, not how merchants market to consumers.
-
-
-## What belongs in `platform_commercial_promotions.go`
-
-This file would define promotions that modify the platform's commercial relationship with merchants, for example:
-
-* Founding Merchant Promotion
-* Early Adopter Promotion
-* Black Friday Promotion
-* Holiday Promotion
-* Beta Invitation Promotion
-* Enterprise Migration Promotion
-* Partner Promotion
-
-Each promotion would define things such as:
-
-* Promotion name
-* Promotion type
-* Eligibility rules
-* Applicable fee types (Anticipation Intelligence Activation Fee, Anticipation Intelligence Fee, etc.)
-* Discount/rebate/waiver
-* Effective dates
-* Maximum redemptions or budget
-* Enabled/disabled status
-
-Notice that none of these are tied to a specific merchant. They are platform campaigns administered centrally.
-
-## Relationship to merchant adjustments
-
-With this addition, the commercial hierarchy becomes very clean:
-
-
-Platform Fee Schedules
-        │
-        ▼
-Platform Commercial Promotions
-        │
-        ▼
-Merchant Commercial Adjustments
-        │
-        ▼
-Fee Calculation
-        │
-        ▼
-Invoice
-
-
-Each layer has a single responsibility:
-
-* **Fee Schedules** — define the standard prices.
-* **Platform Commercial Promotions** — define market-wide or eligibility-based campaigns.
-* **Merchant Commercial Adjustments** — define exceptions for an individual merchant.
-
-That separation follows the Single Responsibility Principle nicely and avoids overloading any one subsystem.
-
-I think this naming also fits the broader philosophy that the backend should communicate **ownership and responsibility** through its structure. An engineer encountering `platform_commercial_promotions.go` immediately knows they're looking at a platform-administered commercial subsystem, not merchant-created promotional content.
-
-## Consumer Relationship Ownership
-
-Consumers engage with Future Offerings through Sagrenti. During the anticipation lifecycle, Sagrenti measures, aggregates, and reports Market Anticipation Intelligence while preserving the consumer relationship.
-
-Sagrenti does not disclose consumer identity to merchants as part of ordinary Future Offering engagement.
-
-When a consumer chooses to progress to a merchant-facing commercial stage, Sagrenti authenticates that engagement by issuing a consumer-controlled engagement credential. The consumer—not Sagrenti—presents that credential to the merchant to establish a direct commercial relationship.
-
-The meaning, benefits, and commercial consequences of a valid engagement credential are defined by the merchant's Future Offering and governed through platform capabilities rather than hard-coded platform policy.
-
-## 22. Automation-First Operating Model
-
-### 22.1 Purpose
-
-Sagrenti shall be designed so that a single operator or a small operating team can manage substantial platform activity without operational workload increasing in direct proportion to platform growth.
-
-Automation is therefore a core platform requirement, not an optional convenience.
-
-The purpose of automation is to reduce repetitive manual work, preserve operational consistency, prevent missed obligations, and allow the platform to scale before substantial staffing becomes available.
-
-### 22.2 Operating Principle
-
-The platform shall automate recurring, deterministic, and safely governable work wherever automation is more reliable than repeated manual execution.
-
-Human operators should primarily:
-
-* configure policy;
-* review exceptions;
-* investigate failures;
-* approve sensitive actions where required;
-* resolve cases that cannot be completed safely by software.
-
-Human operators should not be required to repeatedly execute routine platform processes that software can perform reliably.
-
-### 22.3 Expected Automation Scope
-
-Automation should progressively support:
-
-* merchant onboarding;
-* billing-account readiness;
-* Future Offering activation workflows;
-* invoice generation;
-* payment collection;
-* failed-payment retries;
-* notification delivery;
-* subscription renewal and expiration;
-* Anticipation Intelligence report generation;
-* fraud and risk review support;
-* payment and provider reconciliation;
-* lifecycle housekeeping;
-* operational monitoring;
-* exception alerts;
-* audit recording and review support.
-
-This list defines expected areas of automation. It does not require every capability to be implemented asynchronously or in the first release.
-
-### 22.4 Capability Before Staffing
-
-Sagrenti shall not depend on immediate access to a large operational workforce.
-
-Engineering decisions should favor platform capabilities that:
-
-* reduce repetitive administrative effort;
-* make routine work deterministic;
-* preserve clear exception queues;
-* allow one operator to understand current platform state;
-* provide actionable alerts rather than requiring constant manual inspection;
-* allow additional staff to be added later without redesigning core workflows.
-
-### 22.5 Human Oversight
-
-Automation does not remove governance.
-
-Administration remains responsible for configuring commercial and operational behavior within engineering-defined safe boundaries.
-
-Automation may execute approved behavior, but it must not invent policy, weaken engineering invariants, or bypass required authorization.
-
-### 22.6 Incremental Implementation
-
-Automation shall be introduced when a concrete operational responsibility exists.
-
-The absence of an async implementation for a particular domain does not mean that Sagrenti rejects automation.
-
-It means only that the domain does not yet own work that must execute later, independently, repeatedly, or durably.
-
-The platform should avoid empty automation placeholders, speculative workers, and domain-specific scheduling mechanisms without an approved responsibility.
-
-### Emerging Architectural Principles
-
-✓ Engineering Implements; Administration Governs
-✓ Engineering Invariants Cannot Be Weakened
-✓ Consumer Identity Sovereignty
-✓ Automation-First
-✓ Async Qualification Rule
-✓ Durable Automation Foundation
-
-> The architecture shall be designed so that operational complexity grows significantly more slowly than business scale.
-
-
-### Automation-First Principle
-
-Sagrenti is designed to automate operational work wherever reliable engineering can safely replace repetitive human execution.
-
-The objective is not to eliminate human oversight, but to eliminate repetitive manual operation.
-
-Engineering should therefore favor platform capabilities that:
-
-* execute deterministic work automatically;
-* present operators with exceptions rather than routine work;
-* preserve complete auditability;
-* remain observable and governable;
-* scale operationally without requiring proportional staffing growth.
-
-Automation is a core architectural characteristic of the platform and shall be considered during domain design, service design, and operational architecture.
-
-## Participant Info Entitlements
-Watch grants the participant access to the full available intelligence view for a Future Offering. Each other active engagement grants access only to information relevant to that engagement. A participant with no active engagement receives no ongoing Future Offering intelligence.
-
-Watch active
-    → Full Future Offering intelligence
-    → Watch totals
-    → Waitlist totals
-    → Beta totals
-    → Reservation totals
-    → Preorder Intent totals
-    → Merchant updates and relevant movement
-
-No active engagement
-    → No ongoing information entitlement
-
-Watch inactive + Waitlist active
-    → Waitlist-specific information only
-
-Watch inactive + Beta active
-    → Beta-specific information only
-
-Watch inactive + Reservation Interest active
-    → Reservation-specific information only
-
-
+Those three propositions now connect the **business model, product model, commercial model, engineering model, and administrative model** far more cleanly than the original SBD summary did.  

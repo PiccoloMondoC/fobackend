@@ -1,29 +1,78 @@
-## Merchant Payments Architecture
+# Merchant Payments Architecture (MPA) v1.0
 
-> **Merchant Payments Architecture defines how merchants authorize, connect, and complete payments for platform services.**
+## 1. Purpose
 
-Everything in the phase supports that one purpose.
+Merchant Payments Architecture defines the platform capabilities required to securely collect and record payment for Sagrenti services.
 
-It is **not** responsible for deciding *what* a merchant owes—that belongs to the Commerce Architecture.
+Its governing boundary is:
 
-Instead, it answers:
+> **Commerce determines the obligation. Merchant Payments securely fulfills and records it.**
 
-> **"Now that we know what the merchant owes, how do we collect it securely and reliably?"**
+MPA does **not** determine what a merchant owes. That responsibility belongs to the Commerce Architecture. MPA begins once a valid commercial obligation exists.
 
-## Scope
+---
 
-The Merchant Payments Architecture is responsible for:
+## 2. Architectural Responsibilities
 
-* Managing merchant payment methods.
-* Securely connecting payment methods to external providers.
-* Executing and recording payment transactions.
-* Applying platform-wide commercial promotions during payment calculation.
-* Applying merchant-specific commercial adjustments during payment calculation.
+Merchant Payments Architecture is responsible for:
 
-In the current SPINE, that corresponds to:
+* managing merchant payment methods;
+* securely connecting payment methods to external providers;
+* validating the operational readiness of payment methods;
+* initiating payment against established merchant obligations;
+* recording payment transactions and their outcomes;
+* supporting commercial promotions and merchant-specific adjustments where they participate in payment calculation;
+* maintaining the integrity, auditability, and reliability of payment execution.
 
-# Merchant Payments Architecture
+MPA does not independently establish fees, billing obligations, invoice amounts, subscription obligations, or billable events.
 
+---
+
+## 3. Relationship to Commerce Architecture
+
+The two architectures form separate but complementary stages of the commercial lifecycle.
+
+### Commerce Architecture
+
+Commerce establishes and records the merchant's commercial obligation.
+
+It answers questions such as:
+
+* What fee applies?
+* What billable event occurred?
+* What fee calculation results?
+* Does a Platform Credit reduce the obligation?
+* What amount should be invoiced?
+* What does the merchant owe?
+
+### Merchant Payments Architecture
+
+MPA fulfills the resulting obligation.
+
+It answers questions such as:
+
+* Which payment method will be used?
+* Is that payment method usable and appropriately connected?
+* Which external provider participates in the transaction?
+* Was collection attempted?
+* Did the payment succeed or fail?
+* What payment transaction must be recorded?
+
+Therefore:
+
+> **An obligation may exist independently of payment, and payment must not redefine the obligation it is satisfying.**
+
+---
+
+## 4. Direct Payment Mode — SPINE v1
+
+MPA v1 implements **Direct Payment Mode**.
+
+The merchant's established obligation is collected through an authorized payment method rather than satisfied from merchant-held platform funds.
+
+The current MPA SPINE is:
+
+```text
 merchant_payment_methods.go
         │
         ▼
@@ -37,457 +86,147 @@ platform_commercial_promotions.go
         │
         ▼
 merchant_commercial_adjustments.go
+```
 
-## Relationship to Commerce Architecture
-
-I think it's useful to describe the relationship explicitly because it's one of the strongest aspects of the architecture.
-
-### Commerce Architecture
-
-Determines the commercial obligation.
-
-Examples:
-
-* What fees apply?
-* Is the merchant on a plan?
-* Is there subscription billing?
-* What is the invoice amount?
-* What should be recorded in the billing ledger?
-
-### Merchant Payments Architecture
-
-Fulfills the commercial obligation.
-
-Examples:
-
-* Which payment method is used?
-* Is the bank account verified?
-* Is the payment provider connected?
-* Did the payment succeed?
-* What payment transaction was recorded?
-
-One determines the debt.
-
-The other settles it.
-
-## What it is not
-
-Just as importantly, Merchant Payments Architecture is **not**:
-
-* a treasury system,
-* a banking platform,
-* an escrow service,
-* a deposit management system,
-* an embedded finance platform.
-
-Those were consciously removed to keep Sagrenti focused on its core product.
-
-## One sentence
-
-If I were writing the introductory paragraph for the governing document, I'd use something like this:
-
-> **Merchant Payments Architecture defines the platform capabilities required to securely collect payment for Sagrenti services. It manages merchant payment methods, external payment provider connectivity, payment execution, and commercial adjustments while remaining independent of the Commerce Architecture, which determines what the merchant owes.**
-
-I like this definition because it cleanly separates **commercial decision-making** (Commerce Architecture) from **payment execution** (Merchant Payments Architecture). That separation is one of the strongest architectural decisions we've made, and it will make the platform easier to evolve over time.
-
->=======================================================================
-
-# Final doctrine
-
-> **The Future Offering belongs to the merchant. Market Anticipation Intelligence is the Sagrenti SaaS product.**
-
-Accordingly:
-
-> **The Platform does not charge Future Offering Fee. It charges Anticipation Intelligence Fee.**
-
-That is not merely a naming improvement. It correctly identifies ownership, product value, and the basis of the merchant’s commercial obligation.
-
-
-
-Future Offering submitted
-        │
-        ▼
-Anticipation Intelligence Activation invoice
-        │
-        ▼
-Payment collected
-        │
-        ▼
-Future Offering activated
-
-## Recommended terminology
-
-The commercial fees become:
-
-Anticipation Intelligence Activation Fee
-Anticipation Intelligence Fee
-Subscription Fee             optional
-Campaign Performance Fee     Launch Campaign only
-
-The payment flow becomes:
-
-At submission:
-Anticipation Intelligence Activation Fee is invoiced and collected.
-
-Each billing cycle:
-Anticipation Intelligence Fee is invoiced and collected.
-
-Anticipation Intelligence Activation Fee
-    One-time fee when a Future Offering is submitted and activated.
-
-Anticipation Intelligence Fee
-    Recurring fee for ongoing measurement, analytics, reporting,
-    insights, and recommendations.
-
-
-Then the lifecycle is coherent:
-
-Future Offering submitted
-        │
-        ▼
-Anticipation Intelligence Activation Fee
-        │
-        ▼
-Measurement begins
-        │
-        ▼
-Monthly Anticipation Intelligence Fee
-        │
-        ▼
-Monthly Anticipation Intelligence Report
-
-
-## Anticipation Intelligence Activation Fee
-
-Charged once when a merchant activates a new Future Offering on the platform.
-
-What it pays for:
-
-* activating Market Anticipation Intelligence for that Future Offering;
-* initializing anticipation measurement;
-* provisioning the analytics pipeline;
-* enabling reporting;
-* beginning recommendation generation.
-
-In other words, it activates the SaaS capability for that specific Future Offering.
+These components form the payment capability from merchant payment-method ownership through provider connectivity and payment execution, including applicable payment-stage commercial adjustments.
 
 ---
 
-## Anticipation Intelligence Fee
+## 5. Payment Methods
 
-Charged each billing cycle while the Future Offering remains active.
+`merchant_payment_methods.go` represents the payment methods a merchant has authorized for use with the platform.
 
-What it pays for:
+A payment method is a Sagrenti domain object. External payment providers are implementation dependencies and must not define the platform's payment-domain model.
 
-* continued anticipation measurement;
-* ongoing analytics;
-* anticipation intelligence reports;
-* insights;
-* recommendations.
+The architecture must support the payment capabilities required by the platform without coupling the merchant account or commercial obligation to a particular provider.
 
 ---
 
-That gives us a very clean commercial lifecycle:
+## 6. Provider Connectivity
+
+`merchant_payment_method_provider_links.go` represents the relationship between a merchant payment method and an external connectivity or payment provider.
+
+This separation is intentional:
 
 ```text
-Merchant creates Future Offering
-        │
-        ▼
-Anticipation Intelligence Activation Fee
-        │
-        ▼
-Future Offering becomes active
-        │
-        ▼
-Platform measures anticipation
-        │
-        ▼
-Monthly Anticipation Intelligence Report
-        │
-        ▼
-Monthly Anticipation Intelligence Fee
-        │
-        ▼
-Repeat until offering closes
-```
-
-I also like the language from a marketing perspective.
-
-The merchant isn't paying to "register" a Future Offering.
-
-They're **activating intelligence** for it.
-
-That's much closer to the value proposition.
-
----
-
-### I would make one small terminology adjustment
-
-I'd avoid saying:
-
-> *"...activates Anticipation Intelligence..."*
-
-because Anticipation Intelligence is really the product.
-
-I'd describe it as:
-
-> **Activates Anticipation Intelligence services for a Future Offering.**
-
-or
-
-> **Activates the Anticipation Intelligence lifecycle for the Future Offering.**
-
-That subtly reinforces that the merchant already owns the Future Offering; Sagrenti is activating its own services around it.
-
----
-
-## I think we've now arrived at a very coherent fee taxonomy
-
-```text
-Anticipation Intelligence Activation Fee
-    One-time fee charged when a Future Offering is activated.
-
-Anticipation Intelligence Fee
-    Recurring fee charged while Anticipation Intelligence services
-    continue to operate for that Future Offering.
-
-Subscription Fee
-    Optional fee when Plans and Subscriptions are enabled.
-
-Campaign Performance Fee
-    Applies only to Launch Campaign services where applicable.
-```
-
-Notice something elegant about this.
-
-Every fee now answers the question:
-
-> **"What Sagrenti service is the merchant paying for?"**
-
-rather than:
-
-> **"What merchant asset or activity is being charged?"**
-
-That's a subtle but important shift. It keeps ownership clear:
-
-* The **Future Offering** belongs to the merchant.
-* The **Market Anticipation Intelligence services** belong to Sagrenti.
-
-The merchant pays for the latter, never for the former. I think that's the cleanest commercial model we've developed so far.
-
-
-
-
-I think this is actually a more powerful capability than it first appears.
-
-What we've built is **commercial flexibility** without changing the platform architecture.
-
-The key insight is this:
-
-> **Plans are a commercial policy, not an architectural dependency.**
-
-That's a very clean separation.
-
-Instead of:
-
-```text
-Merchant
-    │
-    ▼
-Must choose a Plan
-    │
-    ▼
-Can use Future Offering
-```
-
-the architecture becomes:
-
-```text
-Merchant
-    │
-    ▼
-Platform capabilities
-    │
-    ├── Future Offering
-    └── Launch Campaign
-```
-
-Then Admin decides whether Plans participate in the commercial model.
-
-## Mode 1 — Plans Disabled
-
-```text
-Plans = Disabled
-```
-
-Every merchant can use:
-
-* Future Offering
-* Launch Campaign
-
-No merchant is required to belong to:
-
-* Pay-As-You-Go
-* Standard
-* Premium
-* Enterprise
-
-The merchant simply pays the applicable fees for the services they actually use.
-
-This is the model we've been evolving toward, and it resembles cloud platforms:
-
-> The account grants access; the usage creates commercial obligations.
-
----
-
-## Mode 2 — Plans Enabled
-
-```text
-Plans = Enabled
-```
-
-Now the same platform can operate differently.
-
-Admin can configure any number of plans, for example:
-
-* Starter
-* Standard
-* Premium
-* Enterprise
-* Partner
-* Founding Merchant
-
-Each plan can define:
-
-* available capabilities,
-* included services,
-* pricing,
-* discounts,
-* fee waivers,
-* entitlements.
-
-Nothing in the engineering architecture changes.
-
-Only commercial policy changes.
-
----
-
-## Why I like this
-
-This preserves something we've worked hard to achieve over the past few weeks:
-
-**Capabilities are independent of pricing.**
-
-Future Offering is a platform capability.
-
-Launch Campaign is a platform capability.
-
-Plans are merely one way of commercializing those capabilities.
-
-That's much cleaner than making capabilities depend on plans.
-
-## I would express the doctrine like this
-
-> **Merchant Plans are optional commercial packaging of platform capabilities. They are not required for platform operation.**
-
-That's an important sentence because it explains why we invested in building the Plans subsystem even though we may launch with it disabled.
-
-## The Admin Console becomes very powerful
-
-Admin can choose between two commercial strategies without redeploying software.
-
-### Strategy A — Open Platform
-
-Plans
-    Disabled
-
-Subscriptions
-    Disabled
-
-Merchant pays only:
-
-* Anticipation Intelligence Activation Fee
-* Anticipation Intelligence Fee
-* other applicable usage fees
-
-### Strategy B — Packaged Platform
-
-Plans
-    Enabled
-
-Subscriptions
-    Enabled
-
-Now the same capabilities can be bundled into commercial offerings.
-
-
-I actually think there's an architectural principle hiding here.
-
-It isn't:
-
-> "Plans can be enabled or disabled."
-
-It's broader:
-
-> **Commercial policy is configuration, not code.**
-
-That principle already fits many of the decisions we've made:
-
-* Plans can be enabled or disabled.
-* Subscriptions can be enabled or disabled.
-* Anticipation Intelligence Activation Fees can be enabled, disabled, or rebated.
-* Anticipation Intelligence Fees can be adjusted through fee schedules.
-* Capabilities remain the same; only the commercial rules change.
-
-That's a remarkably flexible architecture. It lets Sagrenti experiment with business models over time without changing the core platform. The software remains focused on delivering Future Offering and Launch Campaign capabilities, while the Admin Console controls **how** those capabilities are commercialized.
-
-We had agreed that **Plaid should not have its own domain file**.
-
-Instead, it belongs as the implementation of the **bank connectivity** portion of the **Merchant Payments Architecture**.
-
-The file we discussed was:
-
-`merchant_payment_method_provider_links.go`
-
-The reasoning was:
-
-* `merchant_payment_methods.go` defines **what** payment methods a merchant has (e.g., bank account, debit card).
-* `merchant_payment_method_provider_links.go` defines **how those methods are connected to external providers** such as Plaid.
-
-For example:
-
 Merchant Payment Method
         │
         ▼
 Provider Link
         │
         ├── Plaid
-        ├── Stripe Financial Connections (future)
-        ├── MX (future)
-        └── Other providers
+        ├── another provider
+        └── future providers
+```
 
-That keeps the architecture vendor-neutral. The platform knows about a **provider link**, not about Plaid specifically.
+Plaid therefore does **not** constitute its own Sagrenti architectural domain.
 
-### Responsibilities of `merchant_payment_method_provider_links.go`
+Provider links may represent provider identity, external references, connection and verification state, relevant metadata, synchronization state, and disconnection or revocation information. They do not themselves represent payment transactions.
 
-This file would typically store information such as:
+This boundary allows providers to be replaced, supplemented, or used concurrently without redesigning the core payment-method model.
 
-* Merchant payment method ID
-* Provider (e.g., Plaid)
-* Provider account/item identifier
-* Connection status
-* Verification status
-* Linked account metadata
-* Last synchronization time
-* Connection timestamps
-* Disconnect/revocation information
+---
 
-Notice that it **does not process payments**. It simply manages the secure relationship between a merchant payment method and an external connectivity provider.
+## 7. Payments
 
-Then:
+`merchant_payments.go` owns payment execution and the durable record of payment transactions.
 
-* `merchant_payment_methods.go` → defines the merchant's payment methods.
-* `merchant_payment_method_provider_links.go` → links those methods to providers like Plaid.
-* `merchant_payments.go` → initiates and records payment transactions using verified payment methods.
+A payment must be traceable to the commercial obligation it is intended to satisfy and to the authorized payment capability used to execute it.
 
-I still think that's the cleanest separation of responsibilities because it allows us to replace Plaid with another provider—or support multiple providers simultaneously—without changing the core payment method or payment transaction models.
+Payment execution must preserve sufficient state to determine the outcome of an attempted transaction without rewriting the underlying commercial obligation.
+
+Provider failures, retries, duplicate callbacks, delayed responses, or other operational conditions must not create duplicate settlement or corrupt payment state.
+
+---
+
+## 8. Commercial Adjustments at Payment
+
+`platform_commercial_promotions.go` and `merchant_commercial_adjustments.go` provide controlled mechanisms for commercial adjustments that participate in payment calculation.
+
+Their presence does not transfer ownership of commercial policy to MPA.
+
+Engineering supplies the capability and enforces its invariants. Administration determines the applicable commercial behavior through configuration within those boundaries.
+
+MPA must not embed hard-coded promotional or merchant-specific commercial policy merely because the adjustment is applied during payment.
+
+---
+
+## 9. Engineering Invariants
+
+MPA must preserve the following architectural invariants:
+
+1. **Payment does not create or redefine the underlying commercial obligation.**
+2. **A payment transaction must be attributable to the obligation it is intended to satisfy.**
+3. **Money and currency must be handled explicitly and consistently across the payment lifecycle.**
+4. **Payment execution must be idempotent wherever retries or repeated provider communication can occur.**
+5. **External provider identifiers must not replace Sagrenti's own domain identity.**
+6. **Provider-specific implementation details must remain behind provider-neutral platform boundaries.**
+7. **Payment state transitions must preserve historical and audit integrity.**
+8. **Successful settlement must not be inferred merely from an attempted provider operation.**
+9. **Engineering safeguards protecting correctness, security, integrity, auditability, and reliability cannot be weakened by administrative configuration.**
+
+These are engineering constraints, not commercial policy.
+
+---
+
+## 10. Administration Boundary
+
+Consistent with Sagrenti's governing engineering doctrine:
+
+> **Engineering implements complete payment capabilities and their safe operating boundaries. Administration governs commercial and operational behavior through configuration within those boundaries.**
+
+Accordingly, configurable matters may include provider selection, enabled payment capabilities, commercial adjustments, operational thresholds, and other legitimate payment policies where the architecture provides such configuration.
+
+Administration must not be able to configure away an engineering invariant.
+
+---
+
+## 11. Explicitly Outside MPA
+
+Merchant Payments Architecture is not:
+
+* the Commerce Architecture;
+* a merchant billing ledger;
+* a fee-definition system;
+* a treasury system;
+* a banking platform;
+* an escrow service;
+* a deposit-management system;
+* a merchant wallet;
+* an embedded-finance platform.
+
+Treasury Balance Mode and merchant-held platform funds are outside the Direct Payment Mode SPINE and are not prerequisites for MPA v1.
+
+The deliberate exclusion of treasury, banking, escrow, deposit management, and embedded finance keeps MPA focused on collecting payment for Sagrenti services.
+
+---
+
+## 12. Architectural Doctrine
+
+Merchant Payments Architecture should remain narrow.
+
+Commerce may evolve new fee types, pricing models, billing schedules, subscriptions, credits, or other commercial mechanisms without requiring MPA to become the owner of those concepts.
+
+Likewise, payment providers may change without requiring Commerce to understand provider-specific implementation.
+
+The durable separation is:
+
+```text
+Commerce Architecture
+        │
+        │ establishes obligation
+        ▼
+Anticipation Intelligence Invoice
+        │
+        │ requires settlement
+        ▼
+Merchant Payments Architecture
+        │
+        │ executes collection
+        ▼
+Payment Transaction
+```
+
+> **Commerce determines what the merchant owes. Merchant Payments securely fulfills and records it.**
+
+That boundary is the foundation of MPA v1.0.

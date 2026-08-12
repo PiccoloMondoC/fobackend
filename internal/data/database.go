@@ -4514,10 +4514,8 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE TABLE IF NOT EXISTS merchant_invoices (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-
-		settlement_batch_id UUID
-			REFERENCES merchant_settlement_batches(id) ON DELETE SET NULL,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id) ON DELETE RESTRICT,
 
 		invoice_number TEXT NOT NULL UNIQUE,
 
@@ -4525,18 +4523,24 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			CHECK (invoice_status IN (
 				'draft',
 				'issued',
-				'paid',
 				'partially_paid',
-				'void',
-				'overdue'
+				'paid',
+				'overdue',
+				'void'
 			)),
 
-		subtotal_amount NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (subtotal_amount >= 0),
-		adjustment_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
-		total_amount NUMERIC(19,4) NOT NULL CHECK (total_amount >= 0),
-		amount_paid NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (amount_paid >= 0),
+		subtotal_amount NUMERIC(19,4) NOT NULL DEFAULT 0
+			CHECK (subtotal_amount >= 0),
 
-		currency CHAR(3) NOT NULL DEFAULT 'USD'
+		adjustment_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
+
+		total_amount NUMERIC(19,4) NOT NULL
+			CHECK (total_amount >= 0),
+
+		amount_paid NUMERIC(19,4) NOT NULL DEFAULT 0
+			CHECK (amount_paid >= 0),
+
+		currency CHAR(3) NOT NULL
 			CHECK (currency ~ '^[A-Z]{3}$'),
 
 		issued_at TIMESTAMPTZ,
@@ -4547,37 +4551,131 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
+		CONSTRAINT chk_merchant_invoice_number_canonical
+			CHECK (
+				invoice_number = btrim(invoice_number)
+				AND invoice_number <> ''
+			),
+
+		CONSTRAINT chk_merchant_invoices_invoice_number_length
+			CHECK (char_length(invoice_number) <= 64),
+
 		CONSTRAINT chk_merchant_invoice_total_amount
 			CHECK (total_amount = subtotal_amount + adjustment_amount),
 
-		CONSTRAINT chk_merchant_invoice_paid_amount
+		CONSTRAINT chk_merchant_invoice_amount_paid
 			CHECK (amount_paid <= total_amount),
 
-		CONSTRAINT chk_merchant_invoice_issued_at
-			CHECK (invoice_status <> 'issued' OR issued_at IS NOT NULL),
-
-		CONSTRAINT chk_merchant_invoice_paid_at
-			CHECK (invoice_status <> 'paid' OR paid_at IS NOT NULL),
-
-		CONSTRAINT chk_merchant_invoice_voided_at
-			CHECK (invoice_status <> 'void' OR voided_at IS NOT NULL),
-
-		CONSTRAINT chk_merchant_invoice_partially_paid
+		CONSTRAINT chk_merchant_invoice_draft_state
 			CHECK (
-				invoice_status <> 'partially_paid'
-				OR (amount_paid > 0 AND amount_paid < total_amount)
+				invoice_status <> 'draft'
+				OR (
+					amount_paid = 0
+					AND issued_at IS NULL
+					AND due_at IS NULL
+					AND paid_at IS NULL
+					AND voided_at IS NULL
+				)
 			),
 
-		CONSTRAINT chk_merchant_invoice_overdue_due_at
-			CHECK (invoice_status <> 'overdue' OR due_at IS NOT NULL)
+		CONSTRAINT chk_merchant_invoice_issued_state
+			CHECK (
+				invoice_status <> 'issued'
+				OR (
+					amount_paid = 0
+					AND issued_at IS NOT NULL
+					AND paid_at IS NULL
+					AND voided_at IS NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_invoice_partially_paid_state
+			CHECK (
+				invoice_status <> 'partially_paid'
+				OR (
+					amount_paid > 0
+					AND amount_paid < total_amount
+					AND issued_at IS NOT NULL
+					AND paid_at IS NULL
+					AND voided_at IS NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_invoice_paid_state
+			CHECK (
+				invoice_status <> 'paid'
+				OR (
+					amount_paid = total_amount
+					AND issued_at IS NOT NULL
+					AND paid_at IS NOT NULL
+					AND voided_at IS NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_invoice_overdue_state
+			CHECK (
+				invoice_status <> 'overdue'
+				OR (
+					amount_paid < total_amount
+					AND issued_at IS NOT NULL
+					AND due_at IS NOT NULL
+					AND paid_at IS NULL
+					AND voided_at IS NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_invoice_void_state
+			CHECK (
+				invoice_status <> 'void'
+				OR (
+					amount_paid = 0
+					AND issued_at IS NOT NULL
+					AND paid_at IS NULL
+					AND voided_at IS NOT NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_invoice_due_after_issue
+			CHECK (
+				due_at IS NULL
+				OR (issued_at IS NOT NULL AND due_at >= issued_at)
+			),
+
+		CONSTRAINT chk_merchant_invoice_paid_after_issue
+			CHECK (
+				paid_at IS NULL
+				OR (issued_at IS NOT NULL AND paid_at >= issued_at)
+			),
+
+		CONSTRAINT chk_merchant_invoice_voided_after_issue
+			CHECK (
+				voided_at IS NULL
+				OR (issued_at IS NOT NULL AND voided_at >= issued_at)
+			)
 	);
 
+	CREATE INDEX IF NOT EXISTS idx_merchant_invoices_merchant_created
+		ON merchant_invoices(
+			merchant_id,
+			created_at DESC,
+			id DESC
+		);
+
 	CREATE INDEX IF NOT EXISTS idx_merchant_invoices_merchant_status
-		ON merchant_invoices(merchant_id, invoice_status, created_at DESC);
+		ON merchant_invoices(
+			merchant_id,
+			invoice_status,
+			created_at DESC,
+			id DESC
+		);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_invoices_due
-		ON merchant_invoices(due_at)
-		WHERE invoice_status IN ('issued', 'partially_paid', 'overdue');
+		ON merchant_invoices(
+			due_at,
+			id
+		)
+		WHERE invoice_status = 'issued'
+		AND due_at IS NOT NULL;
 
 
 	CREATE TABLE IF NOT EXISTS merchant_invoice_items (

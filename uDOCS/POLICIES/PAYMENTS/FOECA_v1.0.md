@@ -1,6 +1,4 @@
-I would make only a few changes. The architecture itself hasn't changed much; we've mostly sharpened the boundaries and terminology.
-
----
+### Future Offering Engagement & Commercial Architecture
 
 # 1. Sagrenti's product
 
@@ -10,15 +8,12 @@ Sagrenti is selling **Anticipation Intelligence**.
 
 That distinction should influence both the architecture and the commercial model.
 
----
-
 # 2. Invoice
 
 The merchant receives an **Anticipation Intelligence Invoice**, not a "Watch Invoice" or an invoice itemized by individual engagement types.
 
 The invoice reflects the value delivered by the platform, while the detailed engagement analytics remain available in reporting.
 
----
 
 # 3. Watch
 
@@ -29,7 +24,6 @@ Watch is fundamentally different from the other engagement actions.
 * It represents the consumer's ongoing anticipation relationship with a Future Offering.
 * Entering any merchant engagement action automatically establishes the Watch relationship if it does not already exist.
 
----
 
 # 4. Merchant engagement options
 
@@ -48,7 +42,6 @@ These are configured by the merchant.
 
 Watch is **not** part of merchant configuration.
 
----
 
 # 5. Merchant configuration
 
@@ -62,7 +55,6 @@ Examples include:
 
 These determine **who may participate**, not **how consumers participate**.
 
----
 
 # 6. Merchant release strategy
 
@@ -77,7 +69,6 @@ Examples include:
 
 These are release characteristics rather than consumer engagement actions.
 
----
 
 # 7. Consumer intelligence
 
@@ -85,7 +76,6 @@ Consumers who have no engagement with a Future Offering receive no ongoing intel
 
 Once a consumer enters the anticipation relationship—either by explicitly Watching or by selecting any engagement action—Watch becomes active and the consumer receives the full intelligence stream for that Future Offering.
 
----
 
 # 8. Consumer engagement
 
@@ -107,7 +97,6 @@ Preorder Intent
 
 Consumers may skip stages, enter at different points, or stop at any stage.
 
----
 
 # 9. Engagement events
 
@@ -123,7 +112,6 @@ Examples include:
 * Preorder Intent
 * *(Future)* Draw Entry
 
----
 
 # 10. Billing principle
 
@@ -137,7 +125,6 @@ A participant is billed once when they first enter the anticipation relationship
 
 Subsequent engagement actions enrich analytics but do not create additional billable units.
 
----
 
 # 11. Double counting
 
@@ -159,7 +146,6 @@ produces:
 
 The merchant is charged once while still receiving complete engagement analytics.
 
----
 
 # 12. Merchant billing metric
 
@@ -174,7 +160,6 @@ This is **not**:
 
 It is the count of participants who **newly entered anticipation** during the billing period.
 
----
 
 # 13. Merchant teams
 
@@ -186,7 +171,6 @@ The current conclusions are:
 * Merchants are charged for the anticipation intelligence Sagrenti delivers, not for the number of employees with platform access.
 * Enterprise administration and collaboration capabilities (for example, SSO, advanced workflows, compliance, or governance) may justify higher-tier plans in the future because they provide additional value.
 
----
 
 # 14. Architectural separation
 
@@ -199,7 +183,6 @@ The platform now has four distinct architectural concerns:
 
 Each concern evolves independently.
 
----
 
 ## One final observation
 

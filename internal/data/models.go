@@ -127,6 +127,7 @@ type Models struct {
 	MerchantBillableEvent                 MerchantBillableEventModel                 // SPINE: Commerce Architecture — canonical source-linked billable-occurrence record
 	MerchantFeeCalculation                MerchantFeeCalculationModel                // SPINE: Commerce Architecture — durable auditable fee-calculation record
 	MerchantPlatformCreditApplication     MerchantPlatformCreditApplicationModel     // SPINE: Commerce Architecture — append-only credit application history
+	MerchantInvoice                       MerchantInvoiceModel                       // SPINE: Commerce Architecture — durable merchant commercial obligation
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
@@ -242,6 +243,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantBillableEvent:                 MerchantBillableEventModel{DB: dbPool, Logger: logger},             // SPINE: Commerce Architecture — canonical billable-occurrence ledger
 		MerchantFeeCalculation:                MerchantFeeCalculationModel{DB: dbPool, Logger: logger},            // SPINE: Commerce Architecture — durable auditable fee-calculation record
 		MerchantPlatformCreditApplication:     MerchantPlatformCreditApplicationModel{DB: dbPool, Logger: logger}, // SPINE: Commerce Architecture — append-only credit application history
+		MerchantInvoice:                       MerchantInvoiceModel{DB: dbPool, Logger: logger},                   // SPINE: Commerce Architecture — durable merchant commercial obligation
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 
