@@ -21,7 +21,8 @@
 //	  Merchant Billing Accounts, Merchant Billable Events, Merchant Program
 //	  Plans, Merchant Program Entitlements, Merchant Program Fee Schedules,
 //	  Merchant Program Subscriptions, Merchant Program Subscription Periods,
-//	  Merchant Platform Credit Accounts, Merchant Fee Calculations, Merchant Platform Credit Applications,
+//	  Merchant Platform Credit Accounts, Merchant Fee Calculations,
+//	  Merchant Platform Credit Applications, Merchant Invoices,
 //	  Merchant Platform Credit Eligible Fee Types, and Merchant Payment
 //	  Methods remain owned by their respective handler, data, and service
 //	  contracts.
@@ -107,6 +108,7 @@ type adminConsoleDomains struct {
 	MerchantBillableEvents                 bool `json:"merchant_billable_events"`
 	MerchantFeeCalculations                bool `json:"merchant_fee_calculations"`
 	MerchantPlatformCreditApplications     bool `json:"merchant_platform_credit_applications"`
+	MerchantInvoices                       bool `json:"merchant_invoices"`
 	MerchantPaymentMethods                 bool `json:"merchant_payment_methods"`
 }
 
@@ -310,6 +312,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			MerchantBillableEvents:                 true,
 			MerchantFeeCalculations:                true,
 			MerchantPlatformCreditApplications:     true,
+			MerchantInvoices:                       true,
 			MerchantPaymentMethods:                 true,
 		},
 	}

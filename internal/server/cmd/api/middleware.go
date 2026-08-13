@@ -1,4 +1,34 @@
+// Package main provides HTTP middleware for authentication, authorization,
+// trusted request context, rate limiting, and other cross-cutting API controls.
+//
 // sdworkspace/sdbackend/internal/server/cmd/api/middleware.go
+//
+// GTM:
+//
+//	Layer: 2.5 API / Authorization Infrastructure
+//	Release Class: SPINE
+//	Reason:
+//	  Middleware establishes Sagrenti's HTTP authentication, trusted request
+//	  context, authorization boundaries, request-scoped permission resolution,
+//	  rate limiting, and other cross-cutting API controls. Authentication and
+//	  authorization middleware are release-critical infrastructure and must
+//	  remain production-ready for every protected API surface.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve fail-closed authentication and authorization behavior.
+//	Preserve canonical authenticated identity as uuid.UUID.
+//	Preserve distinct role-ID and role-name context semantics.
+//	Preserve request-scoped authorization resolution; never introduce global
+//	permission caching or cross-request authorization state.
+//	Preserve defense-in-depth between route and handler authorization checks.
+//	Preserve permission-first capability enforcement.
+//	Do not introduce role-based permission bypasses without explicit CE review.
+//	Do not trust client-supplied authenticated identity or authorization state.
+//	Block deployment if this file breaks authentication, authorization,
+//	trusted-context integrity, permission freshness, or protected route access.
 package main
 
 import (
@@ -50,17 +80,39 @@ const ctxPriceDropThreshold ctxKey = "priceDropThreshold"
 const ctxProductID ctxKey = "productID"
 const ctxProductLine ctxKey = "productLine"
 const ctxPromotionID ctxKey = "promotionID"
+
+// ctxRoleID holds the authenticated user's resolved role ID (string form of
+// a uuid.UUID). It is the canonical identity of the role row, not the role's
+// display name. Use ctxRoleName (and getRoleFromContext) when the role name
+// is what's needed.
 const ctxRoleID ctxKey = "roleID"
+
+// ctxRoleName holds the authenticated user's resolved role name (e.g.
+// "admin", "merchant", "internal_operator"). This is distinct from
+// ctxRoleID: role identity and role name are different concepts and must not
+// be conflated. AuthMiddleware is the sole writer of this key.
+const ctxRoleName ctxKey = "roleName"
+
+// ctxAuthzState holds a *authzState value: the request-scoped authorization
+// resolution cache. AuthMiddleware is the sole writer of this key. It exists
+// so that repeated HasPermission checks for the same permission during one
+// request reuse the first authoritative persistence result instead of
+// re-querying the database. See authzState in helpers.go.
+const ctxAuthzState ctxKey = "authzState"
+
 const ctxStatusID ctxKey = "statusID"
 const ctxUPC ctxKey = "upc"
 const ctxGuestUserID ctxKey = "guestUserID"
 const ctxUserDashboardID ctxKey = "userDashboardID"
 const ctxUserOfferPurchaseHistoryID ctxKey = "userOfferPurchaseHistoryID"
 const ctxUserFavoriteID ctxKey = "userFavoriteID"
+
+// ctxUserID holds the authenticated user's identity as a uuid.UUID. This is
+// the sole canonical type for this key. AuthMiddleware is the sole trusted
+// writer for authenticated requests; every consumer must assert uuid.UUID
+// (use app.getUserIDFromContext), never string.
 const ctxUserID ctxKey = "userID"
 
-// ctxKeyUserID is an alias so any new code compiles without edits elsewhere.
-// const ctxKeyUserID = ctxUserID
 const ctxUserNotificationID ctxKey = "userNotificationID"
 const ctxUserSettingsID ctxKey = "userSettingsID"
 const ctxSourceUserID ctxKey = "sourceUserID"
@@ -132,7 +184,7 @@ func (app *Application) PaginationAndFilterMiddleware(next http.Handler) http.Ha
 // RateLimitMiddleware throttles by *user* when authenticated, otherwise by IP.
 //
 // • Uses uuid.UUID from ctxUserID (set by AuthMiddleware) → String() for key.
-// • 1 req/s burst 5 (NewLimiter).
+// • 1 req/s burst 5 (NewLimiter).
 func (app *Application) RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, ok := r.Context().Value(ctxUserID).(uuid.UUID)
@@ -152,7 +204,15 @@ func (app *Application) RateLimitMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// AuthMiddleware validates Bearer‑JWT, injects uuid.UUID + role info.
+// AuthMiddleware validates the Bearer JWT and establishes the trusted
+// authorization context consumed by every downstream authorization helper
+// in this package. It is the sole writer of ctxUserID, ctxRoleID,
+// ctxRoleName, and ctxAuthzState.
+//
+// Authorization Resolution Invariant: permission state is resolved from
+// authoritative persistence no more than once per distinct permission per
+// request. AuthMiddleware establishes the request-scoped cache (authzState)
+// that makes this possible; it does not itself resolve any permission.
 func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("AuthMiddleware")
@@ -177,16 +237,30 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 
 		// 3️⃣  Resolve primary role
 		role, err := app.Models.Role.GetRoleByUserID(r.Context(), userID)
-		if err != nil || role == nil || role.ID == uuid.Nil {
+		if err != nil || role == nil || role.ID == uuid.Nil || strings.TrimSpace(role.Name) == "" {
 			logger.Warn("no role found for user", "error", err, "user_id", userID)
 			http.Error(w, "role required", http.StatusUnauthorized)
 			return
 		}
 
-		// 4️⃣  Enrich context
+		// 4️⃣  Enrich context. ctxRoleID carries role identity; ctxRoleName
+		// carries the role's display name. These are distinct concepts and
+		// must not be conflated by downstream consumers.
 		ctx := context.WithValue(r.Context(), ctxUserID, userID)  // uuid.UUID
-		ctx = context.WithValue(ctx, ctxRoleID, role.ID.String()) // string
-		if role.Name != "admin" && role.Name != "internal_operator" {
+		ctx = context.WithValue(ctx, ctxRoleID, role.ID.String()) // string (role identity)
+		ctx = context.WithValue(ctx, ctxRoleName, role.Name)      // string (role name)
+
+		// 5️⃣  Establish the request-scoped authorization resolution cache.
+		// This is the single source HasPermission consults; it is never
+		// shared across requests and carries no invalidation logic.
+		ctx = context.WithValue(ctx, ctxAuthzState, newAuthzState(role.ID))
+
+		// Only non-internal actors are treated as their own target by
+		// default. isInternalRole is the single canonical definition of
+		// "internal actor" — used here, in RequireInternalPermission, and
+		// in IsInternalUser, so this classification cannot drift out of
+		// sync with permission enforcement elsewhere.
+		if !isInternalRole(role.Name) {
 			ctx = context.WithValue(ctx, ctxTargetUserID, userID)
 		}
 
@@ -198,16 +272,17 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 // RequirePermission allows the request to proceed when the authenticated
 // actor's current role holds the required permission.
 //
-// AuthMiddleware establishes ctxUserID as uuid.UUID and ctxRoleID as the
-// authenticated user's resolved role ID. Permission evaluation therefore uses
-// that trusted context rather than reloading the user and role independently.
+// AuthMiddleware establishes ctxUserID (uuid.UUID), ctxRoleID, ctxRoleName,
+// and ctxAuthzState. RequirePermission and the underlying HasPermission
+// primitive rely entirely on that trusted context; neither independently
+// reloads the user or role from persistence.
 func (app *Application) RequirePermission(permission string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
 
-			userID, ok := ctx.Value(ctxUserID).(uuid.UUID)
-			if !ok || userID == uuid.Nil {
+			userID := app.getUserIDFromContext(ctx)
+			if userID == nil || *userID == uuid.Nil {
 				app.Logger.Warn(
 					"RequirePermission: authenticated user ID missing from context",
 					"permission", permission,
@@ -223,7 +298,7 @@ func (app *Application) RequirePermission(permission string) func(http.Handler) 
 			if !app.HasPermission(ctx, permission) {
 				app.Logger.Warn(
 					"RequirePermission: access denied",
-					"user_id", userID,
+					"user_id", *userID,
 					"permission", permission,
 				)
 				app.respondWithError(
@@ -239,45 +314,48 @@ func (app *Application) RequirePermission(permission string) func(http.Handler) 
 	}
 }
 
+// RequireMinimumRole grants access only when the authenticated actor's role
+// hierarchy level meets or exceeds minRole's hierarchy level.
+//
+// Requires AuthMiddleware upstream: it reads the trusted role ID already
+// resolved into context rather than reloading the user and role
+// independently from persistence.
 func (app *Application) RequireMinimumRole(minRole string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			userID, ok := r.Context().Value(ctxUserID).(string)
-			if !ok || userID == "" {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			ctx := r.Context()
+
+			userID := app.getUserIDFromContext(ctx)
+			if userID == nil || *userID == uuid.Nil {
+				app.Logger.Warn("RequireMinimumRole: missing user ID in context", "min_role", minRole)
+				app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
 				return
 			}
 
-			id, err := uuid.Parse(userID)
-			if err != nil {
-				app.Logger.Warn("Invalid userID format", "userID", userID)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			roleID := app.getRoleIDFromContext(ctx)
+			if roleID == nil {
+				app.Logger.Warn("RequireMinimumRole: missing role ID in context", "user_id", *userID, "min_role", minRole)
+				app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
 				return
 			}
 
-			user, err := app.Models.User.GetByID(r.Context(), id)
+			role, err := app.Models.Role.GetRoleByID(ctx, *roleID)
 			if err != nil {
-				http.Error(w, "Forbidden", http.StatusForbidden)
+				app.Logger.Warn("RequireMinimumRole: role not found", "role_id", *roleID, "error", err)
+				app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
 				return
 			}
 
-			role, err := app.Models.Role.GetRoleByID(r.Context(), user.RoleID)
+			requiredRole, err := app.Models.Role.GetRoleByName(ctx, minRole)
 			if err != nil {
-				app.Logger.Warn("User role not found", "roleID", user.RoleID)
-				http.Error(w, "Forbidden", http.StatusForbidden)
-				return
-			}
-
-			requiredRole, err := app.Models.Role.GetRoleByName(r.Context(), minRole)
-			if err != nil {
-				app.Logger.Warn("Required role not found", "requiredRole", minRole)
-				http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				app.Logger.Warn("RequireMinimumRole: required role not found", "min_role", minRole, "error", err)
+				app.respondWithError(w, errors.New("internal server error"), http.StatusInternalServerError)
 				return
 			}
 
 			if role.HierarchyLevel < requiredRole.HierarchyLevel {
-				app.Logger.Warn("Access denied", "userID", userID, "role", role.Name, "required", minRole)
-				http.Error(w, "Forbidden", http.StatusForbidden)
+				app.Logger.Warn("RequireMinimumRole: access denied", "user_id", *userID, "role", role.Name, "min_role", minRole)
+				app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
 				return
 			}
 
@@ -307,7 +385,6 @@ func (app *Application) RequireMinimumRole(minRole string) func(http.Handler) ht
 //   - X-Platform-ID
 //   - X-Product-ID
 //   - X-Product-Line
-
 func (app *Application) InjectApplicationContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -358,8 +435,9 @@ func (app *Application) InjectApplicationContextMiddleware(next http.Handler) ht
 		injectUUID("X-User-Settings-ID", ctxUserSettingsID)
 		injectUUID("X-Source-User-ID", ctxSourceUserID)
 
-		// Inject user identity fields only if not set by JWT AuthMiddleware
-		injectUUID("X-User-ID", ctxUserID)
+		// X-User-ID is intentionally not accepted here. ctxUserID is authenticated
+		// identity and may only be established by AuthMiddleware. X-Target-User-ID
+		// is a resource selector, not caller identity; retain it for existing routes.
 		injectUUID("X-Target-User-ID", ctxTargetUserID)
 
 		// --- Optional string headers
@@ -466,131 +544,70 @@ func (app *Application) GuestSessionMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// RequireInternalRole grants access only to *internal* staff
-// (i.e. users whose primary role is **admin** or **internal_operator**).
-//
-// It is a convenience wrapper so routes can use:
-//
-//	.With(app.RequireInternalRole, app.RequirePermission("…"))
-//
-// instead of spelling out `app.RequireRole("admin","internal_operator")`
-// everywhere.
-//
-// Implementation simply delegates to RequireRole, so all auditing,
-// fallback look‑ups, and structured‑logging behaviour stay identical.
+// RequireInternalRole grants access only to an authenticated internal actor.
+// Internal-role classification is owned exclusively by isInternalRole so that
+// admin, super_admin, and internal_operator semantics cannot drift between
+// authorization entry points.
 func (app *Application) RequireInternalRole(next http.Handler) http.Handler {
-	// Re‑use the existing role‑based middleware generator.
-	return app.RequireRole("admin", "internal_operator")(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		userID := app.getUserIDFromContext(ctx)
+		if userID == nil || *userID == uuid.Nil {
+			app.Logger.Warn("RequireInternalRole: missing user ID in context")
+			app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
+			return
+		}
+
+		role := getRoleFromContext(ctx)
+		if !isInternalRole(role) {
+			app.Logger.Warn("RequireInternalRole: access denied", "user_id", *userID, "role", role)
+			app.respondWithError(w, errors.New("forbidden: internal role required"), http.StatusForbidden)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
-// RequireRole ensures that only users with one of the allowed roles can access the endpoint.
-// It supports fast lookup and structured logging, with a fallback to the database if needed.
+// RequireRole ensures that only users whose trusted role name is one of the
+// allowed roles can access the endpoint.
+//
+// Requires AuthMiddleware upstream: it reads ctxRoleName from trusted
+// context and fails closed if it is absent. It no longer falls back to
+// persistence — a missing role name indicates the request did not pass
+// through AuthMiddleware, and that must not be silently repaired by a
+// hidden database lookup.
 func (app *Application) RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
 	roleSet := make(map[string]struct{}, len(allowedRoles))
 	for _, r := range allowedRoles {
-		roleSet[r] = struct{}{}
+		roleSet[strings.ToLower(strings.TrimSpace(r))] = struct{}{}
 	}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := r.Context()
-			userID, ok := ctx.Value(ctxUserID).(string)
-			if !ok || userID == "" {
-				app.Logger.Warn("RequireRole: missing user ID")
+
+			userID := app.getUserIDFromContext(ctx)
+			if userID == nil || *userID == uuid.Nil {
+				app.Logger.Warn("RequireRole: missing user ID in context")
 				app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
 				return
 			}
 
 			role := getRoleFromContext(ctx)
 			if role == "" {
-				// fallback: load role from DB
-				id, err := uuid.Parse(userID)
-				if err != nil {
-					app.Logger.Warn("RequireRole: invalid UUID", "userID", userID)
-					app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
-					return
-				}
-				user, err := app.Models.User.GetByID(ctx, id)
-				if err != nil {
-					app.Logger.Warn("RequireRole: failed to load user", "userID", userID, "error", err)
-					app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
-					return
-				}
-				roleModel, err := app.Models.Role.GetRoleByID(ctx, user.RoleID)
-				if err != nil {
-					app.Logger.Warn("RequireRole: failed to load role", "roleID", user.RoleID)
-					app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
-					return
-				}
-				role = roleModel.Name
+				app.Logger.Warn("RequireRole: missing role name in trusted context", "user_id", *userID)
+				app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
+				return
 			}
 
-			if _, ok := roleSet[role]; !ok {
-				app.Logger.Warn("RequireRole: access denied", "userID", userID, "role", role, "allowedRoles", allowedRoles)
+			if _, ok := roleSet[strings.ToLower(strings.TrimSpace(role))]; !ok {
+				app.Logger.Warn("RequireRole: access denied", "user_id", *userID, "role", role, "allowed_roles", allowedRoles)
 				app.respondWithError(w, errors.New("forbidden: insufficient role"), http.StatusForbidden)
 				return
 			}
 
 			next.ServeHTTP(w, r)
-		})
-	}
-}
-
-// RequirePermissionOrRole grants access if the user has the required permission or is in one of the allowed roles.
-// It includes fallback role resolution and structured logging for security visibility.
-func (app *Application) RequirePermissionOrRole(permission string, allowedRoles ...string) func(http.Handler) http.Handler {
-	roleSet := make(map[string]struct{}, len(allowedRoles))
-	for _, r := range allowedRoles {
-		roleSet[r] = struct{}{}
-	}
-
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := r.Context()
-			userID, ok := ctx.Value(ctxUserID).(string)
-			if !ok || userID == "" {
-				app.Logger.Warn("RequirePermissionOrRole: missing user ID")
-				app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
-				return
-			}
-
-			role := getRoleFromContext(ctx)
-			if role == "" {
-				// fallback: load role from DB
-				id, err := uuid.Parse(userID)
-				if err != nil {
-					app.Logger.Warn("RequirePermissionOrRole: invalid UUID", "userID", userID)
-					app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
-					return
-				}
-				user, err := app.Models.User.GetByID(ctx, id)
-				if err != nil {
-					app.Logger.Warn("RequirePermissionOrRole: failed to load user", "userID", userID)
-					app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
-					return
-				}
-				roleModel, err := app.Models.Role.GetRoleByID(ctx, user.RoleID)
-				if err != nil {
-					app.Logger.Warn("RequirePermissionOrRole: failed to load role", "roleID", user.RoleID)
-					app.respondWithError(w, errors.New("forbidden"), http.StatusForbidden)
-					return
-				}
-				role = roleModel.Name
-			}
-
-			if _, ok := roleSet[role]; ok {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Fallback: check for permission
-			if app.HasPermission(ctx, permission) {
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			app.Logger.Warn("RequirePermissionOrRole: access denied", "userID", userID, "role", role, "required_permission", permission, "allowed_roles", allowedRoles)
-			app.respondWithError(w, errors.New("forbidden: requires permission or role"), http.StatusForbidden)
 		})
 	}
 }
@@ -602,17 +619,10 @@ func (app *Application) RequireAuthenticatedUser(next http.Handler) http.Handler
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		userID, ok := ctx.Value(ctxUserID).(string)
-		if !ok || userID == "" {
+		userID := app.getUserIDFromContext(ctx)
+		if userID == nil || *userID == uuid.Nil {
 			app.Logger.Warn("RequireAuthenticatedUser: missing or invalid user ID")
 			app.respondWithError(w, errors.New("unauthorized: login required"), http.StatusUnauthorized)
-			return
-		}
-
-		// You could add optional UUID validation here if paranoia is desired
-		if _, err := uuid.Parse(userID); err != nil {
-			app.Logger.Warn("RequireAuthenticatedUser: invalid UUID format", "userID", userID)
-			app.respondWithError(w, errors.New("unauthorized: invalid user ID"), http.StatusUnauthorized)
 			return
 		}
 
@@ -622,8 +632,15 @@ func (app *Application) RequireAuthenticatedUser(next http.Handler) http.Handler
 
 // RequireSelfOrPrivileged blocks the request unless the caller is either:
 //   - the owner of the resource (requesterID == targetID), OR
-//   - an internal user (admin | internal_operator) **and** already holds the
-//     supplied permission string.
+//   - an internal user (admin | super_admin | internal_operator) and,
+//     when permission is non-empty, already holds the supplied permission.
+//
+// The "internal actor" classification is not reproduced here: it is owned
+// entirely by isInternalRole (used directly for the permission == "" case)
+// and by RequireInternalPermission (internal AND permission), so this
+// function maintains exactly one implementation of "internal actor," not
+// two. RequireSelfOrPrivileged itself is responsible only for requester/
+// target validation, HTTP denial behavior, logging, and calling next.
 //
 // Usage:
 //
@@ -649,19 +666,20 @@ func (app *Application) RequireSelfOrPrivileged(permission string) func(http.Han
 				return
 			}
 
-			// Internal role check.
-			isAdmin, _ := app.HasRole(ctx, "admin")
-			isOperator, _ := app.HasRole(ctx, "internal_operator")
-			if !(isAdmin || isOperator) {
-				logger.Warn("caller not privileged", "requester_id", *requesterID)
-				app.respondWithError(w, errors.New("forbidden: cannot act on other users"), http.StatusForbidden)
-				return
+			var authorized bool
+			if permission == "" {
+				authorized = isInternalRole(getRoleFromContext(ctx))
+			} else {
+				authorized = app.RequireInternalPermission(ctx, permission)
 			}
 
-			// Fine‑grained permission check for privileged calls.
-			if permission != "" && !app.HasPermission(ctx, permission) {
-				logger.Warn("missing permission", "permission", permission, "requester_id", *requesterID)
-				app.respondWithError(w, errors.New("forbidden: insufficient permissions"), http.StatusForbidden)
+			if !authorized {
+				logger.Warn("access denied: not self and not privileged",
+					"requester_id", *requesterID,
+					"target_id", *targetID,
+					"permission", permission,
+				)
+				app.respondWithError(w, errors.New("forbidden: cannot act on other users"), http.StatusForbidden)
 				return
 			}
 

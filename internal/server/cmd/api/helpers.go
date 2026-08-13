@@ -1,17 +1,47 @@
+// Package main provides shared API helpers for trusted context extraction,
+// authorization predicates, pagination, retry behavior, and common boundary utilities.
+//
 // sdworkspace/sdbackend/internal/server/cmd/api/helpers.go
+//
+// GTM:
+//
+//	Layer: 2.5 API / Authorization and Shared Helper Infrastructure
+//	Release Class: SPINE
+//	Reason:
+//	  API helpers provide canonical trusted-context extraction, authorization
+//	  predicates, request-scoped permission resolution, pagination, retry, and
+//	  shared boundary utilities used across protected HTTP surfaces. These
+//	  helpers are cross-cutting release infrastructure and must remain
+//	  centralized, deterministic, fail-closed where security-sensitive, and
+//	  production-ready.
+//
+// SPINE Rule:
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve helpers.go as the API layer's single canonical home for shared
+//  handler helpers. Organize shared helpers into clearly labeled functional
+//  sections so they remain easy to locate, understand, and maintain. Do not
+//  fragment shared helper categories across the handler layer.
+//	Preserve canonical trusted-context identity and role extraction.
+//	Preserve one canonical internal-role classification.
+//	Preserve request-scoped permission-result reuse.
+//	Preserve fail-closed behavior for missing or inconsistent authorization state.
+//	Preserve exact permission enforcement without role-based bypass.
+//	Do not introduce hidden authorization database fallbacks.
+//	Do not introduce process-global authorization caches.
+//	Do not duplicate central authorization predicates in handlers or middleware.
+//	Block deployment if this file breaks authorization correctness,
+//	context integrity, shared helper contracts, or protected API behavior.
 
-// CE, during your review, please consider splitting this file into.
-// I believe you can do that CE, but for me as a project leader, that approach
-// to purity is causing a different problem for me. We can even remember this one file
-// and when you split them, the become difficult to find and use. You don't remember anything
-// and I the non-engineer must always find and remind you. Doesn't work!
-// I prefer it stays a single file.
+// helpers.go remains the single canonical shared-helper file for the API
+// layer, but its contents are internally organized into clearly marked functional sections:
 
-// sdworkspace/sdbackend/internal/server/cmd/api/context-helpers.go
-// sdworkspace/sdbackend/internal/server/cmd/api/authz-helpers.go
-// sdworkspace/sdbackend/internal/server/cmd/api/pagination-helpers.go
-// sdworkspace/sdbackend/internal/server/cmd/api/retry-helpers.go
-// sdworkspace/sdbackend/internal/server/cmd/api/value-helpers.go
+// context helpers
+// authorization helpers
+// pagination helpers
+// retry helpers
+// value helpers
 package main
 
 import (
@@ -22,15 +52,22 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
+// -----------------------------------------------------------------------------
+// Context Helpers
+// -----------------------------------------------------------------------------
 // Use helper methods to enforce principle of pulling all trusted data from context only
 
-// HasRole checks whether the authenticated user in ctx holds roleName.
-// It delegates to RoleModel.HasRole and logs (never panics) on DB failure.
+// HasRole checks whether the authenticated user in ctx holds roleName by
+// querying persistence directly. Unlike getRoleFromContext, this performs a
+// fresh database lookup rather than trusting context — it exists for call
+// sites that specifically need current, re-verified role state rather than
+// the role resolved once by AuthMiddleware for this request.
 func (app *Application) HasRole(ctx context.Context, roleName string) (bool, error) {
 	uid := app.getUserIDFromContext(ctx)
 	if uid == nil {
@@ -45,13 +82,9 @@ func (app *Application) HasRole(ctx context.Context, roleName string) (bool, err
 	return ok, err
 }
 
-// HasAnyRole checks if the current user has at least one of the specified roles.
-//
-// It first tries to retrieve the user's role from context (via getRoleFromContext).
-// If not found, it attempts to load the role from the database using the user ID in context.
-// Logging is performed if role resolution fails. Returns true on the first match (case-insensitive).
+// HasAnyRole checks if the current user's trusted role name matches at
+// least one of the specified roles (case-insensitive).
 func (app *Application) HasAnyRole(ctx context.Context, roles ...string) bool {
-	// Resolve the user's role from context or fallback to DB
 	userRole, err := app.getRoleFromContextOrDB(ctx)
 	if err != nil || userRole == "" {
 		app.Logger.Warn("HasAnyRole: failed to resolve user role",
@@ -61,7 +94,6 @@ func (app *Application) HasAnyRole(ctx context.Context, roles ...string) bool {
 		return false
 	}
 
-	// Compare the resolved role with the list of allowed roles
 	for _, allowed := range roles {
 		if strings.EqualFold(userRole, allowed) {
 			return true
@@ -71,74 +103,43 @@ func (app *Application) HasAnyRole(ctx context.Context, roles ...string) bool {
 	return false
 }
 
-// getRoleFromContextOrDB retrieves the user role name from context if available,
-// or loads it from the database as a fallback. Returns role name and any error encountered.
+// getRoleFromContextOrDB retrieves the user's role name from trusted request
+// context. It does not fall back to persistence: AuthMiddleware is
+// responsible for populating ctxRoleName for every authenticated request, so
+// a missing value here means the request reached this code without passing
+// through AuthMiddleware, and that must fail closed rather than trigger a
+// hidden database lookup.
 func (app *Application) getRoleFromContextOrDB(ctx context.Context) (string, error) {
 	role := getRoleFromContext(ctx)
-	if role != "" {
-		return role, nil
+	if role == "" {
+		return "", errors.New("role name missing from trusted request context")
 	}
-
-	userIDStr, ok := ctx.Value(ctxUserID).(string)
-	if !ok || userIDStr == "" {
-		return "", errors.New("missing user ID in context")
-	}
-
-	userID, err := uuid.Parse(userIDStr)
-	if err != nil {
-		return "", fmt.Errorf("invalid user ID: %w", err)
-	}
-
-	user, err := app.Models.User.GetByID(ctx, userID)
-	if err != nil {
-		return "", fmt.Errorf("failed to load user: %w", err)
-	}
-
-	roleModel, err := app.Models.Role.GetRoleByID(ctx, user.RoleID)
-	if err != nil {
-		return "", fmt.Errorf("failed to load user role: %w", err)
-	}
-
-	return roleModel.Name, nil
+	return role, nil
 }
 
-// getRoleFromContext retrieves the role name from the context.
-// Returns empty string if not found or invalid.
+// getRoleFromContext retrieves the authenticated user's role *name* from
+// trusted context (ctxRoleName). Returns empty string if not found or
+// invalid. This is distinct from getRoleIDFromContext, which returns the
+// role's identity (ctxRoleID), not its name.
 func getRoleFromContext(ctx context.Context) string {
-	role, ok := ctx.Value(ctxRoleID).(string)
+	role, ok := ctx.Value(ctxRoleName).(string)
+	role = strings.TrimSpace(role)
 	if !ok || role == "" {
 		return ""
 	}
 	return role
 }
 
-/*
-// getUserIDFromContext returns the *uuid.UUID stored in ctx or an error if absent / malformed.
-func (app *Application) getUserIDFromContext(ctx context.Context) (*uuid.UUID, error) {
-	v := ctx.Value(ctxKeyUserID)
-	id, ok := v.(uuid.UUID)
-	if !ok {
-		return nil, errors.New("user ID missing from context")
-	}
-	return &id, nil
-}*/
-
-// getUserIDFromContext returns *uuid.UUID or nil if absent.
+// getUserIDFromContext returns *uuid.UUID or nil if absent. This is the
+// single canonical way to read the authenticated user's identity from
+// context; ctxUserID is always stored as uuid.UUID by AuthMiddleware.
 func (app *Application) getUserIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxUserID).(uuid.UUID) // <- keeps existing ctxUserID key
+	val, ok := ctx.Value(ctxUserID).(uuid.UUID)
 	if !ok {
 		return nil
 	}
 	return &val
 }
-
-/*
-func (app *Application) mustUserID(ctx context.Context) (*uuid.UUID, error) {
-	if id := app.getUserIDFromContext(ctx); id != nil {
-		return id, nil
-	}
-	return nil, errors.New("user ID missing from context")
-}*/
 
 func (app *Application) getTargetUserIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxTargetUserID).(uuid.UUID)
@@ -147,18 +148,6 @@ func (app *Application) getTargetUserIDFromContext(ctx context.Context) *uuid.UU
 	}
 	return &val
 }
-
-/*
-// getAdminUserIDForNotifications returns a hardcoded or config-driven admin user ID.
-// You may later replace this with a real lookup or broadcast logic.
-func (app *Application) getAdminUserIDForNotifications(ctx context.Context) *uuid.UUID {
-	// TODO: Replace with real admin user resolution logic
-	adminID, err := uuid.Parse("00000000-0000-0000-0000-000000000001") // placeholder
-	if err != nil {
-		return nil
-	}
-	return &adminID
-}*/
 
 // getGuestUserIDFromContext retrieves the guest user ID from context.
 // Returns nil if not found or invalid.
@@ -170,8 +159,9 @@ func (app *Application) getGuestUserIDFromContext(ctx context.Context) *uuid.UUI
 	return nil
 }
 
-// getRoleIDFromContext extracts the role ID from the context using the ctxRoleID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
+// getRoleIDFromContext extracts the authenticated user's role *identity*
+// (ctxRoleID, a role ID, not a role name) from context. Returns a pointer
+// to uuid.UUID or nil if not present or invalid.
 func (app *Application) getRoleIDFromContext(ctx context.Context) *uuid.UUID {
 	val, ok := ctx.Value(ctxRoleID).(string)
 	if !ok || val == "" {
@@ -295,27 +285,6 @@ func (app *Application) getOfferIDFromContext(ctx context.Context) *uuid.UUID {
 	}
 	return &id
 }
-
-/*
-// getOfferIDsFromContext extracts a list of offer IDs from the context using the ctxOfferIDs key.
-// Expects a comma-separated list of UUIDs in string form. Returns a slice of parsed UUIDs, omitting invalid ones.
-func (app *Application) getOfferIDsFromContext(ctx context.Context) []uuid.UUID {
-	val, ok := ctx.Value(ctxOfferIDs).(string)
-	if !ok || val == "" {
-		return nil
-	}
-
-	ids := strings.Split(val, ",")
-	var offerIDs []uuid.UUID
-	for _, idStr := range ids {
-		id, err := uuid.Parse(strings.TrimSpace(idStr))
-		if err == nil {
-			offerIDs = append(offerIDs, id)
-		}
-	}
-
-	return offerIDs
-}*/
 
 // getProductIDFromContext extracts the product ID from context.
 // Returns a pointer to uuid.UUID or nil if not present or invalid.
@@ -579,31 +548,6 @@ func (app *Application) getAdminIDFromContext(ctx context.Context) *uuid.UUID {
 	return &id
 }
 
-/*
-// getMerchantTypeIDFromContext extracts the merchant type ID from context using ctxMerchantTypeID.
-func (app *Application) getMerchantTypeIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxMerchantTypeID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}*/
-
-/*
-// getArchivedTimeRangeFromContext extracts the archived time range from context using ctxArchivedTimeRange.
-// Returns the string value directly (e.g. "last_30_days") or empty string if not present.
-func (app *Application) getArchivedTimeRangeFromContext(ctx context.Context) string {
-	val, ok := ctx.Value(ctxArchivedTimeRange).(string)
-	if !ok {
-		return ""
-	}
-	return val
-}*/
-
 // getBrandNameFromContext extracts the brand name from context using ctxBrandName.
 // Returns the string value or empty string if not present.
 func (app *Application) getBrandNameFromContext(ctx context.Context) string {
@@ -613,76 +557,6 @@ func (app *Application) getBrandNameFromContext(ctx context.Context) string {
 	}
 	return val
 }
-
-/*
-// getClientIDFromContext extracts the client ID from context using ctxClientID.
-func (app *Application) getClientIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxClientID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}*/
-
-/*
-// getOfferAlertIDFromContext extracts the offer alert ID from context using ctxOfferAlertID.
-func (app *Application) getOfferAlertIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxOfferAlertID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}*/
-
-/*
-// getOfferShareIDFromContext extracts the offer share ID from context using ctxOfferShareID.
-func (app *Application) getOfferShareIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxOfferShareID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}*/
-
-/*
-// getEntityIDFromContext extracts the entity ID from context using ctxEntityID.
-func (app *Application) getEntityIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxEntityID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}*/
-
-/*
-// getUserOfferPurchaseHistoryIDFromContext extracts the user offer purchase history ID from context.
-func (app *Application) getUserOfferPurchaseHistoryIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxUserOfferPurchaseHistoryID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}*/
 
 // getUserFavoriteIDFromContext extracts the user favorite ID from context.
 func (app *Application) getUserFavoriteIDFromContext(ctx context.Context) *uuid.UUID {
@@ -697,20 +571,9 @@ func (app *Application) getUserFavoriteIDFromContext(ctx context.Context) *uuid.
 	return &id
 }
 
-/*
-// getSourceUserIDFromContext extracts the source user ID from context.
-func (app *Application) getSourceUserIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxSourceUserID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}*/
-
+// -----------------------------------------------------------------------------
+// Pagination Helpers
+// -----------------------------------------------------------------------------
 // parseLimitOffset parses pagination parameters from the request query string.
 // It returns sanitized limit and offset values, defaulting to limit=50 and offset=0.
 // It returns an error if either value is present but invalid.
@@ -781,101 +644,132 @@ func (app *Application) parsePaginationParams(r *http.Request) (int, int, error)
 	return page, pageSize, nil
 }
 
-/*
-// extractUUIDFromURL extracts a UUID from the last segment of a URL string.
-// Returns uuid.Nil if parsing fails.
-func (app *Application) extractUUIDFromURL(url string) uuid.UUID {
-	parts := strings.Split(url, "/")
-	if len(parts) == 0 {
-		return uuid.Nil
-	}
-	id, err := uuid.Parse(parts[len(parts)-1])
-	if err != nil {
-		return uuid.Nil
-	}
-	return id
-}*/
-
-// getUUIDOrNil safely returns the UUID value if the pointer is non-nil; otherwise, returns uuid.Nil.
-func getUUIDOrNil(id *uuid.UUID) uuid.UUID {
-	if id == nil {
-		return uuid.Nil
-	}
-	return *id
+// -----------------------------------------------------------------------------
+// Authorization Helpers
+// -----------------------------------------------------------------------------
+// authzState is the authorization resolution state for exactly one authenticated
+// HTTP request and exactly one authenticated role. It must never be shared
+// between requests or stored at package scope.
+//
+// The mutex intentionally covers both cache lookup and first persistence
+// resolution. Authorization checks normally execute serially, so there is no
+// useful request-level parallelism to preserve here; holding the request-local
+// lock guarantees that concurrent checks for the same permission cannot issue
+// duplicate queries or observe competing first-resolution results.
+type authzState struct {
+	mu      sync.Mutex
+	roleID  uuid.UUID
+	results map[string]bool
 }
 
-// HasPermission checks if the user’s current role (from context) has the specified permission.
-//
-// It extracts the role ID from context and verifies it against the required permission.
-// If the role ID is nil or an internal error occurs, the function fails closed and logs the issue.
-// Returns true if the role has the permission, false otherwise.
-func (app *Application) HasPermission(ctx context.Context, permissionName string) bool {
-	// Extract role ID from context
-	roleID := app.getRoleIDFromContext(ctx)
-	if roleID == nil {
-		app.Logger.Warn("HasPermission: missing role ID in context",
-			"permission", permissionName,
-		)
+func newAuthzState(roleID uuid.UUID) *authzState {
+	return &authzState{
+		roleID:  roleID,
+		results: make(map[string]bool),
+	}
+}
+
+// resolve returns the authoritative result for permission for this request.
+// Each distinct permission is resolved from persistence at most once. Errors
+// fail closed and the denial is retained for the remainder of the request.
+func (s *authzState) resolve(ctx context.Context, app *Application, permission string) bool {
+	if s == nil || s.roleID == uuid.Nil || permission == "" {
 		return false
 	}
 
-	// Convert *uuid.UUID to string for database query
-	roleIDStr := roleID.String()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// Check permission via model
-	ok, err := app.Models.RolePermission.RoleHasPermission(ctx, roleIDStr, permissionName)
+	if result, ok := s.results[permission]; ok {
+		return result
+	}
+
+	ok, err := app.Models.RolePermission.RoleHasPermission(ctx, s.roleID.String(), permission)
 	if err != nil {
-		app.Logger.Error("HasPermission: error checking permission",
-			"permission", permissionName,
-			"role_id", roleIDStr,
-			"error", err,
-		)
-		return false
+		app.Logger.GetLoggerWithContextFromContext(ctx).
+			WithFunctionName("authzState.resolve").
+			Error("permission lookup failed",
+				"permission", permission,
+				"role_id", s.roleID,
+				"err", err,
+			)
+		ok = false
 	}
 
+	s.results[permission] = ok
 	return ok
 }
 
-// RequireInternalPermission checks whether the current actor has the specified permission
-// AND is an internal role (admin or internal_operator). Returns true if both conditions are met.
+// HasPermission checks whether the authenticated actor's role holds the
+// specified permission using the request-scoped authorization state established
+// by AuthMiddleware. Missing, malformed, mismatched, or empty authorization
+// context fails closed; there is no hidden persistence fallback.
+func (app *Application) HasPermission(ctx context.Context, permissionName string) bool {
+	permissionName = strings.TrimSpace(permissionName)
+	if permissionName == "" {
+		app.Logger.Warn("HasPermission: empty permission name")
+		return false
+	}
+
+	roleID := app.getRoleIDFromContext(ctx)
+	if roleID == nil || *roleID == uuid.Nil {
+		app.Logger.Warn("HasPermission: missing role ID in context", "permission", permissionName)
+		return false
+	}
+
+	state, ok := ctx.Value(ctxAuthzState).(*authzState)
+	if !ok || state == nil {
+		app.Logger.Warn("HasPermission: missing request-scoped authorization state",
+			"permission", permissionName,
+			"role_id", *roleID,
+		)
+		return false
+	}
+
+	if state.roleID != *roleID {
+		app.Logger.Warn("HasPermission: authorization state role mismatch",
+			"permission", permissionName,
+			"context_role_id", *roleID,
+			"state_role_id", state.roleID,
+		)
+		return false
+	}
+
+	return state.resolve(ctx, app, permissionName)
+}
+
+// RequireInternalPermission checks whether the current actor is an internal
+// actor (per the canonical isInternalRole classification) AND holds the
+// specified permission. Returns true only if both conditions are met.
 //
-// Used for enforcing stricter access policies in sensitive internal handlers.
+// Used for enforcing stricter access policies in sensitive internal handlers,
+// and as the single reusable "internal AND permission" predicate consumed by
+// RequireSelfOrPrivileged.
 func (app *Application) RequireInternalPermission(ctx context.Context, permission string) bool {
 	role := getRoleFromContext(ctx)
 	if role == "" {
 		return false
 	}
 
-	// Enforce both role and permission checks
-	isInternal := strings.EqualFold(role, "admin") || strings.EqualFold(role, "internal_operator")
-	if !isInternal {
+	if !isInternalRole(role) {
 		return false
 	}
 
 	return app.HasPermission(ctx, permission)
 }
 
-// IsInternalUser returns true if the caller’s role is one of your trusted
-// internal roles.  This replaces the missing app.IsInternalUser() referenced in
-// earlier drafts.
+// IsInternalUser returns true if the caller's trusted role name is one of
+// Sagrenti's internal roles, per the canonical isInternalRole classification.
 func (app *Application) IsInternalUser(ctx context.Context) bool {
-	role := getRoleFromContext(ctx)
-	switch role {
-	case "admin", "super_admin", "internal_operator":
-		return true
-	default:
-		return false
-	}
+	return isInternalRole(getRoleFromContext(ctx))
 }
 
-// ───────────────────────────────────────────────────────────────────────────────
-// helper: isInternalRole  – true when the supplied role name is one of your
-//
-//	trusted “internal” roles.
-//
-// ───────────────────────────────────────────────────────────────────────────────
+// isInternalRole is the single canonical definition of "internal actor" for
+// Sagrenti authorization. AuthMiddleware, RequireInternalPermission, and
+// IsInternalUser all delegate to this function so the classification cannot
+// drift out of sync between them.
 func isInternalRole(roleName string) bool {
-	switch strings.ToLower(roleName) {
+	switch strings.ToLower(strings.TrimSpace(roleName)) {
 	case "admin", "super_admin", "internal_operator":
 		return true
 	default:
@@ -883,6 +777,9 @@ func isInternalRole(roleName string) bool {
 	}
 }
 
+// -----------------------------------------------------------------------------
+// Retry Helpers
+// -----------------------------------------------------------------------------
 // retryActivationTokenWithBackoff attempts the provided operation with exponential backoff and jitter.
 //
 // It retries the operation up to `maxRetries` times. On each failure, it waits for a backoff duration
@@ -916,9 +813,6 @@ func retryActivationTokenWithBackoff(ctx context.Context, operation func() (stri
 		jitter := time.Duration(rand.Intn(maxJitter)) * time.Millisecond
 		sleepDuration := backoff + jitter
 
-		// Optional: log retry attempt and backoff duration (can be enhanced with a logger)
-		// fmt.Printf("Attempt %d failed: %v. Retrying in %v...\n", attempt, err, sleepDuration)
-
 		time.Sleep(sleepDuration)
 		backoff *= 2 // Exponential backoff
 	}
@@ -926,19 +820,16 @@ func retryActivationTokenWithBackoff(ctx context.Context, operation func() (stri
 	return "", errors.New("retryActivationTokenWithBackoff: maximum retries reached")
 }
 
-/*
-// parseOptionalInt parses a string into an int and returns a pointer to the value.
-// Returns nil if the string is empty or parsing fails.
-func parseOptionalInt(s string) *int {
-	if s == "" {
-		return nil
+// -----------------------------------------------------------------------------
+// Value Helpers
+// -----------------------------------------------------------------------------
+// getUUIDOrNil safely returns the UUID value if the pointer is non-nil; otherwise, returns uuid.Nil.
+func getUUIDOrNil(id *uuid.UUID) uuid.UUID {
+	if id == nil {
+		return uuid.Nil
 	}
-	n, err := strconv.Atoi(s)
-	if err != nil {
-		return nil
-	}
-	return &n
-}*/
+	return *id
+}
 
 // parseIntOrDefault parses a string into an int, returning the result if successful.
 // Returns the provided default value if the input is invalid or cannot be parsed.
@@ -957,11 +848,3 @@ func derefOr(def string, v *string) string {
 	}
 	return def
 }
-
-/*
-func defaultIfBlank(value, def string) string {
-	if strings.TrimSpace(value) == "" {
-		return def
-	}
-	return value
-}*/

@@ -177,31 +177,31 @@ func (app *Application) Routes() http.Handler {
 			al.Use(app.AuthMiddleware)
 
 			// POST: Retrieve audit log by ID (context-based only)
-			al.With(app.RequirePermissionOrRole("read_audit_log", "admin", "internal_moderator")).
+			al.With(app.RequirePermission("read_audit_log")).
 				Post("/", app.GetAuditLogByIDHandler)
 
 			// POST: Retrieve audit logs for authenticated user
-			al.With(app.RequirePermissionOrRole("read_audit_log", "admin", "internal_moderator")).
+			al.With(app.RequirePermission("read_audit_log")).
 				Post("/by-user", app.GetAuditLogByUserIDHandler)
 
 			// POST: Retrieve audit logs by entity ID and entity type ID (context-based only)
-			al.With(app.RequirePermissionOrRole("read_audit_log", "admin", "internal_moderator")).
+			al.With(app.RequirePermission("read_audit_log")).
 				Post("/by-entity", app.GetAuditLogByEntityIDHandler)
 
 			// POST: Retrieve audit logs by time range (start, end in RFC3339 format)
-			al.With(app.RequirePermissionOrRole("read_audit_logs_by_time_range", "admin", "internal_moderator")).
+			al.With(app.RequirePermission("read_audit_logs_by_time_range")).
 				Post("/by-time-range", app.GetAuditLogsByTimeRangeHandler)
 
-			// POST: Restore archived audit logs (admin/internal_moderator only)
-			al.With(app.RequirePermissionOrRole("restore_archived_audit_logs", "admin", "internal_moderator")).
+			// POST: Restore archived audit logs
+			al.With(app.RequirePermission("restore_archived_audit_logs")).
 				Post("/archived/restore", app.RestoreArchivedLogsHandler)
 
 			// POST: Retrieve archived audit logs by entity ID and entity type ID (context-based only)
-			al.With(app.RequirePermissionOrRole("read_archived_audit_log", "admin", "internal_moderator")).
+			al.With(app.RequirePermission("read_archived_audit_log")).
 				Post("/archived/by-entity", app.GetArchivedAuditLogByEntityHandler)
 
-			// POST: Retrieve archived audit logs by time range (admin/internal_moderator only)
-			al.With(app.RequirePermissionOrRole("read_archived_audit_logs", "admin", "internal_moderator")).
+			// POST: Retrieve archived audit logs by time range
+			al.With(app.RequirePermission("read_archived_audit_logs")).
 				Post("/archived/by-time-range", app.GetArchivedAuditLogsByTimeRangeHandler)
 		})
 
@@ -979,6 +979,45 @@ func (app *Application) Routes() http.Handler {
 				)
 		})
 
+		// Merchant Invoices
+		//
+		// Privileged durable commercial-obligation history. Invoice creation,
+		// financial revision, lifecycle mutation, overdue processing, and
+		// payment application remain service/orchestration responsibilities.
+		//
+		// Merchant actors must not receive these permissions unless a future
+		// merchant-facing route family has canonical ownership/delegation
+		// enforcement and an explicitly approved requirement.
+		v1.Route("/merchant-invoices", func(mi chi.Router) {
+			mi.Use(app.AuthMiddleware)
+
+			// Invoice numbers are not constrained to URI-segment-safe
+			// characters, so lookup uses ?invoice_number=...
+			mi.With(app.RequirePermission("read_merchant_invoice")).
+				Get(
+					"/by-number",
+					app.GetMerchantInvoiceByInvoiceNumberHandler,
+				)
+
+			mi.With(app.RequirePermission("list_merchant_invoices")).
+				Get(
+					"/by-merchant/{merchantID}/status",
+					app.ListMerchantInvoicesByMerchantAndStatusHandler,
+				)
+
+			mi.With(app.RequirePermission("list_merchant_invoices")).
+				Get(
+					"/by-merchant/{merchantID}",
+					app.ListMerchantInvoicesByMerchantHandler,
+				)
+
+			mi.With(app.RequirePermission("read_merchant_invoice")).
+				Get(
+					"/{merchantInvoiceID}",
+					app.GetMerchantInvoiceByIDHandler,
+				)
+		})
+
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)
@@ -1138,7 +1177,7 @@ func (app *Application) Routes() http.Handler {
 				Get("/search", app.SearchUserProfilesHandler)
 
 			// GET: Return reserved user handles for UI validation
-			up.With(app.RequirePermissionOrRole("read_reserved_handles", "admin", "internal_operator")).
+			up.With(app.RequirePermission("read_reserved_handles")).
 				Get("/reserved-handles", app.GetReservedHandlesHandler)
 		})
 
