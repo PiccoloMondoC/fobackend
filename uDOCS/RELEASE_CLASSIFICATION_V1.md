@@ -58,7 +58,8 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_billable_events.go`                      — Done
 - [x] `merchant_fee_calculations.go`                     — Done
 - [x] `merchant_platform_credit_applications.go`         — Done
-- [ ] `merchant_invoices.go`
+- [ ] `merchant_invoices.go`                   — Suspended at Service Layer
+- [ ] `merchant_invoice_items.go`
 - [ ] `merchant_billing_ledger_entries.go`
 
 ### Phase 5 — Merchant Payments Architecture
