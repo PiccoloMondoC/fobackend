@@ -128,6 +128,7 @@ type Models struct {
 	MerchantFeeCalculation                MerchantFeeCalculationModel                // SPINE: Commerce Architecture — durable auditable fee-calculation record
 	MerchantPlatformCreditApplication     MerchantPlatformCreditApplicationModel     // SPINE: Commerce Architecture — append-only credit application history
 	MerchantInvoice                       MerchantInvoiceModel                       // SPINE: Commerce Architecture — durable merchant commercial obligation
+	MerchantInvoiceItem                   MerchantInvoiceItemModel                   // SPINE: Commerce Architecture — normalized invoice-line provenance bridge
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
@@ -244,6 +245,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantFeeCalculation:                MerchantFeeCalculationModel{DB: dbPool, Logger: logger},            // SPINE: Commerce Architecture — durable auditable fee-calculation record
 		MerchantPlatformCreditApplication:     MerchantPlatformCreditApplicationModel{DB: dbPool, Logger: logger}, // SPINE: Commerce Architecture — append-only credit application history
 		MerchantInvoice:                       MerchantInvoiceModel{DB: dbPool, Logger: logger},                   // SPINE: Commerce Architecture — durable merchant commercial obligation
+		MerchantInvoiceItem:                   MerchantInvoiceItemModel{DB: dbPool, Logger: logger},               // SPINE: Commerce Architecture — normalized invoice-line provenance bridge
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 

@@ -311,6 +311,29 @@ var (
 		"merchant invoice payment exceeds remaining balance",
 	)
 
+	// Merchant invoice items.
+	ErrMerchantInvoiceItemInvalidInput = errors.New(
+		"invalid merchant invoice item input",
+	)
+	ErrMerchantInvoiceItemNotFound = errors.New(
+		"merchant invoice item not found",
+	)
+	ErrMerchantInvoiceItemInvalidState = errors.New(
+		"invalid merchant invoice item state",
+	)
+	ErrMerchantInvoiceItemInvoiceNotFound = errors.New(
+		"merchant invoice item references a nonexistent invoice",
+	)
+	ErrMerchantInvoiceItemFeeCalculationNotFound = errors.New(
+		"merchant invoice item references a nonexistent fee calculation",
+	)
+	ErrMerchantInvoiceItemDuplicateFeeCalculation = errors.New(
+		"merchant invoice item already exists for this fee calculation",
+	)
+	ErrMerchantInvoiceItemInvoiceNotDraft = errors.New(
+		"merchant invoice item requires the parent invoice to be in draft status",
+	)
+
 	// Merchant payment methods.
 	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")
 	ErrMerchantPaymentMethodAlreadyExists   = errors.New("merchant payment method already exists")

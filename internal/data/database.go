@@ -4681,29 +4681,51 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE TABLE IF NOT EXISTS merchant_invoice_items (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		invoice_id UUID NOT NULL REFERENCES merchant_invoices(id) ON DELETE CASCADE,
+		invoice_id UUID NOT NULL
+			CONSTRAINT fk_merchant_invoice_items_invoice
+			REFERENCES merchant_invoices(id)
+			ON DELETE RESTRICT,
 
-		fee_calculation_id UUID
-			REFERENCES merchant_fee_calculations(id) ON DELETE SET NULL,
+		fee_calculation_id UUID NOT NULL
+			CONSTRAINT fk_merchant_invoice_items_fee_calculation
+			REFERENCES merchant_fee_calculations(id)
+			ON DELETE RESTRICT,
 
 		description TEXT NOT NULL,
 
-		quantity NUMERIC(19,4) NOT NULL DEFAULT 1 CHECK (quantity > 0),
-		unit_amount NUMERIC(19,4) NOT NULL CHECK (unit_amount >= 0),
-		line_amount NUMERIC(19,4) NOT NULL CHECK (line_amount >= 0),
+		quantity NUMERIC(19,4) NOT NULL
+			CONSTRAINT chk_merchant_invoice_items_quantity
+			CHECK (quantity > 0),
+
+		unit_amount NUMERIC(19,4) NOT NULL
+			CONSTRAINT chk_merchant_invoice_items_unit_amount
+			CHECK (unit_amount >= 0),
+
+		line_amount NUMERIC(19,4) NOT NULL
+			CHECK (line_amount >= 0),
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-		CONSTRAINT chk_merchant_invoice_item_line_amount
-			CHECK (line_amount = quantity * unit_amount)
+		CONSTRAINT chk_merchant_invoice_items_description_length
+			CHECK (char_length(description) BETWEEN 1 AND 500),
+
+		CONSTRAINT chk_merchant_invoice_items_description_trimmed
+			CHECK (description = btrim(description)),
+
+		CONSTRAINT chk_merchant_invoice_items_line_amount
+			CHECK (line_amount = quantity * unit_amount),
+
+		CONSTRAINT uq_merchant_invoice_items_fee_calculation
+			UNIQUE (fee_calculation_id)
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_invoice_items_invoice
-		ON merchant_invoice_items(invoice_id);
+		ON merchant_invoice_items (
+			invoice_id,
+			created_at ASC,
+			id ASC
+		);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_invoice_items_fee_calculation
-		ON merchant_invoice_items(fee_calculation_id)
-		WHERE fee_calculation_id IS NOT NULL;
 
 	-- ===============================================================
 	-- DEFERRED: Merchant Payments / Receipts
