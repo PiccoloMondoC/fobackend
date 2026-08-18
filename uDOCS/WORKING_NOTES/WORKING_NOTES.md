@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "re-write merchant_invoices.go data layer"
+git commit -m "re-write merchant_invoices.go handler layer"
 git push
 
 | data layer | handler layer | services layer |

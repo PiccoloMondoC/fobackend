@@ -27,13 +27,14 @@
 //	No merchant-invoice mutation is exposed through HTTP at this handler-layer
 //	stage.
 //
-//	InsertDraft, UpdateDraftFinancials, Issue, IssueDueNow, SettleZeroBalance,
-//	MarkOverdue, and Void are Commerce lifecycle capabilities whose HTTP use
-//	requires an approved service-backed orchestration boundary.
+//	Draft creation, draft reconciliation, issuance, zero-balance settlement,
+//	overdue transition, and voiding are Commerce lifecycle capabilities whose
+//	HTTP use requires an approved service-backed orchestration boundary.
 //
-//	ApplyPaymentTx is transaction-only and must be composed atomically with the
-//	authoritative merchant_payments write. It must never be exposed as a direct
-//	invoice mutation endpoint.
+//	Issuance remains reconciliation-coupled and transaction-owned by service
+//	orchestration. ApplyPaymentTx is transaction-only and must be composed
+//	atomically with the authoritative merchant_payments write. Neither operation
+//	may be exposed as a direct invoice mutation endpoint.
 //
 // Scheduler Boundary:
 //
@@ -56,9 +57,9 @@
 //
 // Monetary Representation:
 //
-//	subtotal_amount, adjustment_amount, total_amount, and amount_paid remain
-//	exact decimal strings. This handler performs no floating-point conversion or
-//	monetary arithmetic.
+//	subtotal_amount, total_amount, and amount_paid remain exact decimal strings.
+//	This handler performs no floating-point conversion or monetary arithmetic.
+//	No generic invoice-wide adjustment scalar exists.
 //
 // SPINE Rule:
 //
@@ -121,6 +122,9 @@ func merchantInvoiceHTTPStatus(err error) int {
 	}
 
 	switch {
+	case errors.Is(err, data.ErrMerchantInvoiceNotFound):
+		return http.StatusNotFound
+
 	case errors.Is(err, data.ErrMerchantInvoiceInvalidInput):
 		return http.StatusBadRequest
 
@@ -142,6 +146,13 @@ func (app *Application) respondWithMerchantInvoiceError(
 		app.respondWithError(
 			w,
 			errors.New("invalid merchant invoice request"),
+			status,
+		)
+
+	case http.StatusNotFound:
+		app.respondWithError(
+			w,
+			errors.New("merchant invoice not found"),
 			status,
 		)
 
@@ -178,6 +189,32 @@ func parseMerchantInvoiceID(
 	if err != nil || id == uuid.Nil {
 		return uuid.Nil, errors.New(
 			"invalid merchant invoice ID",
+		)
+	}
+
+	return id, nil
+}
+
+func parseMerchantInvoiceFutureOfferingID(
+	r *http.Request,
+) (uuid.UUID, error) {
+	raw := strings.TrimSpace(
+		chi.URLParam(
+			r,
+			"futureOfferingID",
+		),
+	)
+
+	if raw == "" {
+		return uuid.Nil, errors.New(
+			"future offering ID is required",
+		)
+	}
+
+	id, err := uuid.Parse(raw)
+	if err != nil || id == uuid.Nil {
+		return uuid.Nil, errors.New(
+			"invalid future offering ID",
 		)
 	}
 
@@ -320,13 +357,13 @@ type merchantInvoiceResponse struct {
 
 	MerchantID uuid.UUID `json:"merchant_id"`
 
+	FutureOfferingID uuid.UUID `json:"future_offering_id"`
+
 	InvoiceNumber string `json:"invoice_number"`
 
 	InvoiceStatus data.MerchantInvoiceStatus `json:"invoice_status"`
 
 	SubtotalAmount string `json:"subtotal_amount"`
-
-	AdjustmentAmount string `json:"adjustment_amount"`
 
 	TotalAmount string `json:"total_amount"`
 
@@ -353,10 +390,10 @@ func newMerchantInvoiceResponse(
 	return merchantInvoiceResponse{
 		ID:               invoice.ID,
 		MerchantID:       invoice.MerchantID,
+		FutureOfferingID: invoice.FutureOfferingID,
 		InvoiceNumber:    invoice.InvoiceNumber,
 		InvoiceStatus:    invoice.InvoiceStatus,
 		SubtotalAmount:   invoice.SubtotalAmount,
-		AdjustmentAmount: invoice.AdjustmentAmount,
 		TotalAmount:      invoice.TotalAmount,
 		AmountPaid:       invoice.AmountPaid,
 		Currency:         invoice.Currency,
@@ -534,13 +571,15 @@ func (app *Application) GetMerchantInvoiceByIDHandler(
 				id,
 			)
 	if err != nil {
-		logger.Error(
-			"Get merchant invoice by ID failed",
-			"merchant_invoice_id",
-			id,
-			"error",
-			err,
-		)
+		if merchantInvoiceHTTPStatus(err) == http.StatusInternalServerError {
+			logger.Error(
+				"Get merchant invoice by ID failed",
+				"merchant_invoice_id",
+				id,
+				"error",
+				err,
+			)
+		}
 
 		app.respondWithMerchantInvoiceError(
 			w,
@@ -548,20 +587,6 @@ func (app *Application) GetMerchantInvoiceByIDHandler(
 		)
 		return
 	}
-
-	if invoice == nil {
-		app.respondWithError(
-			w,
-			errors.New(
-				"merchant invoice not found",
-			),
-			http.StatusNotFound,
-		)
-		return
-	}
-
-	message :=
-		"Merchant invoice retrieved successfully"
 
 	if auditErr :=
 		app.auditMerchantInvoiceRead(
@@ -571,16 +596,16 @@ func (app *Application) GetMerchantInvoiceByIDHandler(
 			"Read a merchant invoice",
 			invoice.ID.String(),
 		); auditErr != nil {
-		logger.Warn(
-			"Merchant invoice retrieved but audit recording failed",
-			"merchant_invoice_id",
-			invoice.ID,
-			"error",
-			auditErr,
+		app.serverErrorResponse(
+			logger,
+			w,
+			r,
+			fmt.Errorf(
+				"record merchant invoice read audit: %w",
+				auditErr,
+			),
 		)
-
-		message =
-			"Merchant invoice retrieved, but audit logging failed"
+		return
 	}
 
 	app.respondWithJSON(
@@ -588,7 +613,7 @@ func (app *Application) GetMerchantInvoiceByIDHandler(
 		http.StatusOK,
 		jsonResponse{
 			Error:   false,
-			Message: message,
+			Message: "Merchant invoice retrieved successfully",
 			Data:    newMerchantInvoiceResponse(invoice),
 		},
 	)
@@ -661,13 +686,16 @@ func (app *Application) GetMerchantInvoiceByInvoiceNumberHandler(
 				ctx,
 				invoiceNumber,
 			)
+
 	if err != nil {
-		// Deliberately do not log the supplied invoice number.
-		logger.Error(
-			"Get merchant invoice by invoice number failed",
-			"error",
-			err,
-		)
+		if merchantInvoiceHTTPStatus(err) == http.StatusInternalServerError {
+			// Deliberately do not log the supplied invoice number.
+			logger.Error(
+				"Get merchant invoice by invoice number failed",
+				"error",
+				err,
+			)
+		}
 
 		app.respondWithMerchantInvoiceError(
 			w,
@@ -675,20 +703,6 @@ func (app *Application) GetMerchantInvoiceByInvoiceNumberHandler(
 		)
 		return
 	}
-
-	if invoice == nil {
-		app.respondWithError(
-			w,
-			errors.New(
-				"merchant invoice not found",
-			),
-			http.StatusNotFound,
-		)
-		return
-	}
-
-	message :=
-		"Merchant invoice retrieved successfully"
 
 	if auditErr :=
 		app.auditMerchantInvoiceRead(
@@ -698,16 +712,16 @@ func (app *Application) GetMerchantInvoiceByInvoiceNumberHandler(
 			"Read a merchant invoice by invoice number",
 			invoice.ID.String(),
 		); auditErr != nil {
-		logger.Warn(
-			"Merchant invoice retrieved but audit recording failed",
-			"merchant_invoice_id",
-			invoice.ID,
-			"error",
-			auditErr,
+		app.serverErrorResponse(
+			logger,
+			w,
+			r,
+			fmt.Errorf(
+				"record merchant invoice-number read audit: %w",
+				auditErr,
+			),
 		)
-
-		message =
-			"Merchant invoice retrieved, but audit logging failed"
+		return
 	}
 
 	app.respondWithJSON(
@@ -715,7 +729,7 @@ func (app *Application) GetMerchantInvoiceByInvoiceNumberHandler(
 		http.StatusOK,
 		jsonResponse{
 			Error:   false,
-			Message: message,
+			Message: "Merchant invoice retrieved successfully",
 			Data:    newMerchantInvoiceResponse(invoice),
 		},
 	)
@@ -814,13 +828,15 @@ func (app *Application) ListMerchantInvoicesByMerchantHandler(
 				beforeID,
 			)
 	if err != nil {
-		logger.Error(
-			"List merchant invoices by merchant failed",
-			"merchant_id",
-			merchantID,
-			"error",
-			err,
-		)
+		if merchantInvoiceHTTPStatus(err) == http.StatusInternalServerError {
+			logger.Error(
+				"List merchant invoices by merchant failed",
+				"merchant_id",
+				merchantID,
+				"error",
+				err,
+			)
+		}
 
 		app.respondWithMerchantInvoiceError(
 			w,
@@ -835,9 +851,6 @@ func (app *Application) ListMerchantInvoicesByMerchantHandler(
 			limit,
 		)
 
-	message :=
-		"Merchant invoices retrieved successfully"
-
 	if auditErr :=
 		app.auditMerchantInvoiceRead(
 			ctx,
@@ -846,16 +859,16 @@ func (app *Application) ListMerchantInvoicesByMerchantHandler(
 			"List a merchant's invoice history",
 			merchantID.String(),
 		); auditErr != nil {
-		logger.Warn(
-			"Merchant invoices retrieved but audit recording failed",
-			"merchant_id",
-			merchantID,
-			"error",
-			auditErr,
+		app.serverErrorResponse(
+			logger,
+			w,
+			r,
+			fmt.Errorf(
+				"record merchant invoice-list audit: %w",
+				auditErr,
+			),
 		)
-
-		message =
-			"Merchant invoices retrieved, but audit logging failed"
+		return
 	}
 
 	logger.Info(
@@ -871,7 +884,183 @@ func (app *Application) ListMerchantInvoicesByMerchantHandler(
 		http.StatusOK,
 		jsonResponse{
 			Error:   false,
-			Message: message,
+			Message: "Merchant invoices retrieved successfully",
+			Data:    response,
+		},
+	)
+}
+
+// ListMerchantInvoicesByMerchantAndFutureOfferingHandler returns bounded
+// privileged invoice history for one merchant Future Offering.
+func (app *Application) ListMerchantInvoicesByMerchantAndFutureOfferingHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	logger := app.Logger.
+		GetLoggerWithContext(r).
+		WithFunctionName(
+			"ListMerchantInvoicesByMerchantAndFutureOfferingHandler",
+		)
+
+	ctx, cancel :=
+		context.WithTimeout(
+			r.Context(),
+			cfgTimeout,
+		)
+	defer cancel()
+
+	if !app.HasPermission(
+		ctx,
+		actionListMerchantInvoices,
+	) {
+		app.respondWithError(
+			w,
+			errors.New(
+				"forbidden: insufficient permissions",
+			),
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	userID :=
+		app.getUserIDFromContext(ctx)
+
+	if userID == nil {
+		app.respondWithError(
+			w,
+			errors.New(
+				"user ID not found in context",
+			),
+			http.StatusUnauthorized,
+		)
+		return
+	}
+
+	merchantID, err :=
+		app.parseMerchantIDPathParam(r)
+	if err != nil {
+		app.respondWithError(
+			w,
+			err,
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	futureOfferingID, err :=
+		parseMerchantInvoiceFutureOfferingID(r)
+	if err != nil {
+		app.respondWithError(
+			w,
+			err,
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	limit, err :=
+		parseMerchantInvoiceLimit(r)
+	if err != nil {
+		app.respondWithError(
+			w,
+			err,
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	beforeCreatedAt, beforeID, err :=
+		parseMerchantInvoiceListCursor(r)
+	if err != nil {
+		app.respondWithError(
+			w,
+			err,
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	invoices, err :=
+		app.Models.
+			MerchantInvoice.
+			ListByMerchantAndFutureOffering(
+				ctx,
+				merchantID,
+				futureOfferingID,
+				limit,
+				beforeCreatedAt,
+				beforeID,
+			)
+	if err != nil {
+		if merchantInvoiceHTTPStatus(err) == http.StatusInternalServerError {
+			logger.Error(
+				"List merchant invoices by merchant and Future Offering failed",
+				"merchant_id",
+				merchantID,
+				"future_offering_id",
+				futureOfferingID,
+				"error",
+				err,
+			)
+		}
+
+		app.respondWithMerchantInvoiceError(
+			w,
+			err,
+		)
+		return
+	}
+
+	response :=
+		newMerchantInvoiceListResponse(
+			invoices,
+			limit,
+		)
+
+	auditEntityID :=
+		fmt.Sprintf(
+			"merchant:%s:future_offering:%s",
+			merchantID,
+			futureOfferingID,
+		)
+
+	if auditErr :=
+		app.auditMerchantInvoiceRead(
+			ctx,
+			userID,
+			actionListMerchantInvoices,
+			"List a merchant's invoice history by Future Offering",
+			auditEntityID,
+		); auditErr != nil {
+		app.serverErrorResponse(
+			logger,
+			w,
+			r,
+			fmt.Errorf(
+				"record merchant invoice Future Offering-list audit: %w",
+				auditErr,
+			),
+		)
+		return
+	}
+
+	logger.Info(
+		"Merchant invoices retrieved by Future Offering",
+		"merchant_id",
+		merchantID,
+		"future_offering_id",
+		futureOfferingID,
+		"result_count",
+		response.Pagination.Count,
+	)
+
+	app.respondWithJSON(
+		w,
+		http.StatusOK,
+		jsonResponse{
+			Error:   false,
+			Message: "Merchant invoices retrieved successfully",
 			Data:    response,
 		},
 	)
@@ -978,15 +1167,17 @@ func (app *Application) ListMerchantInvoicesByMerchantAndStatusHandler(
 				beforeID,
 			)
 	if err != nil {
-		logger.Error(
-			"List merchant invoices by merchant and status failed",
-			"merchant_id",
-			merchantID,
-			"status",
-			status,
-			"error",
-			err,
-		)
+		if merchantInvoiceHTTPStatus(err) == http.StatusInternalServerError {
+			logger.Error(
+				"List merchant invoices by merchant and status failed",
+				"merchant_id",
+				merchantID,
+				"status",
+				status,
+				"error",
+				err,
+			)
+		}
 
 		app.respondWithMerchantInvoiceError(
 			w,
@@ -1008,9 +1199,6 @@ func (app *Application) ListMerchantInvoicesByMerchantAndStatusHandler(
 			status,
 		)
 
-	message :=
-		"Merchant invoices retrieved successfully"
-
 	if auditErr :=
 		app.auditMerchantInvoiceRead(
 			ctx,
@@ -1019,18 +1207,16 @@ func (app *Application) ListMerchantInvoicesByMerchantAndStatusHandler(
 			"List a merchant's invoice history by status",
 			auditEntityID,
 		); auditErr != nil {
-		logger.Warn(
-			"Merchant invoices retrieved but audit recording failed",
-			"merchant_id",
-			merchantID,
-			"status",
-			status,
-			"error",
-			auditErr,
+		app.serverErrorResponse(
+			logger,
+			w,
+			r,
+			fmt.Errorf(
+				"record merchant invoice status-list audit: %w",
+				auditErr,
+			),
 		)
-
-		message =
-			"Merchant invoices retrieved, but audit logging failed"
+		return
 	}
 
 	logger.Info(
@@ -1048,7 +1234,7 @@ func (app *Application) ListMerchantInvoicesByMerchantAndStatusHandler(
 		http.StatusOK,
 		jsonResponse{
 			Error:   false,
-			Message: message,
+			Message: "Merchant invoices retrieved successfully",
 			Data:    response,
 		},
 	)

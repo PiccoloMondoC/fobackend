@@ -982,8 +982,8 @@ func (app *Application) Routes() http.Handler {
 		// Merchant Invoices
 		//
 		// Privileged durable commercial-obligation history. Invoice creation,
-		// financial revision, lifecycle mutation, overdue processing, and
-		// payment application remain service/orchestration responsibilities.
+		// reconciliation, lifecycle mutation, overdue processing, and payment
+		// application remain service/orchestration responsibilities.
 		//
 		// Merchant actors must not receive these permissions unless a future
 		// merchant-facing route family has canonical ownership/delegation
@@ -997,6 +997,12 @@ func (app *Application) Routes() http.Handler {
 				Get(
 					"/by-number",
 					app.GetMerchantInvoiceByInvoiceNumberHandler,
+				)
+
+			mi.With(app.RequirePermission("list_merchant_invoices")).
+				Get(
+					"/by-merchant/{merchantID}/future-offering/{futureOfferingID}",
+					app.ListMerchantInvoicesByMerchantAndFutureOfferingHandler,
 				)
 
 			mi.With(app.RequirePermission("list_merchant_invoices")).
