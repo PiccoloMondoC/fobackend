@@ -1024,6 +1024,38 @@ func (app *Application) Routes() http.Handler {
 				)
 		})
 
+		// Merchant Invoice Items
+		//
+		// Privileged durable invoice-line history and reconciliation reads.
+		// Draft-line insertion/removal and invoice-composition aggregation remain
+		// service/orchestration responsibilities and are not exposed through HTTP.
+		//
+		// Merchant actors must not receive these permissions unless a future
+		// merchant-facing route family has canonical ownership/delegation
+		// enforcement and an explicitly approved requirement.
+		v1.Route("/merchant-invoice-items", func(mii chi.Router) {
+			mii.Use(app.AuthMiddleware)
+
+			// Static routes must remain before the parameterized item-ID route.
+			mii.With(app.RequirePermission("read_merchant_invoice_item")).
+				Get(
+					"/by-fee-calculation/{feeCalculationID}",
+					app.GetMerchantInvoiceItemByFeeCalculationIDHandler,
+				)
+
+			mii.With(app.RequirePermission("list_merchant_invoice_items")).
+				Get(
+					"/by-invoice/{merchantInvoiceID}",
+					app.ListMerchantInvoiceItemsByInvoiceIDHandler,
+				)
+
+			mii.With(app.RequirePermission("read_merchant_invoice_item")).
+				Get(
+					"/{merchantInvoiceItemID}",
+					app.GetMerchantInvoiceItemByIDHandler,
+				)
+		})
+
 		// Merchant Payment Methods
 		v1.Route("/merchant-payment-methods", func(mpm chi.Router) {
 			mpm.Use(app.AuthMiddleware)

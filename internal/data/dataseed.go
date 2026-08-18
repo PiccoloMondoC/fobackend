@@ -1091,6 +1091,9 @@ const (
 		-- Merchant Invoices
 		('read_merchant_invoice', 'Allows privileged reading of a merchant invoice'),
 		('list_merchant_invoices', 'Allows privileged listing of merchant invoice history'),
+		-- Merchant Invoice Items
+		('read_merchant_invoice_item', 'Allows privileged reading of a merchant invoice item'),
+		('list_merchant_invoice_items', 'Allows privileged listing of merchant invoice item history'),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Allows creating merchant-owned payment method references'),
 		('read_merchant_payment_method', 'Allows reading a merchant-owned payment method reference'),
@@ -1289,6 +1292,7 @@ const (
 		('merchant_fee_calculation', 'Canonical durable merchant fee calculation monetary-result history'),
 		('merchant_platform_credit_application', 'Platform-issued merchant commercial credit application entity'),
 		('merchant_invoice', 'Canonical durable merchant commercial-obligation and settlement-lifecycle history'),
+		('merchant_invoice_item', 'Canonical durable merchant invoice-line history'),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
@@ -1632,6 +1636,9 @@ const (
 		-- Merchant Invoices
 		('read_merchant_invoice', 'Read a merchant invoice'),
 		('list_merchant_invoices', 'List merchant invoice history'),
+		-- Merchant Invoice Items
+		('read_merchant_invoice_item', 'Read a merchant invoice item'),
+		('list_merchant_invoice_items', 'List merchant invoice item history'),
 		-- Merchant Payment Methods
 		('create_merchant_payment_method', 'Create a merchant payment method reference'),
 		('read_merchant_payment_method', 'Read a merchant payment method reference'),
