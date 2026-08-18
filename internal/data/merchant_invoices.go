@@ -175,6 +175,7 @@ const (
 	merchantInvoiceMerchantFKConstraint            = "merchant_invoices_merchant_id_fkey"
 	merchantInvoiceFutureOfferingFKConstraint      = "merchant_invoices_future_offering_id_fkey"
 	merchantInvoiceNumberUniqueConstraint          = "merchant_invoices_invoice_number_key"
+	merchantInvoiceNumberCanonicalConstraint       = "chk_merchant_invoice_number_canonical"
 	merchantInvoiceNumberLengthConstraint          = "chk_merchant_invoices_invoice_number_length"
 	merchantInvoiceStatusConstraint                = "merchant_invoices_invoice_status_check"
 	merchantInvoiceSubtotalConstraint              = "merchant_invoices_subtotal_amount_check"
@@ -323,7 +324,8 @@ func classifyMerchantInvoiceWriteError(err error) error {
 		return ErrMerchantInvoiceFutureOfferingNotFound
 	case IsPgConstraint(err, merchantInvoiceNumberUniqueConstraint):
 		return ErrMerchantInvoiceDuplicateNumber
-	case IsPgConstraint(err, merchantInvoiceNumberLengthConstraint),
+	case IsPgConstraint(err, merchantInvoiceNumberCanonicalConstraint),
+		IsPgConstraint(err, merchantInvoiceNumberLengthConstraint),
 		IsPgConstraint(err, merchantInvoiceStatusConstraint),
 		IsPgConstraint(err, merchantInvoiceSubtotalConstraint),
 		IsPgConstraint(err, merchantInvoiceTotalNonNegativeConstraint),

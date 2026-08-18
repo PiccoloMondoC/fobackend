@@ -8,166 +8,200 @@
 //	Layer: 2.4.b Commerce Architecture / Monetization Layer
 //	Release Class: SPINE
 //	Reason:
-//	  merchant_invoices is the canonical durable statement of a merchant's
-//	  commercial obligation to Sagrenti. This service provides the trusted
-//	  internal capability boundary for constructing draft invoices, revising
-//	  draft financial identity, issuing invoices, settling zero-balance
-//	  obligations, marking eligible invoices overdue, and voiding eligible
-//	  issued invoices.
+//	  merchant_invoices is the canonical durable statement of one merchant's
+//	  commercial obligation for one Future Offering in one currency.
+//
+//	  This service provides the trusted internal mutation boundary above
+//	  MerchantInvoiceModel for draft construction, transaction-owned invoice
+//	  composition, reconciliation-coupled issuance, zero-balance settlement,
+//	  overdue transition, and voiding.
 //
 // Domain Boundary:
 //
 //	This service owns:
 //	  - trusted internal entrypoints for merchant-invoice lifecycle mutation;
-//	  - pool-backed and caller-owned-transaction forms where composition may
-//	    require them;
-//	  - DBTimeout-bounded execution for pool-backed service calls;
+//	  - construction of empty draft invoice headers from already-resolved identity;
+//	  - caller-owned-transaction composition entrypoints for row locking,
+//	    reconciliation, and issuance;
+//	  - DBTimeout-bounded execution for legitimate pool-backed service calls;
 //	  - preservation of caller-owned transaction semantics for Tx variants;
-//	  - a stable service boundary above MerchantInvoiceModel for future
-//	    Commerce orchestration.
+//	  - the stable service boundary through which future Commerce orchestration
+//	    composes merchant invoice mutation.
 //
 //	This service does not own:
 //	  - invoice-generation policy;
 //	  - invoice-number sequencing policy;
+//	  - fee calculation or fee-schedule selection;
+//	  - invoice-item or normalized monetary-effect calculation;
 //	  - payment-term or grace-period policy;
 //	  - currency selection or merchant-domicile assumptions;
-//	  - the decision to use IssueDueNow rather than Issue;
+//	  - the decision that an invoice is due immediately;
 //	  - overdue-processing cadence or collection policy;
-//	  - fee calculation or fee-schedule selection;
-//	  - platform-credit eligibility, allocation, or account selection;
+//	  - Platform Credit eligibility, allocation, or account selection;
 //	  - promotions or merchant-specific commercial policy;
 //	  - payment execution or authoritative merchant_payments persistence;
 //	  - HTTP authorization or mutation exposure;
 //	  - asynchronous scheduling, retry, worker claiming, or failure handling.
 //
-// Resolved-Fact Contract:
+// Invoice Identity:
 //
-//	CreateMerchantInvoiceDraftInput currently contains commercial facts supplied
-//	by trusted upstream Commerce orchestration: merchant ownership, invoice
-//	number, and the draft financial snapshot.
+//	One merchant invoice represents exactly:
 //
-//	The current merchant_invoices header does not contain normalized structural
-//	relationships to the fee calculations, Platform Credit applications, or
-//	other authoritative commercial records from which an invoice obligation is
-//	derived. MerchantID therefore cannot yet be derived from invoice-source
-//	provenance at this boundary.
+//	  one merchant
+//	  + one Future Offering
+//	  + one currency
+//	  + one invoice obligation.
 //
-//	This service must not invent that missing provenance through opaque JSON,
-//	notes, invoice numbers, logs, or caller conventions.
+//	MerchantID, FutureOfferingID, InvoiceNumber, and Currency are therefore
+//	required draft-creation facts.
 //
-//	PRODUCTION CREATION GATE:
+// Draft Construction:
+//
+//	Draft creation establishes only the invoice header and immutable commercial
+//	identity needed before normalized invoice composition exists.
+//
+//	A new draft starts with:
+//
+//	  subtotal_amount = 0
+//	  total_amount    = 0
+//	  amount_paid     = 0
+//
+//	Callers must not supply subtotal or total as draft-creation truth.
+//
+//	MerchantInvoiceModel validates Future Offering ownership, invoice number,
+//	currency, structural state, and persistence invariants.
+//
+// Production Creation Gate:
 //
 //	CreateMerchantInvoiceDraftInternal and
-//	CreateMerchantInvoiceDraftTxInternal are valid low-level service capabilities,
-//	but the merchant-invoice creation workflow is not commercially complete until
-//	a normalized invoice source/line domain can durably associate each invoice
-//	with the authoritative obligations and reductions that produced it.
+//	CreateMerchantInvoiceDraftTxInternal are valid low-level capabilities.
 //
-//	No production Commerce workflow may treat caller-supplied subtotal,
-//	adjustment, currency, or merchant ownership as sufficient financial
-//	provenance merely because MerchantInvoiceModel validates those values.
+//	They do not by themselves constitute a production invoice-generation
+//	workflow.
 //
-//	Before production invoice generation is enabled, coordinating Commerce
-//	orchestration must be capable of composing the invoice header with its
-//	normalized source evidence atomically where required.
+//	Production invoice generation remains gated until normalized invoice
+//	composition can durably associate the invoice with the authoritative
+//	fee calculations, invoice items, Platform Credit applications, taxes,
+//	surcharges, discounts, rebates, or other economically meaningful records
+//	that produced the final obligation.
 //
-//	Structural validation, monetary canonicalization, currency canonicalization,
-//	merchant foreign-key enforcement, invoice-number uniqueness, and persisted
-//	invoice-state validation remain owned by MerchantInvoiceModel.
+//	This service must never substitute opaque JSON, notes, invoice numbers,
+//	logs, or caller conventions for that normalized provenance.
 //
 // Monetary Boundary:
 //
 //	This service performs no monetary arithmetic.
 //
-//	SubtotalAmount, AdjustmentAmount, TotalAmount, and AmountPaid remain exact
-//	decimal strings / PostgreSQL NUMERIC values. This service never converts
-//	monetary values through float32 or float64, never silently rounds, and never
-//	performs currency conversion.
+//	There is no generic invoice-wide adjustment scalar.
 //
-//	Draft financial revision replaces the complete mutable draft financial
-//	identity represented by subtotal, adjustment, derived total, and currency.
-//	After issuance, the data-layer guards prevent those financial facts from
-//	being rewritten.
+//	SubtotalAmount is the reconciled gross aggregate represented by the
+//	canonical invoice composition contract.
+//
+//	TotalAmount is the independently reconciled final pre-settlement merchant
+//	obligation after authoritative normalized monetary effects.
+//
+//	Reconciliation values remain exact decimal strings / PostgreSQL NUMERIC
+//	values. This service never converts monetary values through float32 or
+//	float64, silently rounds them, or performs currency conversion.
+//
+//	Currency is selected before draft creation and cannot be mutated through
+//	this service after the draft exists.
+//
+// Composition and Issuance Boundary:
+//
+//	Reconciliation and issuance are transaction-only.
+//
+//	The coordinating Commerce workflow must:
+//
+//	  1. own the database transaction;
+//	  2. row-lock the invoice through LockMerchantInvoiceForCompositionTxInternal;
+//	  3. derive normalized authoritative invoice composition;
+//	  4. derive MerchantInvoiceReconciliation from that composition;
+//	  5. reconcile the draft or reconcile-and-issue it inside the same
+//	     transaction;
+//	  6. commit only when the complete composition workflow succeeds.
+//
+//	There is deliberately no pool-backed reconciliation or issuance method.
+//
+//	This prevents a draft from being issued using stale, caller-invented, or
+//	unreconciled financial aggregates.
+//
+// Due-Date Boundary:
+//
+//	ReconcileAndIssueMerchantInvoiceTxInternal accepts an optional already-
+//	resolved dueAt.
+//
+//	ReconcileAndIssueMerchantInvoiceDueNowTxInternal provides the Engineering
+//	capability for an invoice whose configured commercial policy has already
+//	resolved to "due immediately."
+//
+//	This service never decides which merchant, Future Offering, invoice class,
+//	fee, plan, or commercial arrangement receives either treatment.
 //
 // Transaction Boundary:
 //
-//	Pool-backed entrypoints use one outer service DBTimeout. The underlying data
-//	model may enforce its own defensive database-operation timeout; the service
-//	timeout remains the outer workflow bound.
+//	Pool-backed entrypoints use one outer service DBTimeout.
 //
 //	Tx-suffixed entrypoints inherit the caller's context and supplied pgx.Tx.
 //	They never begin, commit, roll back, or replace that transaction and do not
 //	introduce an independent service timeout.
 //
-//	The invoice mutations themselves use guarded INSERT/UPDATE statements in the
-//	data layer. Where a guarded lifecycle UPDATE does not match, the data model
-//	may perform a follow-up read through the same persistence boundary to
-//	distinguish not-found, already-at-target idempotency, and invalid transition.
+//	The data model may still apply its defensive per-database-operation timeout;
+//	transaction ownership remains with the caller.
 //
 // Payment-Composition Boundary:
 //
 //	This file intentionally does not expose ApplyMerchantInvoicePaymentInternal
 //	or ApplyMerchantInvoicePaymentTxInternal.
 //
-//	MerchantInvoiceModel.ApplyPaymentTx is transaction-only because the
+//	MerchantInvoiceModel.ApplyPaymentTx is transaction-only because an
 //	amount_paid increment must commit atomically with the authoritative
-//	merchant_payments record that explains that increment.
+//	merchant_payments record that explains it.
 //
-//	The future Merchant Payments orchestration owns that transaction and must
-//	compose its authoritative payment persistence with
-//	MerchantInvoiceModel.ApplyPaymentTx in the same transaction.
+//	Merchant Payments orchestration owns that future transaction.
 //
-//	This service therefore never:
+//	This Commerce service therefore never:
+//	  - executes payment;
 //	  - applies payment independently;
 //	  - creates an invoice-only payment transaction;
-//	  - treats payment amount as an idempotency key;
+//	  - treats an amount as a payment identity or idempotency key;
 //	  - infers settlement from a provider attempt;
 //	  - moves Merchant Payments responsibility into Commerce.
 //
+// Zero-Balance Boundary:
+//
+//	A reconciled invoice may legitimately have total_amount = 0.
+//
+//	Settling such an issued invoice to paid records that no payment obligation
+//	remains. It does not manufacture a zero-value payment.
+//
+//	Platform Credits and other pre-settlement commercial reductions are not
+//	payments.
+//
 // Concurrency:
 //
-//	Lifecycle mutations rely on database row locking plus guarded state
-//	predicates. Concurrent or retried transitions cannot bypass the persisted
-//	lifecycle guards.
+//	Composition workflows acquire the invoice row lock before deriving and
+//	persisting authoritative aggregates.
 //
-//	Simple lifecycle transitions resolve an unsuccessful guarded UPDATE by
-//	reading current state. Already-at-target state may therefore be treated
-//	idempotently while incompatible state remains an invalid transition.
+//	Simple lifecycle transitions use data-layer guarded UPDATE predicates.
+//	Concurrent or retried operations cannot bypass persisted lifecycle guards.
 //
-//	Issue and IssueDueNow additionally preserve their requested due-date
-//	identity when determining whether a retry is equivalent.
-//
-//	Draft financial revisions are safe database writes but intentionally do not
-//	claim optimistic-concurrency semantics. If multiple trusted writers revise
-//	the same draft concurrently while it remains draft, PostgreSQL serializes the
-//	updates and the final committed writer determines the resulting draft
-//	financial snapshot. A future interactive/concurrent editing surface may
-//	require an explicit version/check-token contract rather than pretending that
-//	this service already provides one.
-//
-// Payment concurrency and payment retry idempotency belong to the future
-// authoritative merchant_payments transaction and its durable idempotency
-// boundary.
+//	Payment concurrency and payment retry idempotency remain owned by the future
+//	authoritative merchant_payments transaction and its durable idempotency
+//	boundary.
 //
 // Asynchronous Responsibility:
 //
-//	Issued invoices reaching due_at are genuine future time-based work.
+//	Issued invoices reaching due_at represent genuine time-based future work.
 //
-//	merchant_invoices_async.go is intentionally absent until Sagrenti's durable
-//	Automation Foundation provides the required worker execution, durable
-//	scheduling/claiming, retries, failure handling, concurrency coordination,
-//	observability, and shutdown behavior.
-//
-//	MerchantInvoiceModel.ListIssuedDueForOverdueProcessing and the
-//	MarkMerchantInvoiceOverdueInternal / TxInternal capabilities provide the
-//	domain operations that future Automation Foundation workers may compose.
-//
-//	No OS cron dependency, domain-specific worker engine, or in-memory timer is
-//	introduced here.
+//	This service provides the transition capability required by future durable
+//	Automation Foundation workers but does not start timers, worker engines,
+//	cron jobs, retry loops, or scheduler infrastructure.
 //
 // Observability:
 //
-//	MerchantInvoiceModel already emits structured persistence/lifecycle logs.
+//	MerchantInvoiceModel owns persistence/lifecycle logging.
+//
 //	This service avoids duplicating those logs.
 //
 //	Invoice monetary values must not be added to service logs, audit metadata,
@@ -178,23 +212,29 @@
 //
 //	Keep compiling.
 //	Keep production-ready.
+//	Preserve one-merchant + one-Future-Offering + one-currency invoice identity.
+//	Preserve empty zero-value draft construction.
 //	Preserve exact monetary representation.
-//	Preserve draft-only financial revision.
+//	Preserve normalized composition provenance.
+//	Preserve transaction-only draft reconciliation.
+//	Preserve reconciliation-coupled transaction-only issuance.
 //	Preserve post-issuance monetary and currency immutability.
 //	Preserve guarded forward-only lifecycle behavior.
 //	Preserve caller-owned transaction semantics.
 //	Preserve transaction-only payment application at the Merchant Payments
 //	composition boundary.
 //	Preserve errors.Is compatibility through %w wrapping.
+//	Never reintroduce adjustment_amount or another generic monetary catch-all.
 //	Never invent invoice-generation, payment-term, due-date, currency-selection,
 //	pricing, promotion, Platform Credit, payment, or collection policy.
+//	Never expose standalone or pool-backed invoice issuance.
 //	Never expose an invoice-only or pool-backed payment-application capability.
 //	Never begin, commit, or roll back caller-owned transactions.
 //	Never introduce domain asynchronous execution without the durable Automation
 //	Foundation required by BEG.
-//	Block deployment if this file breaks monetary integrity, lifecycle safety,
-//	transaction discipline, historical integrity, payment composition, or
-//	billing reconciliation readiness.
+//	Block deployment if this file breaks monetary integrity, provenance,
+//	lifecycle safety, transaction discipline, historical integrity, payment
+//	composition, or billing-reconciliation readiness.
 package services
 
 import (
@@ -208,20 +248,23 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// CreateMerchantInvoiceDraftInput contains the already-resolved facts required
-// to create one draft merchant invoice.
+// CreateMerchantInvoiceDraftInput contains the already-resolved identity facts
+// required to create one empty draft merchant invoice.
 //
-// MerchantID, InvoiceNumber, and Financials must already have been resolved by
-// trusted upstream Commerce orchestration or governed configuration. This
-// service does not decide invoice-generation policy, invoice-number sequencing,
-// pricing, adjustments, or currency selection.
+// MerchantID, FutureOfferingID, InvoiceNumber, and Currency must already have
+// been resolved by trusted upstream Commerce orchestration or governed
+// configuration.
+//
+// This service does not decide whether an invoice should exist, generate its
+// number, choose its currency, calculate charges, or derive invoice composition.
 type CreateMerchantInvoiceDraftInput struct {
-	MerchantID    uuid.UUID
-	InvoiceNumber string
-	Financials    data.MerchantInvoiceDraftFinancials
+	MerchantID       uuid.UUID
+	FutureOfferingID uuid.UUID
+	InvoiceNumber    string
+	Currency         string
 }
 
-func validateMerchantInvoiceService(s *Service) error {
+func validateMerchantInvoicePoolService(s *Service) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -244,25 +287,8 @@ func validateMerchantInvoiceService(s *Service) error {
 }
 
 func validateMerchantInvoiceTxService(s *Service) error {
-	if s == nil {
-		return fmt.Errorf(
-			"%w: merchant invoice service is nil",
-			ErrInvalidServiceConfiguration,
-		)
-	}
-
-	if s.Logger == nil {
-		return fmt.Errorf(
-			"%w: merchant invoice service logger is nil",
-			ErrInvalidServiceConfiguration,
-		)
-	}
-
-	if s.Models == nil {
-		return fmt.Errorf(
-			"%w: merchant invoice service models are nil",
-			ErrInvalidServiceConfiguration,
-		)
+	if err := s.validate(); err != nil {
+		return err
 	}
 
 	if s.Models.MerchantInvoice.Logger == nil {
@@ -282,7 +308,7 @@ func (s *Service) merchantInvoiceContext(
 		return nil, nil, ErrNilContext
 	}
 
-	if err := validateMerchantInvoiceService(s); err != nil {
+	if err := validateMerchantInvoicePoolService(s); err != nil {
 		return nil, nil, err
 	}
 
@@ -305,24 +331,43 @@ func validateMerchantInvoiceTx(tx pgx.Tx) error {
 	return nil
 }
 
+func validateMerchantInvoiceTxCall(
+	s *Service,
+	ctx context.Context,
+	tx pgx.Tx,
+) error {
+	if ctx == nil {
+		return ErrNilContext
+	}
+
+	if err := validateMerchantInvoiceTxService(s); err != nil {
+		return err
+	}
+
+	return validateMerchantInvoiceTx(tx)
+}
+
 func merchantInvoiceDraftFromInput(
 	input CreateMerchantInvoiceDraftInput,
 ) *data.MerchantInvoice {
 	return &data.MerchantInvoice{
 		MerchantID:       input.MerchantID,
+		FutureOfferingID: input.FutureOfferingID,
 		InvoiceNumber:    input.InvoiceNumber,
-		SubtotalAmount:   input.Financials.SubtotalAmount,
-		AdjustmentAmount: input.Financials.AdjustmentAmount,
-		Currency:         input.Financials.Currency,
+		Currency:         input.Currency,
 	}
 }
 
-// CreateMerchantInvoiceDraftInternal creates one draft merchant invoice from
-// already-resolved commercial facts.
+// CreateMerchantInvoiceDraftInternal creates one empty draft merchant invoice
+// from already-resolved invoice identity facts.
 //
 // MerchantInvoiceModel remains authoritative for structural validation,
-// monetary/currency canonicalization, merchant foreign-key enforcement,
-// invoice-number uniqueness, and draft-state persistence invariants.
+// merchant/Future Offering ownership enforcement, invoice-number
+// canonicalization and uniqueness, currency canonicalization, and persisted
+// draft-state invariants.
+//
+// Draft financial aggregates are intentionally not accepted here. They are
+// derived later from normalized invoice composition.
 func (s *Service) CreateMerchantInvoiceDraftInternal(
 	ctx context.Context,
 	input CreateMerchantInvoiceDraftInput,
@@ -353,22 +398,14 @@ func (s *Service) CreateMerchantInvoiceDraftInternal(
 // CreateMerchantInvoiceDraftTxInternal is the transaction-aware form of
 // CreateMerchantInvoiceDraftInternal.
 //
-// The caller owns transaction begin, commit, rollback, and timeout. This method
-// never replaces the supplied transaction.
+// The caller owns transaction begin, commit, rollback, and workflow timeout.
+// This method never replaces or completes the supplied transaction.
 func (s *Service) CreateMerchantInvoiceDraftTxInternal(
 	ctx context.Context,
 	tx pgx.Tx,
 	input CreateMerchantInvoiceDraftInput,
 ) (*data.MerchantInvoice, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
-	if err := validateMerchantInvoiceTxService(s); err != nil {
-		return nil, err
-	}
-
-	if err := validateMerchantInvoiceTx(tx); err != nil {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
 		return nil, err
 	}
 
@@ -390,72 +427,33 @@ func (s *Service) CreateMerchantInvoiceDraftTxInternal(
 	return result, nil
 }
 
-// UpdateMerchantInvoiceDraftFinancialsInternal replaces the complete mutable
-// financial snapshot of a draft invoice.
+// LockMerchantInvoiceForCompositionTxInternal retrieves and row-locks one
+// merchant invoice inside a caller-owned transaction.
 //
-// The data model derives TotalAmount from SubtotalAmount + AdjustmentAmount and
-// enforces that revision is possible only while the invoice remains draft.
-func (s *Service) UpdateMerchantInvoiceDraftFinancialsInternal(
-	ctx context.Context,
-	id uuid.UUID,
-	financials data.MerchantInvoiceDraftFinancials,
-) (*data.MerchantInvoice, error) {
-	dbCtx, cancel, err := s.merchantInvoiceContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cancel()
-
-	result, err :=
-		s.Models.
-			MerchantInvoice.
-			UpdateDraftFinancials(
-				dbCtx,
-				id,
-				financials,
-			)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"update merchant invoice draft financials: %w",
-			err,
-		)
-	}
-
-	return result, nil
-}
-
-// UpdateMerchantInvoiceDraftFinancialsTxInternal is the transaction-aware form
-// of UpdateMerchantInvoiceDraftFinancialsInternal.
-func (s *Service) UpdateMerchantInvoiceDraftFinancialsTxInternal(
+// Commerce orchestration uses this capability before deriving normalized invoice
+// composition for draft reconciliation or issuance. Keeping the lock acquisition
+// behind the service boundary prevents coordinating workflows from bypassing the
+// canonical merchant-invoice service contract.
+func (s *Service) LockMerchantInvoiceForCompositionTxInternal(
 	ctx context.Context,
 	tx pgx.Tx,
 	id uuid.UUID,
-	financials data.MerchantInvoiceDraftFinancials,
 ) (*data.MerchantInvoice, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
-	if err := validateMerchantInvoiceTxService(s); err != nil {
-		return nil, err
-	}
-
-	if err := validateMerchantInvoiceTx(tx); err != nil {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
 		return nil, err
 	}
 
 	result, err :=
 		s.Models.
 			MerchantInvoice.
-			UpdateDraftFinancialsTx(
+			GetByIDForUpdateTx(
 				ctx,
 				tx,
 				id,
-				financials,
 			)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"update merchant invoice draft financials in transaction: %w",
+			"lock merchant invoice for composition: %w",
 			err,
 		)
 	}
@@ -463,33 +461,77 @@ func (s *Service) UpdateMerchantInvoiceDraftFinancialsTxInternal(
 	return result, nil
 }
 
-// IssueMerchantInvoiceInternal transitions a draft invoice to issued with an
-// optional already-resolved due date.
+// ReconcileMerchantInvoiceDraftTxInternal persists the authoritative gross
+// subtotal and final pre-settlement obligation of a draft invoice.
 //
-// dueAt is a commercial-policy result supplied by the caller. This method does
-// not derive grace periods, payment terms, or invoice-class-specific due rules.
-func (s *Service) IssueMerchantInvoiceInternal(
+// The caller must already own the transaction, hold the invoice row lock through
+// LockMerchantInvoiceForCompositionTxInternal, and have derived reconciliation
+// from authoritative normalized invoice composition inside that transaction.
+//
+// This method does not calculate fees, credits, rebates, discounts, taxes,
+// surcharges, or any other monetary effect.
+func (s *Service) ReconcileMerchantInvoiceDraftTxInternal(
 	ctx context.Context,
+	tx pgx.Tx,
 	id uuid.UUID,
-	dueAt *time.Time,
+	reconciliation data.MerchantInvoiceReconciliation,
 ) (*data.MerchantInvoice, error) {
-	dbCtx, cancel, err := s.merchantInvoiceContext(ctx)
-	if err != nil {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
 		return nil, err
 	}
-	defer cancel()
 
 	result, err :=
 		s.Models.
 			MerchantInvoice.
-			Issue(
-				dbCtx,
+			ReconcileDraftTx(
+				ctx,
+				tx,
 				id,
+				reconciliation,
+			)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"reconcile merchant invoice draft in transaction: %w",
+			err,
+		)
+	}
+
+	return result, nil
+}
+
+// ReconcileAndIssueMerchantInvoiceTxInternal atomically persists final
+// reconciled invoice aggregates and transitions the draft to issued.
+//
+// dueAt is an already-resolved commercial-policy result. Nil is permitted where
+// the governing commercial arrangement has no due date.
+//
+// The caller must own the transaction, hold the invoice row lock through
+// LockMerchantInvoiceForCompositionTxInternal, and derive reconciliation from
+// authoritative normalized composition in the same transaction.
+func (s *Service) ReconcileAndIssueMerchantInvoiceTxInternal(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+	reconciliation data.MerchantInvoiceReconciliation,
+	dueAt *time.Time,
+) (*data.MerchantInvoice, error) {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
+		return nil, err
+	}
+
+	result, err :=
+		s.Models.
+			MerchantInvoice.
+			ReconcileAndIssueTx(
+				ctx,
+				tx,
+				id,
+				reconciliation,
 				dueAt,
 			)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"issue merchant invoice: %w",
+			"reconcile and issue merchant invoice in transaction: %w",
 			err,
 		)
 	}
@@ -497,108 +539,37 @@ func (s *Service) IssueMerchantInvoiceInternal(
 	return result, nil
 }
 
-// IssueMerchantInvoiceTxInternal is the transaction-aware form of
-// IssueMerchantInvoiceInternal.
-func (s *Service) IssueMerchantInvoiceTxInternal(
-	ctx context.Context,
-	tx pgx.Tx,
-	id uuid.UUID,
-	dueAt *time.Time,
-) (*data.MerchantInvoice, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
-	if err := validateMerchantInvoiceTxService(s); err != nil {
-		return nil, err
-	}
-
-	if err := validateMerchantInvoiceTx(tx); err != nil {
-		return nil, err
-	}
-
-	result, err :=
-		s.Models.
-			MerchantInvoice.
-			IssueTx(
-				ctx,
-				tx,
-				id,
-				dueAt,
-			)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"issue merchant invoice in transaction: %w",
-			err,
-		)
-	}
-
-	return result, nil
-}
-
-// IssueMerchantInvoiceDueNowInternal transitions a draft invoice to issued and
-// uses one database timestamp for both issued_at and due_at.
+// ReconcileAndIssueMerchantInvoiceDueNowTxInternal is the due-immediately
+// capability for reconciled invoice issuance.
 //
-// Calling this method represents an already-resolved policy decision that the
-// invoice is due immediately. The service does not decide when that policy
-// applies.
-func (s *Service) IssueMerchantInvoiceDueNowInternal(
-	ctx context.Context,
-	id uuid.UUID,
-) (*data.MerchantInvoice, error) {
-	dbCtx, cancel, err := s.merchantInvoiceContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer cancel()
-
-	result, err :=
-		s.Models.
-			MerchantInvoice.
-			IssueDueNow(
-				dbCtx,
-				id,
-			)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"issue merchant invoice due now: %w",
-			err,
-		)
-	}
-
-	return result, nil
-}
-
-// IssueMerchantInvoiceDueNowTxInternal is the transaction-aware form of
-// IssueMerchantInvoiceDueNowInternal.
-func (s *Service) IssueMerchantInvoiceDueNowTxInternal(
+// Calling this method represents an already-resolved commercial-policy decision
+// that the invoice is due immediately. Engineering provides the capability but
+// this service does not decide when it applies.
+//
+// The data model uses one database timestamp for issued_at and due_at, avoiding
+// application/database clock skew.
+func (s *Service) ReconcileAndIssueMerchantInvoiceDueNowTxInternal(
 	ctx context.Context,
 	tx pgx.Tx,
 	id uuid.UUID,
+	reconciliation data.MerchantInvoiceReconciliation,
 ) (*data.MerchantInvoice, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
-	if err := validateMerchantInvoiceTxService(s); err != nil {
-		return nil, err
-	}
-
-	if err := validateMerchantInvoiceTx(tx); err != nil {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
 		return nil, err
 	}
 
 	result, err :=
 		s.Models.
 			MerchantInvoice.
-			IssueDueNowTx(
+			ReconcileAndIssueDueNowTx(
 				ctx,
 				tx,
 				id,
+				reconciliation,
 			)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"issue merchant invoice due now in transaction: %w",
+			"reconcile and issue due-now merchant invoice in transaction: %w",
 			err,
 		)
 	}
@@ -609,9 +580,9 @@ func (s *Service) IssueMerchantInvoiceDueNowTxInternal(
 // SettleMerchantInvoiceZeroBalanceInternal transitions an issued zero-total
 // invoice to paid without recording a payment.
 //
-// Platform Credits and other pre-payment reductions are not payments. This
-// capability records that an issued invoice has no remaining payment
-// obligation; it must not manufacture a zero-value merchant payment.
+// Platform Credits and other pre-settlement monetary reductions are not
+// payments. This capability records only that the issued invoice has no
+// remaining payment obligation.
 func (s *Service) SettleMerchantInvoiceZeroBalanceInternal(
 	ctx context.Context,
 	id uuid.UUID,
@@ -646,15 +617,7 @@ func (s *Service) SettleMerchantInvoiceZeroBalanceTxInternal(
 	tx pgx.Tx,
 	id uuid.UUID,
 ) (*data.MerchantInvoice, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
-	if err := validateMerchantInvoiceTxService(s); err != nil {
-		return nil, err
-	}
-
-	if err := validateMerchantInvoiceTx(tx); err != nil {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
 		return nil, err
 	}
 
@@ -679,9 +642,8 @@ func (s *Service) SettleMerchantInvoiceZeroBalanceTxInternal(
 // MarkMerchantInvoiceOverdueInternal transitions an eligible issued invoice to
 // overdue.
 //
-// Eligibility facts are enforced by MerchantInvoiceModel: the invoice must
-// still be issued, have an unpaid balance, have due_at, and have passed its due
-// point. This service does not determine commercial grace policy, scheduler
+// MerchantInvoiceModel enforces the invariant eligibility conditions. This
+// service does not determine grace periods, collection policy, scheduler
 // cadence, or processing cutoff policy.
 func (s *Service) MarkMerchantInvoiceOverdueInternal(
 	ctx context.Context,
@@ -713,23 +675,15 @@ func (s *Service) MarkMerchantInvoiceOverdueInternal(
 // MarkMerchantInvoiceOverdueTxInternal is the transaction-aware form of
 // MarkMerchantInvoiceOverdueInternal.
 //
-// A future durable worker may use this method when the invoice transition and
-// durable worker completion state must participate in the same caller-owned
+// A future durable worker may use this form when the invoice transition and its
+// durable work-completion state must commit atomically in one caller-owned
 // transaction.
 func (s *Service) MarkMerchantInvoiceOverdueTxInternal(
 	ctx context.Context,
 	tx pgx.Tx,
 	id uuid.UUID,
 ) (*data.MerchantInvoice, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
-	if err := validateMerchantInvoiceTxService(s); err != nil {
-		return nil, err
-	}
-
-	if err := validateMerchantInvoiceTx(tx); err != nil {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
 		return nil, err
 	}
 
@@ -751,11 +705,11 @@ func (s *Service) MarkMerchantInvoiceOverdueTxInternal(
 	return result, nil
 }
 
-// VoidMerchantInvoiceInternal transitions an issued, unpaid invoice to terminal
-// void state.
+// VoidMerchantInvoiceInternal transitions an eligible issued unpaid invoice to
+// terminal void state.
 //
-// This method introduces no cancellation, refund, reversal, or credit semantics
-// beyond the locked v1 invoice lifecycle.
+// This capability introduces no refund, cancellation, payment reversal, credit,
+// or other commercial semantics beyond the locked merchant-invoice lifecycle.
 func (s *Service) VoidMerchantInvoiceInternal(
 	ctx context.Context,
 	id uuid.UUID,
@@ -790,15 +744,7 @@ func (s *Service) VoidMerchantInvoiceTxInternal(
 	tx pgx.Tx,
 	id uuid.UUID,
 ) (*data.MerchantInvoice, error) {
-	if ctx == nil {
-		return nil, ErrNilContext
-	}
-
-	if err := validateMerchantInvoiceTxService(s); err != nil {
-		return nil, err
-	}
-
-	if err := validateMerchantInvoiceTx(tx); err != nil {
+	if err := validateMerchantInvoiceTxCall(s, ctx, tx); err != nil {
 		return nil, err
 	}
 
