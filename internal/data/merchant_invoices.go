@@ -13,7 +13,8 @@
 //
 // Domain Boundary:
 //
-//	An invoice records an obligation snapshot and its settlement lifecycle. It is
+//	An invoice records one merchant + one Future Offering + one currency obligation
+//	snapshot and its settlement lifecycle. It is
 //	not a fee calculator, fee schedule, platform-credit allocator, payment
 //	processor, payment attempt, billing-policy store, ledger, or invoice-line
 //	substitute. Commercial policy decides whether and when an invoice is created,
@@ -25,14 +26,15 @@
 // Monetary Boundary:
 //
 //	subtotal_amount >= 0
-//	total_amount = subtotal_amount + adjustment_amount
+//	total_amount = reconciled net invoice obligation
 //	total_amount >= 0
 //	0 <= amount_paid <= total_amount
 //
-//	AdjustmentAmount may be positive, zero, or negative. Draft financial terms
-//	may be revised through UpdateDraftFinancials while the row remains draft.
-//	After issuance, SubtotalAmount, AdjustmentAmount, TotalAmount, and Currency
-//	are immutable through this model. AmountPaid changes only through
+//	SubtotalAmount is the reconciled gross aggregate of invoice-item line amounts.
+//	TotalAmount is the independently reconciled net obligation after normalized,
+//	charge-attributable monetary effects. No invoice-wide adjustment scalar exists.
+//	After issuance, SubtotalAmount and TotalAmount are immutable through this model.
+//	AmountPaid changes only through
 //	ApplyPaymentTx. A zero-total issued invoice is settled through
 //	SettleZeroBalance/SettleZeroBalanceTx; platform credits are not payments.
 //
@@ -40,8 +42,8 @@
 //
 //	Each invoice contains exactly one uppercase three-letter currency. Merchant
 //	domicile does not determine invoice currency. The service/configuration layer
-//	selects currency before issuance. Currency may be revised while draft and is
-//	immutable after issuance. This model contains no catalog of enabled currencies.
+//	selects currency when the draft is created. This model does not expose currency
+//	mutation after creation and contains no catalog of enabled currencies.
 //
 // Lifecycle:
 //
@@ -63,17 +65,24 @@
 //
 //	due_at is policy-supplied and may be NULL for issued, partially_paid, paid,
 //	or void invoices. overdue requires due_at. When supplied, due_at must not
-//	precede issued_at. IssueDueNow/IssueDueNowTx exist so an Administration policy
+//	precede issued_at. ReconcileAndIssueDueNowTx exists so an Administration policy
 //	of "due immediately" can be represented without application/DB clock skew;
-//	they set issued_at and due_at from the same database timestamp. Engineering
-//	does not decide which invoice class uses that capability.
+//	it reconciles the final obligation and sets issued_at/due_at from the same
+//	database timestamp. Engineering does not decide which invoice class uses that
+//	capability.
 //
 // Transaction Boundary:
 //
-//	InsertDraftTx, UpdateDraftFinancialsTx, IssueTx, IssueDueNowTx,
-//	SettleZeroBalanceTx, MarkOverdueTx, VoidTx, GetByIDForUpdateTx, and
-//	ApplyPaymentTx accept caller-owned pgx.Tx values and never begin, commit, or
-//	roll them back.
+//	InsertDraftTx, ReconcileDraftTx, ReconcileAndIssueTx,
+//	ReconcileAndIssueDueNowTx, SettleZeroBalanceTx, MarkOverdueTx, VoidTx,
+//	GetByIDForUpdateTx, and ApplyPaymentTx accept caller-owned pgx.Tx values and
+//	never begin, commit, or roll them back.
+//
+//	Issuance is intentionally transaction-only and reconciliation-coupled. The
+//	service must lock the invoice row, derive authoritative normalized composition,
+//	and call one of the ReconcileAndIssue...Tx methods before committing. This
+//	prevents this model from exposing a standalone path that can issue an
+//	unreconciled draft.
 //
 //	ApplyPaymentTx is transaction-aware only. The increment it persists must be
 //	composed in the same service-owned transaction with the authoritative payment
@@ -107,10 +116,11 @@
 //	Keep compiling.
 //	Keep production-ready.
 //	Preserve exact decimal-string handling.
-//	Preserve draft-only financial revision and post-issuance monetary immutability.
-//	Preserve one-currency-per-invoice and post-issuance currency immutability.
+//	Preserve draft-only reconciliation and reconciliation-coupled issuance.
+//	Preserve one-merchant + one-Future-Offering + one-currency invoice identity.
+//	Preserve currency immutability after creation.
 //	Preserve guarded forward-only lifecycle transitions.
-//	Preserve transaction-only payment application.
+//	Preserve transaction-only issuance and payment application.
 //	Preserve deterministic bounded reads.
 //	Do not expose generic update, upsert, delete, soft-delete, or restore methods.
 //	Do not hard-code invoice-generation, due-date, currency-selection, pricing,
@@ -141,18 +151,15 @@ const (
 	merchantInvoiceNumberMaxLength = 64
 )
 
-var (
-	merchantInvoiceAmountPattern       = regexp.MustCompile(`^[0-9]{1,15}(?:\.[0-9]{1,4})?$`)
-	merchantInvoiceSignedAmountPattern = regexp.MustCompile(`^-?[0-9]{1,15}(?:\.[0-9]{1,4})?$`)
-)
+var merchantInvoiceAmountPattern = regexp.MustCompile(`^[0-9]{1,15}(?:\.[0-9]{1,4})?$`)
 
 const merchantInvoiceSelectColumns = `
 	id,
 	merchant_id,
+	future_offering_id,
 	invoice_number,
 	invoice_status,
 	subtotal_amount,
-	adjustment_amount,
 	total_amount,
 	amount_paid,
 	currency,
@@ -166,15 +173,14 @@ const merchantInvoiceSelectColumns = `
 
 const (
 	merchantInvoiceMerchantFKConstraint            = "merchant_invoices_merchant_id_fkey"
+	merchantInvoiceFutureOfferingFKConstraint      = "merchant_invoices_future_offering_id_fkey"
 	merchantInvoiceNumberUniqueConstraint          = "merchant_invoices_invoice_number_key"
-	merchantInvoiceNumberCanonicalConstraint       = "chk_merchant_invoice_number_canonical"
 	merchantInvoiceNumberLengthConstraint          = "chk_merchant_invoices_invoice_number_length"
 	merchantInvoiceStatusConstraint                = "merchant_invoices_invoice_status_check"
 	merchantInvoiceSubtotalConstraint              = "merchant_invoices_subtotal_amount_check"
 	merchantInvoiceTotalNonNegativeConstraint      = "merchant_invoices_total_amount_check"
 	merchantInvoiceAmountPaidNonNegativeConstraint = "merchant_invoices_amount_paid_check"
 	merchantInvoiceCurrencyConstraint              = "merchant_invoices_currency_check"
-	merchantInvoiceTotalAmountConstraint           = "chk_merchant_invoice_total_amount"
 	merchantInvoiceAmountPaidConstraint            = "chk_merchant_invoice_amount_paid"
 	merchantInvoiceDraftStateConstraint            = "chk_merchant_invoice_draft_state"
 	merchantInvoiceIssuedStateConstraint           = "chk_merchant_invoice_issued_state"
@@ -229,10 +235,10 @@ func IsValidMerchantInvoiceStatus(status MerchantInvoiceStatus) bool {
 type MerchantInvoice struct {
 	ID               uuid.UUID             `json:"id" db:"id"`
 	MerchantID       uuid.UUID             `json:"merchant_id" db:"merchant_id"`
+	FutureOfferingID uuid.UUID             `json:"future_offering_id" db:"future_offering_id"`
 	InvoiceNumber    string                `json:"invoice_number" db:"invoice_number"`
 	InvoiceStatus    MerchantInvoiceStatus `json:"invoice_status" db:"invoice_status"`
 	SubtotalAmount   string                `json:"subtotal_amount" db:"subtotal_amount"`
-	AdjustmentAmount string                `json:"adjustment_amount" db:"adjustment_amount"`
 	TotalAmount      string                `json:"total_amount" db:"total_amount"`
 	AmountPaid       string                `json:"amount_paid" db:"amount_paid"`
 	Currency         string                `json:"currency" db:"currency"`
@@ -244,11 +250,15 @@ type MerchantInvoice struct {
 	UpdatedAt        time.Time             `json:"updated_at" db:"updated_at"`
 }
 
-// MerchantInvoiceDraftFinancials is the complete mutable financial snapshot of a draft invoice.
-type MerchantInvoiceDraftFinancials struct {
-	SubtotalAmount   string
-	AdjustmentAmount string
-	Currency         string
+// MerchantInvoiceReconciliation is the caller-computed gross/net aggregate used
+// to reconcile a draft invoice with its normalized invoice composition.
+//
+// SubtotalAmount is the gross SUM of invoice-item line amounts. TotalAmount is
+// the net merchant obligation after normalized charge-attributable monetary
+// effects have been applied by service orchestration in the same transaction.
+type MerchantInvoiceReconciliation struct {
+	SubtotalAmount string
+	TotalAmount    string
 }
 
 // MerchantInvoiceModel owns merchant invoice persistence.
@@ -285,10 +295,10 @@ func scanMerchantInvoice(row scannableRow, invoice *MerchantInvoice) error {
 	return row.Scan(
 		&invoice.ID,
 		&invoice.MerchantID,
+		&invoice.FutureOfferingID,
 		&invoice.InvoiceNumber,
 		&invoice.InvoiceStatus,
 		&invoice.SubtotalAmount,
-		&invoice.AdjustmentAmount,
 		&invoice.TotalAmount,
 		&invoice.AmountPaid,
 		&invoice.Currency,
@@ -309,16 +319,16 @@ func classifyMerchantInvoiceWriteError(err error) error {
 	switch {
 	case IsPgConstraint(err, merchantInvoiceMerchantFKConstraint):
 		return ErrMerchantInvoiceMerchantNotFound
+	case IsPgConstraint(err, merchantInvoiceFutureOfferingFKConstraint):
+		return ErrMerchantInvoiceFutureOfferingNotFound
 	case IsPgConstraint(err, merchantInvoiceNumberUniqueConstraint):
 		return ErrMerchantInvoiceDuplicateNumber
-	case IsPgConstraint(err, merchantInvoiceNumberCanonicalConstraint),
-		IsPgConstraint(err, merchantInvoiceNumberLengthConstraint),
+	case IsPgConstraint(err, merchantInvoiceNumberLengthConstraint),
 		IsPgConstraint(err, merchantInvoiceStatusConstraint),
 		IsPgConstraint(err, merchantInvoiceSubtotalConstraint),
 		IsPgConstraint(err, merchantInvoiceTotalNonNegativeConstraint),
 		IsPgConstraint(err, merchantInvoiceAmountPaidNonNegativeConstraint),
 		IsPgConstraint(err, merchantInvoiceCurrencyConstraint),
-		IsPgConstraint(err, merchantInvoiceTotalAmountConstraint),
 		IsPgConstraint(err, merchantInvoiceAmountPaidConstraint),
 		IsPgConstraint(err, merchantInvoiceDraftStateConstraint),
 		IsPgConstraint(err, merchantInvoiceIssuedStateConstraint),
@@ -333,7 +343,7 @@ func classifyMerchantInvoiceWriteError(err error) error {
 	case IsUniqueViolation(err):
 		return ErrMerchantInvoiceDuplicateNumber
 	case IsForeignKeyViolation(err):
-		return ErrMerchantInvoiceMerchantNotFound
+		return ErrMerchantInvoiceInvalidState
 	case IsCheckViolation(err), IsNotNullViolation(err):
 		return ErrMerchantInvoiceInvalidState
 	default:
@@ -355,19 +365,14 @@ func normalizeMerchantInvoiceNumber(value string) (string, error) {
 	return value, nil
 }
 
-func parseMerchantInvoiceDecimal(value, fieldName string, allowNegative bool) (*big.Rat, string, error) {
+func parseMerchantInvoiceDecimal(value, fieldName string) (*big.Rat, string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return nil, "", merchantInvoiceInvalidInput("%s is required", fieldName)
 	}
-
-	pattern := merchantInvoiceAmountPattern
-	if allowNegative {
-		pattern = merchantInvoiceSignedAmountPattern
-	}
-	if !pattern.MatchString(value) {
+	if !merchantInvoiceAmountPattern.MatchString(value) {
 		return nil, "", merchantInvoiceInvalidInput(
-			"%s must be a NUMERIC(19,4)-compatible decimal", fieldName,
+			"%s must be a NUMERIC(19,4)-compatible non-negative decimal", fieldName,
 		)
 	}
 
@@ -375,49 +380,45 @@ func parseMerchantInvoiceDecimal(value, fieldName string, allowNegative bool) (*
 	if !ok {
 		return nil, "", merchantInvoiceInvalidInput("%s must be a valid decimal value", fieldName)
 	}
-	if !allowNegative && r.Sign() < 0 {
+	if r.Sign() < 0 {
 		return nil, "", merchantInvoiceInvalidInput("%s must be greater than or equal to zero", fieldName)
 	}
 	return r, value, nil
 }
 
-func normalizeMerchantInvoiceFinancials(
+func normalizeMerchantInvoiceReconciliation(
 	subtotalAmount string,
-	adjustmentAmount string,
-	currency string,
-) (subtotal string, adjustment string, total string, canonicalCurrency string, err error) {
-	subtotalRat, subtotal, err := parseMerchantInvoiceDecimal(subtotalAmount, "subtotal_amount", false)
+	totalAmount string,
+) (subtotal string, total string, err error) {
+	_, subtotal, err = parseMerchantInvoiceDecimal(subtotalAmount, "subtotal_amount")
 	if err != nil {
-		return "", "", "", "", err
+		return "", "", err
 	}
-	adjustmentRat, adjustment, err := parseMerchantInvoiceDecimal(adjustmentAmount, "adjustment_amount", true)
+	_, total, err = parseMerchantInvoiceDecimal(totalAmount, "total_amount")
 	if err != nil {
-		return "", "", "", "", err
+		return "", "", err
 	}
+	return subtotal, total, nil
+}
 
-	totalRat := new(big.Rat).Add(subtotalRat, adjustmentRat)
-	if totalRat.Sign() < 0 {
-		return "", "", "", "", merchantInvoiceInvalidInput(
-			"adjustment_amount must not reduce total_amount below zero",
-		)
-	}
-	total = totalRat.FloatString(4)
-	if !merchantInvoiceAmountPattern.MatchString(total) {
-		return "", "", "", "", merchantInvoiceInvalidInput(
-			"total_amount exceeds NUMERIC(19,4) bounds",
-		)
-	}
-
-	canonicalCurrency = strings.ToUpper(strings.TrimSpace(currency))
+func normalizeMerchantInvoiceCurrency(currency string) (string, error) {
+	canonicalCurrency := strings.ToUpper(strings.TrimSpace(currency))
 	if !isCanonicalCurrency(canonicalCurrency) {
-		return "", "", "", "", merchantInvoiceInvalidInput("invalid currency: %q", canonicalCurrency)
+		return "", merchantInvoiceInvalidInput("invalid currency: %q", canonicalCurrency)
 	}
-	return subtotal, adjustment, total, canonicalCurrency, nil
+	return canonicalCurrency, nil
 }
 
 func validateMerchantInvoiceID(id uuid.UUID) error {
 	if id == uuid.Nil {
 		return merchantInvoiceInvalidInput("id is required")
+	}
+	return nil
+}
+
+func validateMerchantInvoiceFutureOfferingID(id uuid.UUID) error {
+	if id == uuid.Nil {
+		return merchantInvoiceInvalidInput("future_offering_id is required")
 	}
 	return nil
 }
@@ -466,9 +467,8 @@ func validateMerchantInvoicePersistedState(invoice *MerchantInvoice) error {
 	if invoice == nil ||
 		invoice.ID == uuid.Nil ||
 		invoice.MerchantID == uuid.Nil ||
+		invoice.FutureOfferingID == uuid.Nil ||
 		strings.TrimSpace(invoice.InvoiceNumber) == "" ||
-		invoice.InvoiceNumber != strings.TrimSpace(invoice.InvoiceNumber) ||
-		utf8.RuneCountInString(invoice.InvoiceNumber) > merchantInvoiceNumberMaxLength ||
 		invoice.CreatedAt.IsZero() ||
 		invoice.UpdatedAt.IsZero() ||
 		!isCanonicalCurrency(invoice.Currency) {
@@ -484,12 +484,8 @@ func validateMerchantInvoicePersistedState(invoice *MerchantInvoice) error {
 	if !ok || subtotal.Sign() < 0 {
 		return ErrMerchantInvoiceInvalidState
 	}
-	adjustment, ok := new(big.Rat).SetString(invoice.AdjustmentAmount)
-	if !ok {
-		return ErrMerchantInvoiceInvalidState
-	}
 	total, ok := new(big.Rat).SetString(invoice.TotalAmount)
-	if !ok || total.Sign() < 0 || new(big.Rat).Add(subtotal, adjustment).Cmp(total) != 0 {
+	if !ok || total.Sign() < 0 {
 		return ErrMerchantInvoiceInvalidState
 	}
 	paid, ok := new(big.Rat).SetString(invoice.AmountPaid)
@@ -577,17 +573,28 @@ func (m *MerchantInvoiceModel) insertDraft(
 	if err := validateMerchantInvoiceMerchantID(invoice.MerchantID); err != nil {
 		return nil, err
 	}
+	if err := validateMerchantInvoiceFutureOfferingID(invoice.FutureOfferingID); err != nil {
+		return nil, err
+	}
 	invoiceNumber, err := normalizeMerchantInvoiceNumber(invoice.InvoiceNumber)
 	if err != nil {
 		return nil, err
 	}
-	subtotal, adjustment, total, currency, err := normalizeMerchantInvoiceFinancials(
-		invoice.SubtotalAmount,
-		invoice.AdjustmentAmount,
-		invoice.Currency,
-	)
+	currency, err := normalizeMerchantInvoiceCurrency(invoice.Currency)
 	if err != nil {
 		return nil, err
+	}
+	if strings.TrimSpace(invoice.SubtotalAmount) != "" {
+		subtotal, _, parseErr := parseMerchantInvoiceDecimal(invoice.SubtotalAmount, "subtotal_amount")
+		if parseErr != nil || subtotal.Sign() != 0 {
+			return nil, merchantInvoiceInvalidInput("subtotal_amount must be zero at draft creation")
+		}
+	}
+	if strings.TrimSpace(invoice.TotalAmount) != "" {
+		total, _, parseErr := parseMerchantInvoiceDecimal(invoice.TotalAmount, "total_amount")
+		if parseErr != nil || total.Sign() != 0 {
+			return nil, merchantInvoiceInvalidInput("total_amount must be zero at draft creation")
+		}
 	}
 	if invoice.InvoiceStatus != "" && NormalizeMerchantInvoiceStatus(invoice.InvoiceStatus) != MerchantInvoiceStatusDraft {
 		return nil, merchantInvoiceInvalidInput("invoice_status must be draft at creation")
@@ -596,7 +603,7 @@ func (m *MerchantInvoiceModel) insertDraft(
 		return nil, merchantInvoiceInvalidInput("lifecycle timestamps must not be supplied at draft creation")
 	}
 	if strings.TrimSpace(invoice.AmountPaid) != "" {
-		paid, _, parseErr := parseMerchantInvoiceDecimal(invoice.AmountPaid, "amount_paid", false)
+		paid, _, parseErr := parseMerchantInvoiceDecimal(invoice.AmountPaid, "amount_paid")
 		if parseErr != nil || paid.Sign() != 0 {
 			return nil, merchantInvoiceInvalidInput("amount_paid must be zero at draft creation")
 		}
@@ -611,35 +618,55 @@ func (m *MerchantInvoiceModel) insertDraft(
 		INSERT INTO merchant_invoices (
 			id,
 			merchant_id,
+			future_offering_id,
 			invoice_number,
 			subtotal_amount,
-			adjustment_amount,
 			total_amount,
 			amount_paid,
 			currency
 		)
-		VALUES ($1, $2, $3, $4::numeric, $5::numeric, $6::numeric, 0, $7)
+		SELECT
+			$1,
+			$2,
+			fo.id,
+			$4,
+			0,
+			0,
+			0,
+			$5
+		FROM merchant_future_offerings fo
+		WHERE fo.id = $3
+		  AND fo.merchant_id = $2
 		RETURNING ` + merchantInvoiceSelectColumns
 
 	var result MerchantInvoice
 	if err := scanMerchantInvoice(
-		querier.QueryRow(ctx, query, id, invoice.MerchantID, invoiceNumber, subtotal, adjustment, total, currency),
+		querier.QueryRow(ctx, query, id, invoice.MerchantID, invoice.FutureOfferingID, invoiceNumber, currency),
 		&result,
 	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			const ownershipQuery = `
+				SELECT merchant_id
+				FROM merchant_future_offerings
+				WHERE id = $1
+			`
+			var ownerMerchantID uuid.UUID
+			if ownershipErr := querier.QueryRow(ctx, ownershipQuery, invoice.FutureOfferingID).Scan(&ownerMerchantID); ownershipErr != nil {
+				if errors.Is(ownershipErr, pgx.ErrNoRows) {
+					return nil, ErrMerchantInvoiceFutureOfferingNotFound
+				}
+				return nil, fmt.Errorf("resolve merchant invoice future offering ownership: %w", ownershipErr)
+			}
+			return nil, ErrMerchantInvoiceFutureOfferingMerchantMismatch
+		}
+
 		err = classifyMerchantInvoiceWriteError(err)
-		logger.Error("Insert merchant invoice draft failed", err, "merchant_id", invoice.MerchantID, "invoice_number", invoiceNumber)
+		logger.Error("Insert merchant invoice draft failed", err, "merchant_id", invoice.MerchantID, "future_offering_id", invoice.FutureOfferingID, "invoice_number", invoiceNumber)
 		return nil, err
 	}
 	if err := validateMerchantInvoicePersistedState(&result); err != nil {
 		return nil, err
 	}
-	logger.Info(
-		"Insert merchant invoice draft successful",
-		"invoice_id", result.ID,
-		"merchant_id", result.MerchantID,
-		"invoice_number", result.InvoiceNumber,
-		"status", result.InvoiceStatus,
-	)
 	return &result, nil
 }
 
@@ -662,12 +689,12 @@ func (m *MerchantInvoiceModel) InsertDraftTx(ctx context.Context, tx pgx.Tx, inv
 	return m.insertDraft(ctx, tx, "InsertMerchantInvoiceDraftTx", invoice)
 }
 
-func (m *MerchantInvoiceModel) updateDraftFinancials(
+func (m *MerchantInvoiceModel) reconcileDraft(
 	ctx context.Context,
 	querier merchantInvoiceQueryRower,
 	functionName string,
 	id uuid.UUID,
-	financials MerchantInvoiceDraftFinancials,
+	reconciliation MerchantInvoiceReconciliation,
 ) (*MerchantInvoice, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
@@ -676,10 +703,9 @@ func (m *MerchantInvoiceModel) updateDraftFinancials(
 	if err := validateMerchantInvoiceID(id); err != nil {
 		return nil, err
 	}
-	subtotal, adjustment, total, currency, err := normalizeMerchantInvoiceFinancials(
-		financials.SubtotalAmount,
-		financials.AdjustmentAmount,
-		financials.Currency,
+	subtotal, total, err := normalizeMerchantInvoiceReconciliation(
+		reconciliation.SubtotalAmount,
+		reconciliation.TotalAmount,
 	)
 	if err != nil {
 		return nil, err
@@ -689,19 +715,17 @@ func (m *MerchantInvoiceModel) updateDraftFinancials(
 		UPDATE merchant_invoices
 		SET
 			subtotal_amount = $2::numeric,
-			adjustment_amount = $3::numeric,
-			total_amount = $4::numeric,
-			currency = $5,
+			total_amount = $3::numeric,
 			updated_at = NOW()
 		WHERE id = $1
 		  AND invoice_status = 'draft'
 		RETURNING ` + merchantInvoiceSelectColumns
 
 	var invoice MerchantInvoice
-	if err := scanMerchantInvoice(querier.QueryRow(ctx, query, id, subtotal, adjustment, total, currency), &invoice); err != nil {
+	if err := scanMerchantInvoice(querier.QueryRow(ctx, query, id, subtotal, total), &invoice); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			err = classifyMerchantInvoiceWriteError(err)
-			logger.Error("Update merchant invoice draft financials failed", err, "invoice_id", id)
+			logger.Error("Reconcile merchant invoice draft failed", err, "invoice_id", id)
 			return nil, err
 		}
 		current, getErr := m.getByIDViaQuerier(ctx, querier, id)
@@ -716,34 +740,20 @@ func (m *MerchantInvoiceModel) updateDraftFinancials(
 	if err := validateMerchantInvoicePersistedState(&invoice); err != nil {
 		return nil, err
 	}
-	logger.Info(
-		"Update merchant invoice draft financials successful",
-		"invoice_id", invoice.ID,
-		"merchant_id", invoice.MerchantID,
-		"invoice_number", invoice.InvoiceNumber,
-		"status", invoice.InvoiceStatus,
-	)
 	return &invoice, nil
 }
 
-// UpdateDraftFinancials replaces the complete mutable financial snapshot of a draft invoice.
-func (m *MerchantInvoiceModel) UpdateDraftFinancials(
-	ctx context.Context,
-	id uuid.UUID,
-	financials MerchantInvoiceDraftFinancials,
-) (*MerchantInvoice, error) {
-	if err := m.validatePool(); err != nil {
-		return nil, err
-	}
-	return m.updateDraftFinancials(ctx, m.DB, "UpdateMerchantInvoiceDraftFinancials", id, financials)
-}
-
-// UpdateDraftFinancialsTx is the transaction-aware form of UpdateDraftFinancials.
-func (m *MerchantInvoiceModel) UpdateDraftFinancialsTx(
+// ReconcileDraftTx persists the gross subtotal and net obligation of a draft invoice
+// through caller-owned transaction.
+//
+// Callers must derive both values from normalized invoice composition while holding
+// the invoice row lock in this same transaction. This method validates and persists
+// aggregates; it does not calculate commercial effects.
+func (m *MerchantInvoiceModel) ReconcileDraftTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	id uuid.UUID,
-	financials MerchantInvoiceDraftFinancials,
+	reconciliation MerchantInvoiceReconciliation,
 ) (*MerchantInvoice, error) {
 	if err := m.validateBase(); err != nil {
 		return nil, err
@@ -751,10 +761,10 @@ func (m *MerchantInvoiceModel) UpdateDraftFinancialsTx(
 	if tx == nil {
 		return nil, merchantInvoiceInvalidInput("transaction is required")
 	}
-	return m.updateDraftFinancials(ctx, tx, "UpdateMerchantInvoiceDraftFinancialsTx", id, financials)
+	return m.reconcileDraft(ctx, tx, "ReconcileMerchantInvoiceDraftTx", id, reconciliation)
 }
 
-// GetByID retrieves a merchant invoice by ID. Absence returns nil, nil.
+// GetByID retrieves a merchant invoice by ID.
 func (m *MerchantInvoiceModel) GetByID(ctx context.Context, id uuid.UUID) (*MerchantInvoice, error) {
 	if err := m.validatePool(); err != nil {
 		return nil, err
@@ -768,10 +778,13 @@ func (m *MerchantInvoiceModel) GetByID(ctx context.Context, id uuid.UUID) (*Merc
 	if err != nil {
 		return nil, fmt.Errorf("get merchant invoice by ID: %w", err)
 	}
+	if invoice == nil {
+		return nil, ErrMerchantInvoiceNotFound
+	}
 	return invoice, nil
 }
 
-// GetByIDForUpdateTx retrieves and row-locks one invoice through caller-owned tx. Absence returns nil, nil.
+// GetByIDForUpdateTx retrieves and row-locks one invoice through caller-owned tx.
 func (m *MerchantInvoiceModel) GetByIDForUpdateTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*MerchantInvoice, error) {
 	if err := m.validateBase(); err != nil {
 		return nil, err
@@ -794,7 +807,7 @@ func (m *MerchantInvoiceModel) GetByIDForUpdateTx(ctx context.Context, tx pgx.Tx
 	var invoice MerchantInvoice
 	if err := scanMerchantInvoice(tx.QueryRow(ctx, query, id), &invoice); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
+			return nil, ErrMerchantInvoiceNotFound
 		}
 		return nil, fmt.Errorf("get merchant invoice by ID for update: %w", err)
 	}
@@ -804,7 +817,7 @@ func (m *MerchantInvoiceModel) GetByIDForUpdateTx(ctx context.Context, tx pgx.Tx
 	return &invoice, nil
 }
 
-// GetByInvoiceNumber retrieves an invoice by its unique invoice number. Absence returns nil, nil.
+// GetByInvoiceNumber retrieves an invoice by its unique invoice number.
 func (m *MerchantInvoiceModel) GetByInvoiceNumber(ctx context.Context, invoiceNumber string) (*MerchantInvoice, error) {
 	if err := m.validatePool(); err != nil {
 		return nil, err
@@ -824,7 +837,7 @@ func (m *MerchantInvoiceModel) GetByInvoiceNumber(ctx context.Context, invoiceNu
 	var invoice MerchantInvoice
 	if err := scanMerchantInvoice(m.DB.QueryRow(ctx, query, invoiceNumber), &invoice); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
+			return nil, ErrMerchantInvoiceNotFound
 		}
 		return nil, fmt.Errorf("get merchant invoice by invoice number: %w", err)
 	}
@@ -843,6 +856,83 @@ func (m *MerchantInvoiceModel) ListByMerchant(
 	beforeID *uuid.UUID,
 ) ([]*MerchantInvoice, error) {
 	return m.listByMerchant(ctx, merchantID, nil, limit, beforeCreatedAt, beforeID)
+}
+
+// ListByMerchantAndFutureOffering returns bounded keyset-paginated invoice history
+// for one merchant Future Offering, ordered newest first.
+func (m *MerchantInvoiceModel) ListByMerchantAndFutureOffering(
+	ctx context.Context,
+	merchantID uuid.UUID,
+	futureOfferingID uuid.UUID,
+	limit int,
+	beforeCreatedAt *time.Time,
+	beforeID *uuid.UUID,
+) ([]*MerchantInvoice, error) {
+	if err := m.validatePool(); err != nil {
+		return nil, err
+	}
+	if err := validateMerchantInvoiceMerchantID(merchantID); err != nil {
+		return nil, err
+	}
+	if err := validateMerchantInvoiceFutureOfferingID(futureOfferingID); err != nil {
+		return nil, err
+	}
+	if err := validateMerchantInvoiceLimit(limit); err != nil {
+		return nil, err
+	}
+	if err := validateMerchantInvoiceCreatedCursor(beforeCreatedAt, beforeID); err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	var (
+		rows pgx.Rows
+		err  error
+	)
+	if beforeCreatedAt == nil {
+		const query = `
+			SELECT ` + merchantInvoiceSelectColumns + `
+			FROM merchant_invoices
+			WHERE merchant_id = $1
+			  AND future_offering_id = $2
+			ORDER BY created_at DESC, id DESC
+			LIMIT $3
+		`
+		rows, err = m.DB.Query(ctx, query, merchantID, futureOfferingID, limit)
+	} else {
+		const query = `
+			SELECT ` + merchantInvoiceSelectColumns + `
+			FROM merchant_invoices
+			WHERE merchant_id = $1
+			  AND future_offering_id = $2
+			  AND (created_at, id) < ($3, $4)
+			ORDER BY created_at DESC, id DESC
+			LIMIT $5
+		`
+		rows, err = m.DB.Query(ctx, query, merchantID, futureOfferingID, beforeCreatedAt.UTC(), *beforeID, limit)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list merchant invoices by merchant and future offering: %w", err)
+	}
+	defer rows.Close()
+
+	invoices := make([]*MerchantInvoice, 0, limit)
+	for rows.Next() {
+		var invoice MerchantInvoice
+		if err := scanMerchantInvoice(rows, &invoice); err != nil {
+			return nil, err
+		}
+		if err := validateMerchantInvoicePersistedState(&invoice); err != nil {
+			return nil, err
+		}
+		invoices = append(invoices, &invoice)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return invoices, nil
 }
 
 // ListByMerchantAndStatus returns bounded keyset-paginated merchant invoice history filtered by status.
@@ -1069,12 +1159,6 @@ func (m *MerchantInvoiceModel) simpleTransition(
 	if err := validateMerchantInvoicePersistedState(&invoice); err != nil {
 		return nil, err
 	}
-	logger.Info(
-		"Merchant invoice lifecycle transition successful",
-		"invoice_id", invoice.ID,
-		"merchant_id", invoice.MerchantID,
-		"status", invoice.InvoiceStatus,
-	)
 	return &invoice, nil
 }
 
@@ -1086,163 +1170,142 @@ func normalizeOptionalDueAt(dueAt *time.Time) *time.Time {
 	return &value
 }
 
-func sameOptionalTime(a, b *time.Time) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
-	}
-	return a.Equal(*b)
-}
-
-func (m *MerchantInvoiceModel) issue(
+// ReconcileAndIssueTx persists the final reconciled draft aggregates and issues
+// the invoice atomically through a caller-owned transaction.
+//
+// The caller must already hold the invoice row lock acquired through
+// GetByIDForUpdateTx and must derive reconciliation from authoritative normalized
+// composition inside that same transaction. This method deliberately combines
+// final reconciliation with issuance so the model exposes no standalone path for
+// issuing an unreconciled draft.
+func (m *MerchantInvoiceModel) ReconcileAndIssueTx(
 	ctx context.Context,
-	querier merchantInvoiceQueryRower,
-	functionName string,
+	tx pgx.Tx,
 	id uuid.UUID,
+	reconciliation MerchantInvoiceReconciliation,
 	dueAt *time.Time,
 ) (*MerchantInvoice, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName(functionName)
+	if err := m.validateBase(); err != nil {
+		return nil, err
+	}
+	if tx == nil {
+		return nil, merchantInvoiceInvalidInput("transaction is required")
+	}
 	if err := validateMerchantInvoiceID(id); err != nil {
+		return nil, err
+	}
+
+	subtotal, total, err := normalizeMerchantInvoiceReconciliation(
+		reconciliation.SubtotalAmount,
+		reconciliation.TotalAmount,
+	)
+	if err != nil {
 		return nil, err
 	}
 	dueAt = normalizeOptionalDueAt(dueAt)
 
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("ReconcileAndIssueMerchantInvoiceTx")
+
 	const query = `
 		UPDATE merchant_invoices
 		SET
+			subtotal_amount = $2::numeric,
+			total_amount = $3::numeric,
 			invoice_status = 'issued',
 			issued_at = NOW(),
-			due_at = $2::timestamptz,
+			due_at = $4::timestamptz,
 			updated_at = NOW()
 		WHERE id = $1
 		  AND invoice_status = 'draft'
 		RETURNING ` + merchantInvoiceSelectColumns
 
 	var invoice MerchantInvoice
-	if err := scanMerchantInvoice(querier.QueryRow(ctx, query, id, dueAt), &invoice); err != nil {
+	if err := scanMerchantInvoice(tx.QueryRow(ctx, query, id, subtotal, total, dueAt), &invoice); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			err = classifyMerchantInvoiceWriteError(err)
-			logger.Error("Issue merchant invoice failed", err, "invoice_id", id)
+			logger.Error("Reconcile and issue merchant invoice failed", err, "invoice_id", id)
 			return nil, err
 		}
-		current, getErr := m.getByIDViaQuerier(ctx, querier, id)
+		current, getErr := m.getByIDViaQuerier(ctx, tx, id)
 		if getErr != nil {
 			return nil, getErr
 		}
 		if current == nil {
 			return nil, ErrMerchantInvoiceNotFound
 		}
-		if NormalizeMerchantInvoiceStatus(current.InvoiceStatus) == MerchantInvoiceStatusIssued && sameOptionalTime(current.DueAt, dueAt) {
-			return current, nil
-		}
 		return nil, ErrMerchantInvoiceInvalidTransition
 	}
 	if err := validateMerchantInvoicePersistedState(&invoice); err != nil {
 		return nil, err
 	}
-	logger.Info(
-		"Issue merchant invoice successful",
-		"invoice_id", invoice.ID,
-		"merchant_id", invoice.MerchantID,
-		"status", invoice.InvoiceStatus,
-		"due_at", invoice.DueAt,
-	)
 	return &invoice, nil
 }
 
-// Issue transitions a draft invoice to issued with an optional caller-supplied due date.
-func (m *MerchantInvoiceModel) Issue(ctx context.Context, id uuid.UUID, dueAt *time.Time) (*MerchantInvoice, error) {
-	if err := m.validatePool(); err != nil {
-		return nil, err
-	}
-	return m.issue(ctx, m.DB, "IssueMerchantInvoice", id, dueAt)
-}
-
-// IssueTx is the transaction-aware form of Issue.
-func (m *MerchantInvoiceModel) IssueTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, dueAt *time.Time) (*MerchantInvoice, error) {
+// ReconcileAndIssueDueNowTx is the due-immediately form of
+// ReconcileAndIssueTx. It uses one database timestamp for issued_at and due_at.
+func (m *MerchantInvoiceModel) ReconcileAndIssueDueNowTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+	reconciliation MerchantInvoiceReconciliation,
+) (*MerchantInvoice, error) {
 	if err := m.validateBase(); err != nil {
 		return nil, err
 	}
 	if tx == nil {
 		return nil, merchantInvoiceInvalidInput("transaction is required")
 	}
-	return m.issue(ctx, tx, "IssueMerchantInvoiceTx", id, dueAt)
-}
-
-const merchantInvoiceIssueDueNowQuery = `
-	UPDATE merchant_invoices
-	SET
-		invoice_status = 'issued',
-		issued_at = NOW(),
-		due_at = NOW(),
-		updated_at = NOW()
-	WHERE id = $1
-	  AND invoice_status = 'draft'
-	RETURNING ` + merchantInvoiceSelectColumns
-
-func (m *MerchantInvoiceModel) issueDueNow(
-	ctx context.Context,
-	querier merchantInvoiceQueryRower,
-	functionName string,
-	id uuid.UUID,
-) (*MerchantInvoice, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName(functionName)
 	if err := validateMerchantInvoiceID(id); err != nil {
 		return nil, err
 	}
+
+	subtotal, total, err := normalizeMerchantInvoiceReconciliation(
+		reconciliation.SubtotalAmount,
+		reconciliation.TotalAmount,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("ReconcileAndIssueMerchantInvoiceDueNowTx")
+
+	const query = `
+		UPDATE merchant_invoices
+		SET
+			subtotal_amount = $2::numeric,
+			total_amount = $3::numeric,
+			invoice_status = 'issued',
+			issued_at = NOW(),
+			due_at = NOW(),
+			updated_at = NOW()
+		WHERE id = $1
+		  AND invoice_status = 'draft'
+		RETURNING ` + merchantInvoiceSelectColumns
+
 	var invoice MerchantInvoice
-	if err := scanMerchantInvoice(querier.QueryRow(ctx, merchantInvoiceIssueDueNowQuery, id), &invoice); err != nil {
+	if err := scanMerchantInvoice(tx.QueryRow(ctx, query, id, subtotal, total), &invoice); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			err = classifyMerchantInvoiceWriteError(err)
-			logger.Error("Issue merchant invoice due now failed", err, "invoice_id", id)
+			logger.Error("Reconcile and issue due-now merchant invoice failed", err, "invoice_id", id)
 			return nil, err
 		}
-		current, getErr := m.getByIDViaQuerier(ctx, querier, id)
+		current, getErr := m.getByIDViaQuerier(ctx, tx, id)
 		if getErr != nil {
 			return nil, getErr
 		}
 		if current == nil {
 			return nil, ErrMerchantInvoiceNotFound
 		}
-		if NormalizeMerchantInvoiceStatus(current.InvoiceStatus) == MerchantInvoiceStatusIssued &&
-			current.IssuedAt != nil && current.DueAt != nil && current.DueAt.Equal(*current.IssuedAt) {
-			return current, nil
-		}
 		return nil, ErrMerchantInvoiceInvalidTransition
 	}
 	if err := validateMerchantInvoicePersistedState(&invoice); err != nil {
 		return nil, err
 	}
-	logger.Info(
-		"Issue merchant invoice due now successful",
-		"invoice_id", invoice.ID,
-		"merchant_id", invoice.MerchantID,
-		"status", invoice.InvoiceStatus,
-		"due_at", invoice.DueAt,
-	)
 	return &invoice, nil
-}
-
-// IssueDueNow transitions a draft invoice to issued and uses one database timestamp for issued_at and due_at.
-func (m *MerchantInvoiceModel) IssueDueNow(ctx context.Context, id uuid.UUID) (*MerchantInvoice, error) {
-	if err := m.validatePool(); err != nil {
-		return nil, err
-	}
-	return m.issueDueNow(ctx, m.DB, "IssueMerchantInvoiceDueNow", id)
-}
-
-// IssueDueNowTx is the transaction-aware form of IssueDueNow.
-func (m *MerchantInvoiceModel) IssueDueNowTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*MerchantInvoice, error) {
-	if err := m.validateBase(); err != nil {
-		return nil, err
-	}
-	if tx == nil {
-		return nil, merchantInvoiceInvalidInput("transaction is required")
-	}
-	return m.issueDueNow(ctx, tx, "IssueMerchantInvoiceDueNowTx", id)
 }
 
 const merchantInvoiceSettleZeroBalanceQuery = `
@@ -1296,12 +1359,6 @@ func (m *MerchantInvoiceModel) settleZeroBalance(
 	if err := validateMerchantInvoicePersistedState(&invoice); err != nil {
 		return nil, err
 	}
-	logger.Info(
-		"Settle zero-balance merchant invoice successful",
-		"invoice_id", invoice.ID,
-		"merchant_id", invoice.MerchantID,
-		"status", invoice.InvoiceStatus,
-	)
 	return &invoice, nil
 }
 
@@ -1407,7 +1464,7 @@ func (m *MerchantInvoiceModel) ApplyPaymentTx(
 	if err := validateMerchantInvoiceID(id); err != nil {
 		return nil, err
 	}
-	paymentRat, normalizedPayment, err := parseMerchantInvoiceDecimal(paymentAmount, "payment_amount", false)
+	paymentRat, normalizedPayment, err := parseMerchantInvoiceDecimal(paymentAmount, "payment_amount")
 	if err != nil {
 		return nil, err
 	}
@@ -1460,13 +1517,5 @@ func (m *MerchantInvoiceModel) ApplyPaymentTx(
 	if err := validateMerchantInvoicePersistedState(&invoice); err != nil {
 		return nil, err
 	}
-	logger.Info(
-		"Apply merchant invoice payment successful",
-		"invoice_id", invoice.ID,
-		"merchant_id", invoice.MerchantID,
-		"status", invoice.InvoiceStatus,
-		"payment_amount", normalizedPayment,
-		"amount_paid", invoice.AmountPaid,
-	)
 	return &invoice, nil
 }

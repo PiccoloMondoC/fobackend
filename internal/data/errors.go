@@ -295,6 +295,9 @@ var (
 	ErrMerchantInvoiceNotFound = errors.New(
 		"merchant invoice not found",
 	)
+	ErrMerchantInvoiceFutureOfferingNotFound = errors.New(
+		"merchant invoice references a nonexistent future offering",
+	)
 	ErrMerchantInvoiceInvalidState = errors.New(
 		"invalid merchant invoice state",
 	)
@@ -309,6 +312,9 @@ var (
 	)
 	ErrMerchantInvoicePaymentExceedsBalance = errors.New(
 		"merchant invoice payment exceeds remaining balance",
+	)
+	ErrMerchantInvoiceFutureOfferingMerchantMismatch = errors.New(
+		"merchant invoice future offering does not belong to merchant",
 	)
 
 	// Merchant invoice items.

@@ -4517,6 +4517,9 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		merchant_id UUID NOT NULL
 			REFERENCES merchants(id) ON DELETE RESTRICT,
 
+		future_offering_id UUID NOT NULL
+			REFERENCES merchant_future_offerings(id) ON DELETE RESTRICT,
+
 		invoice_number TEXT NOT NULL UNIQUE,
 
 		invoice_status TEXT NOT NULL DEFAULT 'draft'
@@ -4529,12 +4532,15 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				'void'
 			)),
 
+		-- Gross invoice-item aggregate. Reconciled from merchant_invoice_items.
+		-- This is not MISA's presentation label "Items Subtotal"; presentation
+		-- aggregates may be derived from the normalized composition domains.
 		subtotal_amount NUMERIC(19,4) NOT NULL DEFAULT 0
 			CHECK (subtotal_amount >= 0),
 
-		adjustment_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
-
-		total_amount NUMERIC(19,4) NOT NULL
+		-- Final merchant obligation after all authoritative pre-settlement monetary
+		-- effects included in invoice composition. No generic adjustment scalar.
+		total_amount NUMERIC(19,4) NOT NULL DEFAULT 0
 			CHECK (total_amount >= 0),
 
 		amount_paid NUMERIC(19,4) NOT NULL DEFAULT 0
@@ -4552,16 +4558,10 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
 		CONSTRAINT chk_merchant_invoice_number_canonical
-			CHECK (
-				invoice_number = btrim(invoice_number)
-				AND invoice_number <> ''
-			),
+			CHECK (invoice_number = btrim(invoice_number) AND invoice_number <> ''),
 
 		CONSTRAINT chk_merchant_invoices_invoice_number_length
 			CHECK (char_length(invoice_number) <= 64),
-
-		CONSTRAINT chk_merchant_invoice_total_amount
-			CHECK (total_amount = subtotal_amount + adjustment_amount),
 
 		CONSTRAINT chk_merchant_invoice_amount_paid
 			CHECK (amount_paid <= total_amount),
@@ -4636,48 +4636,30 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			),
 
 		CONSTRAINT chk_merchant_invoice_due_after_issue
-			CHECK (
-				due_at IS NULL
-				OR (issued_at IS NOT NULL AND due_at >= issued_at)
-			),
+			CHECK (due_at IS NULL OR (issued_at IS NOT NULL AND due_at >= issued_at)),
 
 		CONSTRAINT chk_merchant_invoice_paid_after_issue
-			CHECK (
-				paid_at IS NULL
-				OR (issued_at IS NOT NULL AND paid_at >= issued_at)
-			),
+			CHECK (paid_at IS NULL OR (issued_at IS NOT NULL AND paid_at >= issued_at)),
 
 		CONSTRAINT chk_merchant_invoice_voided_after_issue
-			CHECK (
-				voided_at IS NULL
-				OR (issued_at IS NOT NULL AND voided_at >= issued_at)
-			)
+			CHECK (voided_at IS NULL OR (issued_at IS NOT NULL AND voided_at >= issued_at))
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_invoices_merchant_created
-		ON merchant_invoices(
-			merchant_id,
-			created_at DESC,
-			id DESC
-		);
+		ON merchant_invoices(merchant_id, created_at DESC, id DESC);
+
+	CREATE INDEX IF NOT EXISTS idx_merchant_invoices_merchant_future_offering_created
+		ON merchant_invoices(merchant_id, future_offering_id, created_at DESC, id DESC);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_invoices_merchant_status
-		ON merchant_invoices(
-			merchant_id,
-			invoice_status,
-			created_at DESC,
-			id DESC
-		);
+		ON merchant_invoices(merchant_id, invoice_status, created_at DESC, id DESC);
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_invoices_due
-		ON merchant_invoices(
-			due_at,
-			id
-		)
-		WHERE invoice_status = 'issued'
-		AND due_at IS NOT NULL;
+		ON merchant_invoices(due_at, id)
+		WHERE invoice_status = 'issued' AND due_at IS NOT NULL;
 
 
+	-- Merchant Invoice Items
 	CREATE TABLE IF NOT EXISTS merchant_invoice_items (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
