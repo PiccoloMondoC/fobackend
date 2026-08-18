@@ -83,18 +83,26 @@
 // Transaction Boundary:
 //
 //	Draft line insertion and removal are transaction-aware only. A line-item
-//	mutation changes the invoice subtotal and therefore must never be persisted
-//	as a legitimate standalone write that leaves the invoice header financially
-//	out of sync. InsertDraftLineTx and RemoveDraftLineTx accept caller-owned
-//	pgx.Tx values and never begin, commit, or roll them back.
+//	mutation changes the set of gross product/service charges participating in
+//	invoice composition and therefore must never be persisted as a legitimate
+//	standalone write that leaves the invoice's composed financial state out of
+//	sync. InsertDraftLineTx and RemoveDraftLineTx accept caller-owned pgx.Tx
+//	values and never begin, commit, or roll them back.
 //
 //	Both mutations row-lock the parent invoice and require it to remain draft in
-//	the same SQL statement as the write. The caller then uses
-//	SumLineAmountByInvoiceIDTx and MerchantInvoiceModel.UpdateDraftFinancialsTx
-//	inside that same transaction before commit.
+//	the same SQL statement as the write. Any invoice-composition reconciliation
+//	required after the mutation must occur inside that same transaction before
+//	commit.
 //
-//	SumLineAmountByInvoiceIDTx performs no locking of its own. Callers that use it
-//	without first mutating a line must lock the parent invoice via
+//	SumGrossLineAmountByInvoiceIDTx exposes only the aggregate gross
+//	product/service charge represented by merchant_invoice_items. It does not
+//	return MISA items_subtotal, pre_tax_total, or invoice total. Those canonical
+//	totals require composition with the authoritative records for applicable
+//	line-attributable monetary effects, shared invoice-level effects, taxes, and
+//	surcharges in their owning domains.
+//
+//	SumGrossLineAmountByInvoiceIDTx performs no locking of its own. Callers that
+//	use it without first mutating a line must lock the parent invoice via
 //	MerchantInvoiceModel.GetByIDForUpdateTx before relying on the aggregate for
 //	reconciliation or issuance.
 //
@@ -702,16 +710,24 @@ func (m *MerchantInvoiceItemModel) ListByInvoiceID(
 	return items, nil
 }
 
-// SumLineAmountByInvoiceIDTx returns the exact aggregate line_amount already
-// persisted for invoiceID, using only the supplied caller-owned transaction.
+// SumGrossLineAmountByInvoiceIDTx returns the exact aggregate gross
+// product/service charge represented by the line_amount values persisted for
+// invoiceID, using only the supplied caller-owned transaction.
+//
+// This value is not MISA items_subtotal. items_subtotal is the aggregate net
+// contribution of product/service lines after applicable line-attributable
+// monetary effects have been composed from their authoritative records.
+// Likewise, this method does not calculate pre-tax total, taxes and surcharges,
+// or final invoice total.
 //
 // This method performs no locking. The caller must first lock the canonical
 // merchant_invoices row for invoiceID in the same transaction (via
-// MerchantInvoiceModel.GetByIDForUpdateTx). That lock is the serialization
-// point that makes this aggregate safe under concurrent line composition.
+// MerchantInvoiceModel.GetByIDForUpdateTx), unless that row is already locked
+// by a preceding draft-line mutation in the same transaction. That invoice
+// lock is the serialization point for concurrent invoice composition.
 //
 // No item rows returns "0".
-func (m *MerchantInvoiceItemModel) SumLineAmountByInvoiceIDTx(
+func (m *MerchantInvoiceItemModel) SumGrossLineAmountByInvoiceIDTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	invoiceID uuid.UUID,
@@ -726,18 +742,26 @@ func (m *MerchantInvoiceItemModel) SumLineAmountByInvoiceIDTx(
 		return "", err
 	}
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("SumMerchantInvoiceItemLineAmountByInvoiceIDTx")
+	logger := m.Logger.GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("SumMerchantInvoiceItemGrossLineAmountByInvoiceIDTx")
 
 	const query = `
 		SELECT COALESCE(SUM(line_amount), 0)::text
 		FROM merchant_invoice_items
 		WHERE invoice_id = $1
 	`
+
 	var amount string
 	if err := tx.QueryRow(ctx, query, invoiceID).Scan(&amount); err != nil {
-		logger.Error("sum merchant invoice item line amounts failed", err, "invoice_id", invoiceID)
+		logger.Error(
+			"sum merchant invoice item gross line amounts failed",
+			err,
+			"invoice_id",
+			invoiceID,
+		)
 		return "", err
 	}
+
 	return amount, nil
 }
 
@@ -845,13 +869,16 @@ func (m *MerchantInvoiceItemModel) insertDraftLine(
 	return &result, nil
 }
 
-// InsertDraftLineTx creates one draft invoice line through a caller-owned transaction.
+// InsertDraftLineTx creates one draft invoice line through a caller-owned
+// transaction.
 //
 // InsertDraftLineTx does not begin, commit, or roll back tx. It row-locks the
 // parent invoice and permits insertion only while that invoice remains draft.
-// The caller must reconcile the invoice subtotal with SumLineAmountByInvoiceIDTx
-// and MerchantInvoiceModel.UpdateDraftFinancialsTx in the same transaction
-// before commit.
+// Before commit, the caller must reconcile any affected canonical invoice
+// composition totals inside the same transaction. Where the gross aggregate of
+// product/service lines is needed as an input to that composition, callers use
+// SumGrossLineAmountByInvoiceIDTx; that aggregate is not itself items_subtotal
+// or invoice total.
 func (m *MerchantInvoiceItemModel) InsertDraftLineTx(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -924,13 +951,16 @@ func (m *MerchantInvoiceItemModel) removeDraftLine(
 	return nil
 }
 
-// RemoveDraftLineTx removes one draft invoice line through a caller-owned transaction.
+// RemoveDraftLineTx removes one draft invoice line through a caller-owned
+// transaction.
 //
 // RemoveDraftLineTx does not begin, commit, or roll back tx. It row-locks the
 // parent invoice and permits removal only while that invoice remains draft.
-// The caller must reconcile the invoice subtotal with SumLineAmountByInvoiceIDTx
-// and MerchantInvoiceModel.UpdateDraftFinancialsTx in the same transaction
-// before commit.
+// Before commit, the caller must reconcile any affected canonical invoice
+// composition totals inside the same transaction. Where the gross aggregate of
+// product/service lines is needed as an input to that composition, callers use
+// SumGrossLineAmountByInvoiceIDTx; that aggregate is not itself items_subtotal
+// or invoice total.
 func (m *MerchantInvoiceItemModel) RemoveDraftLineTx(ctx context.Context, tx pgx.Tx, invoiceID, itemID uuid.UUID) error {
 	if err := m.validateBase(); err != nil {
 		return err
