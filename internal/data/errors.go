@@ -145,6 +145,32 @@ var (
 	ErrMerchantPromotionNotFound                = errors.New("merchant promotion not found")
 	ErrMerchantFollowNotFound                   = errors.New("merchant follow not found")
 
+	// Merchant future offering service terms.
+	ErrMerchantFutureOfferingServiceTermInvalidInput = errors.New(
+		"invalid merchant future offering service term input",
+	)
+	ErrMerchantFutureOfferingServiceTermNotFound = errors.New(
+		"merchant future offering service term not found",
+	)
+	ErrMerchantFutureOfferingServiceTermFutureOfferingNotFound = errors.New(
+		"merchant future offering service term references a nonexistent future offering",
+	)
+	ErrMerchantFutureOfferingServiceTermProposedAlreadyExists = errors.New(
+		"a proposed merchant future offering service term already exists for this future offering",
+	)
+	ErrMerchantFutureOfferingServiceTermEstablishedAlreadyExists = errors.New(
+		"an established merchant future offering service term already exists for this future offering",
+	)
+	ErrMerchantFutureOfferingServiceTermInvalidState = errors.New(
+		"invalid merchant future offering service term state",
+	)
+	ErrMerchantFutureOfferingServiceTermInvalidTransition = errors.New(
+		"invalid merchant future offering service term lifecycle transition",
+	)
+	ErrMerchantFutureOfferingServiceTermReplacementConflict = errors.New(
+		"merchant future offering service term replacement conflict",
+	)
+
 	// Merchant program subscription periods.
 	ErrMerchantProgramSubscriptionPeriodAlreadyExists = errors.New(
 		"merchant program subscription period already exists",

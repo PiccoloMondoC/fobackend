@@ -41,8 +41,11 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_program_plans.go`                        — Done
 - [x] `merchant_program_entitlements.go`                 — Done
 - [x] `merchant_program_fee_schedules.go`                — Done
-- [x] `merchant_program_subscriptions.go`                — Done
-- [x] `merchant_program_subscription_periods.go`         — Done
+>- [x] `merchant_program_subscriptions.go`               — Replaced by
+- [ ] `merchant_future_offering_service_terms.go`           — 
+>- [x] `merchant_program_subscription_periods.go`        — Replaced by
+- [ ] `merchant_future_offering_service_periods.go`         — 
+- [ ] `merchant_future_offering_billing_periods`         — 
 - [x] `merchant_program_subscription_events.go`          — Done
 - [x] `merchant_platform_credit_accounts.go`             — Done
 - [x] `merchant_platform_credit_eligible_fee_types.go`   — Done
@@ -58,9 +61,12 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_billable_events.go`                      — Done
 - [x] `merchant_fee_calculations.go`                     — Done
 - [x] `merchant_platform_credit_applications.go`         — Done
-- [ ] `merchant_invoices.go`                   — Suspended at Service Layer
-- [ ] `merchant_invoice_items.go`
+- [x] `merchant_invoices.go`                             — Done
+>- [ ] `merchant_invoice_items.go`                      Suspended
 - [ ] `merchant_billing_ledger_entries.go`
+
+
+- [ ] `merchant_future_offering_payment_periods`         — 
 
 ### Phase 5 — Merchant Payments Architecture
 #### Direct Payment Mode — SPINE — v1

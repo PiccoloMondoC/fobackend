@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_invoice_items.go handler layer"
+git commit -m "write merchant_future_offering_service_terms.go data layer"
 git push
 
 | data layer | handler layer | services layer |
@@ -150,3 +150,6 @@ I agree with SE’s overall verdict, but I’m tightening two points before issu
 
 
 I’ve got the SE review now. I’m doing the independent CE pass against the completed handler, the canonical data contract, and the current Commerce/Payments doctrine—not just accepting SE’s “documentation-only” conclusion at face value.
+
+
+BEG §18.6D requires that we ask ourselves: Does this implementation unnecessarily couple domains in a way that would make later service extraction require redesign? Please read BEG §18.6D.

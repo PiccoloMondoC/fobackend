@@ -533,6 +533,22 @@ Engineering invariants are not policy. Administrative configuration may govern c
 
 Engineering shall preserve consumer identity sovereignty throughout the Future Offering engagement lifecycle. Future Offering capabilities shall not disclose consumer identity or personal information to merchants as part of ordinary engagement. Where the platform supports progression to a merchant-facing commercial stage, engineering shall ensure that any transition to a direct merchant-consumer relationship occurs only through explicit consumer authorization using platform-authenticated capabilities. Administrative configuration shall not weaken or bypass this invariant.
 
+§18.6D **Distributed Evolution Readiness**
+
+Sagrenti shall be developed as a modular monolith with explicit domain ownership and communication boundaries that permit capabilities to be separated into independently deployable services without redesigning their domain semantics.
+
+Where communication represents a domain fact or occurrence that may be consumed independently by multiple capabilities, Engineering should define explicit, versionable domain events rather than create unnecessary direct coupling between domains.
+
+Event producers shall own the meaning of the events they publish. Consumers shall not redefine producer-owned domain state, and producers shall not require knowledge of all downstream consumers.
+
+Event identity, versioning, idempotency, ordering requirements, retry safety, auditability, and transactional publication guarantees shall be treated as engineering concerns even while producers and consumers execute within the same monolith.
+
+The monolith may initially implement such communication in-process or through internal infrastructure. Its domain contracts shall not depend upon that deployment topology.
+
+Adoption of an external event transport or message broker shall therefore be an infrastructure evolution rather than a redesign of Sagrenti's domain architecture.
+
+**Current infrastructure direction:** Google Cloud Pub/Sub is the anticipated managed event transport for a future Google Cloud Run distributed architecture. This direction does not make Pub/Sub-specific semantics part of Sagrenti's domain model.
+
 18.7 **Waiver-does-not-remove-capability rule**
 Engineering invariants are not administrative policy. Administrative configuration may govern commercial and operational behavior, but it must not weaken, disable, bypass, or override the engineering invariants that preserve the platform’s correctness, security, data integrity, auditability, reliability, authorization boundaries, transactional consistency, or other non-negotiable system guarantees.
 
