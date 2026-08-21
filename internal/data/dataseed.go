@@ -984,6 +984,31 @@ const (
 		('deactivate_merchant_program_plan', 'Allows deactivating merchant program plans'),
 		('soft_delete_merchant_program_plan', 'Allows soft-deleting merchant program plans'),
 		('restore_merchant_program_plan', 'Allows restoring soft-deleted merchant program plans'),
+		-- Merchant Future Offering Service Terms
+		(
+			'propose_merchant_future_offering_service_term',
+			'Allows proposing a Future Offering Service Term'
+		),
+		(
+			'read_merchant_future_offering_service_term',
+			'Allows privileged reading of a Future Offering Service Term'
+		),
+		(
+			'list_merchant_future_offering_service_terms',
+			'Allows privileged listing of Future Offering Service Term history'
+		),
+		(
+			'update_merchant_future_offering_service_term_proposal',
+			'Allows replacing the mutable facts of a proposed Future Offering Service Term'
+		),
+		(
+			'establish_merchant_future_offering_service_term',
+			'Allows establishing a proposed Future Offering Service Term'
+		),
+		(
+			'replace_merchant_future_offering_service_term',
+			'Allows atomically replacing an established Future Offering Service Term'
+		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Allows creating merchant program subscription records'),
 		('read_merchant_program_subscription', 'Allows reading merchant program subscription records'),
@@ -1282,6 +1307,7 @@ const (
 		('merchant_program_entitlement', 'Merchant program entitlement capability-gate entity'),
 		('merchant_program_fee_schedule', 'Merchant program fee schedule effective-dated commercial policy entity'),
 		('merchant_program_plan', 'Merchant program plan entity'),
+		('merchant_future_offering_service_term', 'Future Offering Service Term overall-duration commercial lifecycle entity'),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
 		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
 		('merchant_program_subscription_period', 'Immutable merchant program subscription billing period entity'),
@@ -1553,6 +1579,22 @@ const (
 		('deactivate_merchant_program_plan', 'Deactivate a merchant program plan'),
 		('soft_delete_merchant_program_plan', 'Soft-delete a merchant program plan'),
 		('restore_merchant_program_plan', 'Restore a merchant program plan'),
+		-- Merchant Future Offering Service Terms
+		('propose_merchant_future_offering_service_term', 'Propose a Future Offering Service Term'),
+		('read_merchant_future_offering_service_term', 'Read a Future Offering Service Term'),
+		('list_merchant_future_offering_service_terms', 'List Future Offering Service Term history'),
+		(
+			'update_merchant_future_offering_service_term_proposal',
+			'Replace the mutable facts of a proposed Future Offering Service Term'
+		),
+		(
+			'establish_merchant_future_offering_service_term',
+			'Establish a proposed Future Offering Service Term'
+		),
+		(
+			'replace_merchant_future_offering_service_term',
+			'Atomically replace an established Future Offering Service Term'
+		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Create a merchant program subscription'),
 		('read_merchant_program_subscription', 'Read a merchant program subscription by ID'),

@@ -579,6 +579,79 @@ func (app *Application) Routes() http.Handler {
 				Patch("/{merchantProgramPlanID}/restore", app.RestoreMerchantProgramPlanHandler)
 		})
 
+		// Merchant Future Offering Service Terms
+		//
+		// Service Terms preserve the authoritative overall service-duration
+		// lifecycle for individual Future Offerings.
+		//
+		// These routes remain privileged until canonical Future Offering
+		// ownership/delegation enforcement exists for a merchant-facing surface.
+		// Merchant actors must not receive these permissions merely because they
+		// possess a Future Offering ID.
+		v1.Route(
+			"/future-offerings/{futureOfferingID}/service-terms",
+			func(st chi.Router) {
+				st.Use(app.AuthMiddleware)
+
+				st.With(
+					app.RequirePermission("propose_merchant_future_offering_service_term"),
+				).Post(
+					"/",
+					app.ProposeMerchantFutureOfferingServiceTermHandler,
+				)
+
+				// Static routes must remain before the parameterized service-term route.
+				st.With(
+					app.RequirePermission("read_merchant_future_offering_service_term"),
+				).Get(
+					"/current-proposed",
+					app.GetCurrentProposedMerchantFutureOfferingServiceTermHandler,
+				)
+
+				st.With(
+					app.RequirePermission("read_merchant_future_offering_service_term"),
+				).Get(
+					"/current-established",
+					app.GetCurrentEstablishedMerchantFutureOfferingServiceTermHandler,
+				)
+
+				st.With(
+					app.RequirePermission("list_merchant_future_offering_service_terms"),
+				).Get(
+					"/timeline",
+					app.ListMerchantFutureOfferingServiceTermTimelineHandler,
+				)
+
+				st.With(
+					app.RequirePermission("read_merchant_future_offering_service_term"),
+				).Get(
+					"/{serviceTermID}",
+					app.GetMerchantFutureOfferingServiceTermHandler,
+				)
+
+				st.With(
+					app.RequirePermission("update_merchant_future_offering_service_term_proposal"),
+				).Put(
+					"/{serviceTermID}",
+					app.UpdateProposedMerchantFutureOfferingServiceTermHandler,
+				)
+
+				st.With(
+					app.RequirePermission("establish_merchant_future_offering_service_term"),
+				).Post(
+					"/{serviceTermID}/establish",
+					app.EstablishMerchantFutureOfferingServiceTermHandler,
+				)
+
+				st.With(
+					app.RequirePermission("replace_merchant_future_offering_service_term"),
+				).Post(
+					"/{serviceTermID}/replace",
+					app.ReplaceEstablishedMerchantFutureOfferingServiceTermHandler,
+				)
+			},
+		)
+
 		// Merchant Program Subscriptions
 		v1.Route("/merchant-program-subscriptions", func(mps chi.Router) {
 			mps.Use(app.AuthMiddleware)
