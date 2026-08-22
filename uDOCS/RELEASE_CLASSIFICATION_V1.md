@@ -42,7 +42,7 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [x] `merchant_program_entitlements.go`                 — Done
 - [x] `merchant_program_fee_schedules.go`                — Done
 >- [x] `merchant_program_subscriptions.go`               — Replaced by
-- [ ] `merchant_future_offering_service_terms.go`           — 
+- [x] `merchant_future_offering_service_terms.go`        — Done
 >- [x] `merchant_program_subscription_periods.go`        — Replaced by
 - [ ] `merchant_future_offering_service_periods.go`         — 
 - [ ] `merchant_future_offering_billing_periods`         — 

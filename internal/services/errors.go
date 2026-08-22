@@ -60,4 +60,11 @@ var (
 	ErrMerchantPlatformCreditApplicationMerchantMismatch = errors.New(
 		"merchant platform credit account and fee calculation belong to different merchants",
 	)
+	ErrMerchantFutureOfferingServiceTermOperatingRangeInvalid = errors.New(
+		"merchant future offering service term operating range configuration is invalid",
+	)
+
+	ErrMerchantFutureOfferingServiceTermDurationOutsideOperatingRange = errors.New(
+		"merchant future offering service term duration is outside the currently permitted operating range",
+	)
 )

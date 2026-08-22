@@ -40,6 +40,7 @@ import (
 	"time"
 
 	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
+	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/services"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -443,6 +444,36 @@ func (app *Application) respondMerchantFutureOfferingServiceTermError(
 			http.StatusConflict,
 		)
 
+	case errors.Is(
+		err,
+		services.ErrMerchantFutureOfferingServiceTermDurationOutsideOperatingRange,
+	):
+		app.respondWithError(
+			w,
+			errors.New(
+				"the requested duration is outside the currently permitted range",
+			),
+			http.StatusUnprocessableEntity,
+		)
+
+	case errors.Is(
+		err,
+		services.ErrMerchantFutureOfferingServiceTermOperatingRangeInvalid,
+	):
+		logger.Error(
+			"service term operating range configuration is invalid",
+			"error",
+			err,
+		)
+
+		app.respondWithError(
+			w,
+			errors.New(
+				"service term duration configuration is temporarily unavailable",
+			),
+			http.StatusServiceUnavailable,
+		)
+
 	default:
 		logger.Error(
 			"unexpected service term persistence failure",
@@ -549,7 +580,7 @@ func (app *Application) ProposeMerchantFutureOfferingServiceTermHandler(
 	}
 
 	term, err :=
-		app.Models.MerchantFutureOfferingServiceTerm.Propose(
+		app.InternalServices.ProposeMerchantFutureOfferingServiceTermInternal(
 			ctx,
 			futureOfferingID,
 			data.MerchantFutureOfferingServiceTermProposal{
@@ -1047,7 +1078,7 @@ func (app *Application) UpdateProposedMerchantFutureOfferingServiceTermHandler(
 	}
 
 	term, err :=
-		app.Models.MerchantFutureOfferingServiceTerm.UpdateProposed(
+		app.InternalServices.UpdateProposedMerchantFutureOfferingServiceTermInternal(
 			ctx,
 			serviceTermID,
 			futureOfferingID,
@@ -1209,7 +1240,7 @@ func (app *Application) EstablishMerchantFutureOfferingServiceTermHandler(
 	}
 
 	term, err :=
-		app.Models.MerchantFutureOfferingServiceTerm.Establish(
+		app.InternalServices.EstablishMerchantFutureOfferingServiceTermInternal(
 			ctx,
 			serviceTermID,
 			futureOfferingID,
@@ -1388,8 +1419,8 @@ func (app *Application) ReplaceEstablishedMerchantFutureOfferingServiceTermHandl
 	}
 
 	predecessor, replacement, err :=
-		app.Models.MerchantFutureOfferingServiceTerm.
-			ReplaceEstablished(
+		app.InternalServices.
+			ReplaceEstablishedMerchantFutureOfferingServiceTermInternal(
 				ctx,
 				predecessorID,
 				req.ReplacementServiceTermID,

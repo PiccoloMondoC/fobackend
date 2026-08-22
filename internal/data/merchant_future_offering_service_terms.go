@@ -807,6 +807,158 @@ func (m *MerchantFutureOfferingServiceTermModel) updateProposed(
 	return term, nil
 }
 
+
+// BeginTx begins a caller-owned Service Term transaction.
+//
+// Service-layer workflows use this boundary when policy validation must be
+// performed against rows locked for the lifecycle mutation that follows.
+func (m *MerchantFutureOfferingServiceTermModel) BeginTx(
+	ctx context.Context,
+) (pgx.Tx, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	tx, err := m.DB.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"begin merchant future offering service term transaction: %w",
+			err,
+		)
+	}
+
+	return tx, nil
+}
+
+// GetProposedForUpdateTx retrieves and locks one proposed Service Term.
+//
+// The row remains locked until the caller-owned transaction ends, preventing
+// proposal mutation between service-layer validation and establishment.
+func (m *MerchantFutureOfferingServiceTermModel) GetProposedForUpdateTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	id uuid.UUID,
+	futureOfferingID uuid.UUID,
+) (*MerchantFutureOfferingServiceTerm, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	if tx == nil || id == uuid.Nil || futureOfferingID == uuid.Nil {
+		return nil, ErrMerchantFutureOfferingServiceTermInvalidInput
+	}
+
+	const query = `
+		SELECT ` + merchantFutureOfferingServiceTermSelectColumns + `
+		FROM merchant_future_offering_service_terms
+		WHERE id = $1
+			AND future_offering_id = $2
+			AND term_status = 'proposed'
+		FOR UPDATE
+	`
+
+	term, err := scanMerchantFutureOfferingServiceTerm(
+		tx.QueryRow(ctx, query, id, futureOfferingID),
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrMerchantFutureOfferingServiceTermInvalidTransition
+		}
+
+		return nil, fmt.Errorf(
+			"lock proposed merchant future offering service term: %w",
+			err,
+		)
+	}
+
+	return term, nil
+}
+
+// GetReplacementCandidateForUpdateTx validates and locks an established
+// predecessor and its proposed replacement in the same order used by the
+// canonical replacement lifecycle operation.
+//
+// Returning the locked replacement allows service-layer policy validation
+// without introducing a read/write race.
+func (m *MerchantFutureOfferingServiceTermModel) GetReplacementCandidateForUpdateTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	predecessorID uuid.UUID,
+	replacementID uuid.UUID,
+	futureOfferingID uuid.UUID,
+) (*MerchantFutureOfferingServiceTerm, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	if tx == nil ||
+		predecessorID == uuid.Nil ||
+		replacementID == uuid.Nil ||
+		futureOfferingID == uuid.Nil ||
+		predecessorID == replacementID {
+		return nil, ErrMerchantFutureOfferingServiceTermInvalidInput
+	}
+
+	const predecessorQuery = `
+		SELECT term_status
+		FROM merchant_future_offering_service_terms
+		WHERE id = $1
+			AND future_offering_id = $2
+		FOR UPDATE
+	`
+
+	var predecessorStatus string
+
+	if err := tx.QueryRow(
+		ctx,
+		predecessorQuery,
+		predecessorID,
+		futureOfferingID,
+	).Scan(&predecessorStatus); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrMerchantFutureOfferingServiceTermNotFound
+		}
+
+		return nil, fmt.Errorf(
+			"lock predecessor merchant future offering service term: %w",
+			err,
+		)
+	}
+
+	if MerchantFutureOfferingServiceTermStatus(predecessorStatus) !=
+		MerchantFutureOfferingServiceTermStatusEstablished {
+		return nil, ErrMerchantFutureOfferingServiceTermInvalidTransition
+	}
+
+	const replacementQuery = `
+		SELECT ` + merchantFutureOfferingServiceTermSelectColumns + `
+		FROM merchant_future_offering_service_terms
+		WHERE id = $1
+			AND future_offering_id = $2
+			AND term_status = 'proposed'
+		FOR UPDATE
+	`
+
+	replacement, err := scanMerchantFutureOfferingServiceTerm(
+		tx.QueryRow(
+			ctx,
+			replacementQuery,
+			replacementID,
+			futureOfferingID,
+		),
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrMerchantFutureOfferingServiceTermInvalidTransition
+		}
+
+		return nil, fmt.Errorf(
+			"lock replacement merchant future offering service term: %w",
+			err,
+		)
+	}
+
+	return replacement, nil
+}
+
+
 // Establish transitions a proposed Service Term into the initial established
 // Service Term for a Future Offering using the pooled database connection.
 //
