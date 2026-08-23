@@ -1009,6 +1009,15 @@ const (
 			'replace_merchant_future_offering_service_term',
 			'Allows atomically replacing an established Future Offering Service Term'
 		),
+		-- Merchant Future Offering Service Periods
+		(
+			'read_merchant_future_offering_service_period',
+			'Allows privileged reading of a Future Offering Service Period'
+		),
+		(
+			'list_merchant_future_offering_service_periods',
+			'Allows privileged listing of Future Offering Service Period schedules and history'
+		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Allows creating merchant program subscription records'),
 		('read_merchant_program_subscription', 'Allows reading merchant program subscription records'),
@@ -1308,6 +1317,10 @@ const (
 		('merchant_program_fee_schedule', 'Merchant program fee schedule effective-dated commercial policy entity'),
 		('merchant_program_plan', 'Merchant program plan entity'),
 		('merchant_future_offering_service_term', 'Future Offering Service Term overall-duration commercial lifecycle entity'),
+		(
+			'merchant_future_offering_service_period',
+			'Future Offering Service Period bounded performance-window history entity'
+		),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
 		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
 		('merchant_program_subscription_period', 'Immutable merchant program subscription billing period entity'),
@@ -1594,6 +1607,15 @@ const (
 		(
 			'replace_merchant_future_offering_service_term',
 			'Atomically replace an established Future Offering Service Term'
+		),
+		-- Merchant Future Offering Service Periods
+		(
+			'read_merchant_future_offering_service_period',
+			'Read a Future Offering Service Period'
+		),
+		(
+			'list_merchant_future_offering_service_periods',
+			'List Future Offering Service Period schedules and history'
 		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Create a merchant program subscription'),

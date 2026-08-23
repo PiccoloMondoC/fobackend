@@ -652,6 +652,63 @@ func (app *Application) Routes() http.Handler {
 			},
 		)
 
+
+		// Merchant Future Offering Service Periods
+		//
+		// Service Period schedule generation and prospective replacement are
+		// service/orchestration-owned capabilities. HTTP exposes privileged
+		// observation and historical retrieval only.
+		//
+		// These routes remain privileged until canonical Future Offering
+		// ownership/delegation enforcement exists for a merchant-facing surface.
+		// Merchant actors must not receive these permissions merely because they
+		// possess a Future Offering ID.
+		v1.Route(
+			"/future-offerings/{futureOfferingID}/service-periods",
+			func(sp chi.Router) {
+				sp.Use(app.AuthMiddleware)
+
+				// Static routes must remain before the parameterized
+				// service-period route.
+				sp.With(
+					app.RequirePermission(
+						"list_merchant_future_offering_service_periods",
+					),
+				).Get(
+					"/current",
+					app.ListCurrentMerchantFutureOfferingServicePeriodScheduleHandler,
+				)
+
+				sp.With(
+					app.RequirePermission(
+						"read_merchant_future_offering_service_period",
+					),
+				).Get(
+					"/current-at",
+					app.GetCurrentMerchantFutureOfferingServicePeriodAtDateHandler,
+				)
+
+				sp.With(
+					app.RequirePermission(
+						"list_merchant_future_offering_service_periods",
+					),
+				).Get(
+					"/timeline",
+					app.ListMerchantFutureOfferingServicePeriodTimelineHandler,
+				)
+
+				sp.With(
+					app.RequirePermission(
+						"read_merchant_future_offering_service_period",
+					),
+				).Get(
+					"/{servicePeriodID}",
+					app.GetMerchantFutureOfferingServicePeriodHandler,
+				)
+			},
+		)
+
+
 		// Merchant Program Subscriptions
 		v1.Route("/merchant-program-subscriptions", func(mps chi.Router) {
 			mps.Use(app.AuthMiddleware)

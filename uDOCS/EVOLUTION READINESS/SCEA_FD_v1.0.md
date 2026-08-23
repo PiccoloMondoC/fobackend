@@ -23,6 +23,8 @@ If Sagrenti eventually develops fully native mobile applications:
 
 **The governing principle is: additional server-side languages and runtimes must earn their architectural existence.**
 
+**Distribution and language diversity are independent architectural decisions. Sagrenti may evolve toward distributed services while remaining entirely Go-based. Language diversity is not an architectural objective; distribution readiness is.**
+
 ### 3. Sagrenti Cloud should evolve from the monolith, not replace it
 
 We envision eventual independently deployable capabilities such as:
