@@ -1583,3 +1583,5 @@ engagement options. A merchant may choose any applicable combination—including
 Waitlist without Preorder or Preorder without Waitlist. Where multiple
 engagement types coexist, their coexistence does not establish an inherent
 fulfillment priority.
+
+Service Term duration and calendar-window semantics are governed by the Service Term Calendar Doctrine (STCD). FOCA defines the commercial/domain meaning of the Service Term; STCD defines its authoritative calendar computation.

@@ -171,6 +171,47 @@ var (
 		"merchant future offering service term replacement conflict",
 	)
 
+	// Merchant future offering service periods.
+	ErrMerchantFutureOfferingServicePeriodInvalidInput = errors.New(
+		"invalid merchant future offering service period input",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodNotFound = errors.New(
+		"merchant future offering service period not found",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodServiceTermNotFound = errors.New(
+		"merchant future offering service period references a nonexistent or mismatched service term",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodInvalidState = errors.New(
+		"invalid merchant future offering service period state",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodInvalidSchedule = errors.New(
+		"invalid merchant future offering service period schedule",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodScheduleAlreadyExists = errors.New(
+		"merchant future offering service period schedule already exists",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodOverlap = errors.New(
+		"merchant future offering service period overlaps an existing current period",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodNumberConflict = errors.New(
+		"merchant future offering service period number conflicts with an existing current period",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodInvalidTransition = errors.New(
+		"invalid merchant future offering service period lifecycle transition",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodMutationConflict = errors.New(
+		"merchant future offering service period mutation conflict",
+	)
+
 	// Merchant program subscription periods.
 	ErrMerchantProgramSubscriptionPeriodAlreadyExists = errors.New(
 		"merchant program subscription period already exists",
