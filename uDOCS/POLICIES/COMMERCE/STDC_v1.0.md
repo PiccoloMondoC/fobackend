@@ -120,3 +120,19 @@ All of this can ultimately be reduced to one rule:
 Administration governs which durations merchants may choose **within Engineering's safe boundaries**. Engineering owns what those durations mathematically mean.
 
 With this doctrine settled, **Service Period generation can now consume an authoritative Service Term window rather than inventing its own calendar rules.**
+
+**An established Service Period is never shortened, extended, re-anchored, or repartitioned because of a merchant Service Term amendment. Term changes take effect only at Service Period boundaries.**
+
+**A Service Term amendment may be requested and recorded while a Service Period is performing, but neither Service Term authority nor Service Period authority changes until that Service Period completes. The successor Service Term and its first Service Period become authoritative together at the next Service Period boundary.**
+
+Service Periods are monthly Engineering invariants generated according to STCD. Merchants cannot amend Service Periods. They amend Service Terms. An already-begun Service Period is immutable. A Service Term amendment requested during that period takes effect at its next Service Period boundary.
+
+Service Periods are created just in time. Only the currently performing Service Period, plus historical completed periods, need to exist as authoritative records.
+
+Service Period records describe actual or current service performance windows. They are not a forecast of future service delivery.
+
+Service Periods are created just in time as actual performance windows. They are not a pre-generated forecast schedule.
+
+At a Service Term replacement boundary, the successor Service Term must start exactly at the end boundary of the predecessor’s performing Service Period, and its first Service Period must start at that same boundary. The Service Term transition, successor Period 1 creation, and producer-owned outbox fact must commit atomically.
+
+

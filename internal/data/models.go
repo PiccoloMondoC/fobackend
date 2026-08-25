@@ -74,6 +74,7 @@ type Models struct {
 	Action                 ActionModel                 // SPINE: minimal foundation — audit/action lookup governance
 	PlatformSetting        PlatformSettingModel        // SPINE: minimal foundation — system configuration infrastructure
 	PlatformSettingHistory PlatformSettingHistoryModel // SPINE: minimal foundation — immutable platform-setting value history
+	OutboxEvent            OutboxEventModel // SPINE: minimal foundation — transactional domain-event outbox
 
 	// Layer 2.2 — Identity / Auth Domain
 	User            UserModel            // SPINE: minimal foundation — user account identity
@@ -190,6 +191,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 			DB:     dbPool,
 			Logger: logger,
 		}, // SPINE: minimal foundation — immutable platform-setting value history
+		OutboxEvent: OutboxEventModel{DB: dbPool, Logger: logger}, // SPINE: minimal foundation — transactional domain-event outbox
 
 		// Layer 2.2 — Identity / Auth Domain
 		User:            UserModel{DB: dbPool, Logger: logger},            // SPINE: minimal foundation

@@ -1015,8 +1015,8 @@ const (
 			'Allows privileged reading of a Future Offering Service Period'
 		),
 		(
-			'list_merchant_future_offering_service_periods',
-			'Allows privileged listing of Future Offering Service Period schedules and history'
+			"list_merchant_future_offering_service_periods",
+			"Allows privileged listing of Future Offering Service Period history"
 		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Allows creating merchant program subscription records'),
@@ -1614,8 +1614,8 @@ const (
 			'Read a Future Offering Service Period'
 		),
 		(
-			'list_merchant_future_offering_service_periods',
-			'List Future Offering Service Period schedules and history'
+			"list_merchant_future_offering_service_periods",
+			"List Future Offering Service Period history"
 		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Create a merchant program subscription'),

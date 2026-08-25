@@ -67,4 +67,28 @@ var (
 	ErrMerchantFutureOfferingServiceTermDurationOutsideOperatingRange = errors.New(
 		"merchant future offering service term duration is outside the currently permitted operating range",
 	)
+
+	ErrMerchantFutureOfferingServicePeriodInputInvalid = errors.New(
+		"invalid merchant future offering service period orchestration request",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodServiceTermScopeMismatch = errors.New(
+		"merchant future offering service term was not found within the specified future offering",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodServiceTermNotEstablished = errors.New(
+		"merchant future offering service term is not established",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodCreationNotYetEligible = errors.New(
+		"merchant future offering service period creation boundary has not yet been reached",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodServiceTermComplete = errors.New(
+		"merchant future offering service term has no remaining service period",
+	)
+
+	ErrMerchantFutureOfferingServicePeriodInvalidState = errors.New(
+		"merchant future offering service period orchestration encountered invalid state",
+	)
 )

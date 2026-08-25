@@ -8,43 +8,49 @@
 //	Layer: 2.4 Merchant / Future Offering Domain
 //	Release Class: SPINE
 //	Reason:
-//	  Service Periods are the authoritative bounded performance windows within
-//	  an established Future Offering Service Term. They preserve continuing-
-//	  service chronology without conflating Service Periods with Service Terms,
-//	  Billing Periods, Payment Periods, invoices, or settlement.
+//	  Service Periods are immutable, authoritative performance windows within
+//	  an established Future Offering Service Term. They preserve actual
+//	  continuing-service chronology without conflating Service Periods with
+//	  Service Terms, Billing Periods, Payment Periods, invoices, or settlement.
 //
 // Future Offering v1 Doctrine:
 //
-//	A Service Period is an individual performance window within an established
-//	Service Term during which Sagrenti renders continuing service, measures
-//	applicable activity, and provides utility.
+//	A Service Period is one authoritative performance window within an
+//	established Service Term.
 //
-//	Service Period cadence and generation policy are not persistence policy.
-//	The service layer supplies concrete windows produced under the applicable
-//	Administration configuration. This file validates and persists their
-//	structural relationship to the authoritative Service Term.
+//	Service Period cadence and calendar semantics are Engineering invariants.
+//	The service layer derives canonical monthly windows according to STCD from
+//	the authoritative Service Term anchor. The final Service Period may be
+//	shorter where necessary to terminate exactly at term_ends_on.
 //
-//	The current Service Period schedule must partition the authoritative
-//	Service Term window completely, contiguously, and without overlap.
+//	Service Periods are created just in time. Persisted rows represent completed
+//	or currently performing service, not a forecast schedule of future service.
 //
-//	Once a Service Period has begun, its window is historical fact and cannot
-//	be rewritten. A prospective schedule amendment therefore preserves every
-//	begun period and atomically replaces only the not-yet-begun suffix.
+//	Merchants amend Service Terms, not Service Periods. Once created, a Service
+//	Period is immutable.
+//
+//	A Service Term amendment may be requested while a Service Period is
+//	performing, but authority transitions only at an eligible Service Period
+//	boundary. The successor Service Term and its first Service Period must be
+//	composed atomically by the service layer.
 //
 // SPINE Rule:
 //
 //	Keep compiling.
 //	Keep production-ready.
-//	Preserve complete and contiguous current-schedule coverage.
-//	Preserve immutable performed Service Period history.
-//	Preserve atomic prospective schedule replacement.
+//	Preserve immutable Service Period history.
+//	Preserve just-in-time Service Period creation.
+//	Preserve contiguous period chronology within each Service Term.
 //	Preserve authoritative Service Term ownership.
-//	Never hard-code Service Period cadence or generation policy.
+//	Preserve transaction composability for Service Term boundary transitions.
+//	Preserve the Engineering invariant that Service Period calendar semantics
+//	are governed by STCD.
+//	Never permit Administration configuration to redefine Service Period
+//	duration, cadence, or calendar-boundary meaning.
 //	Never couple this capability to Billing Period, Payment Period, invoice,
-//	payment, or other downstream implementation.
-//	Block deployment if this file breaks Service Period identity, schedule
-//	integrity, concurrency, historical reconstruction, or transaction
-//	composability.
+//	payment, settlement, transport, or downstream consumer implementation.
+//	Block deployment if this file breaks Service Period identity, chronology,
+//	concurrency, historical reconstruction, or transaction composability.
 package data
 
 import (
@@ -72,39 +78,30 @@ const merchantFutureOfferingServicePeriodSelectColumns = `
 	p.period_number,
 	p.period_starts_on,
 	p.period_ends_on,
-	p.superseded_at,
 	p.created_at`
 
 // MerchantFutureOfferingServicePeriod is the canonical persisted
-// representation of one Future Offering Service Period.
+// representation of one immutable Future Offering Service Period.
 type MerchantFutureOfferingServicePeriod struct {
-	ID               uuid.UUID  `json:"id" db:"id"`
-	ServiceTermID    uuid.UUID  `json:"service_term_id" db:"service_term_id"`
-	FutureOfferingID uuid.UUID  `json:"future_offering_id" db:"future_offering_id"`
-	PeriodNumber     int        `json:"period_number" db:"period_number"`
-	PeriodStartsOn   time.Time  `json:"period_starts_on" db:"period_starts_on"`
-	PeriodEndsOn     time.Time  `json:"period_ends_on" db:"period_ends_on"`
-	SupersededAt     *time.Time `json:"superseded_at" db:"superseded_at"`
-	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
+	ID               uuid.UUID `json:"id" db:"id"`
+	ServiceTermID    uuid.UUID `json:"service_term_id" db:"service_term_id"`
+	FutureOfferingID uuid.UUID `json:"future_offering_id" db:"future_offering_id"`
+	PeriodNumber     int       `json:"period_number" db:"period_number"`
+	PeriodStartsOn   time.Time `json:"period_starts_on" db:"period_starts_on"`
+	PeriodEndsOn     time.Time `json:"period_ends_on" db:"period_ends_on"`
+	CreatedAt        time.Time `json:"created_at" db:"created_at"`
 }
 
-// MerchantFutureOfferingServicePeriodWindow is a concrete Service Period
+// MerchantFutureOfferingServicePeriodWindow is one concrete Service Period
 // calendar window supplied for persistence.
 //
-// PeriodNumber is intentionally absent. Canonical ordering belongs to the
-// persisted schedule and is assigned by this data capability after the
-// supplied windows have been normalized and validated.
+// Calendar generation does not belong to this data model. The service layer
+// derives the authoritative window according to STCD. This data capability
+// validates the supplied window against persisted Service Term boundaries and
+// Service Period chronology before inserting the immutable fact.
 type MerchantFutureOfferingServicePeriodWindow struct {
 	StartsOn time.Time
 	EndsOn   time.Time
-}
-
-// MerchantFutureOfferingServicePeriodScheduleReplacement describes the
-// historical rows superseded and the new current rows established by one
-// atomic prospective schedule amendment.
-type MerchantFutureOfferingServicePeriodScheduleReplacement struct {
-	Superseded  []*MerchantFutureOfferingServicePeriod
-	Established []*MerchantFutureOfferingServicePeriod
 }
 
 // MerchantFutureOfferingServicePeriodTimelineCursor identifies the row after
@@ -114,17 +111,15 @@ type MerchantFutureOfferingServicePeriodTimelineCursor struct {
 	ID             uuid.UUID
 }
 
-// MerchantFutureOfferingServicePeriodModel manages Service Period persistence,
-// schedule establishment, prospective schedule amendment, and retrieval.
+// MerchantFutureOfferingServicePeriodModel manages immutable Service Period
+// persistence and retrieval.
+//
+// Creation methods intentionally exist only in Tx form. Service Period creation
+// is part of producer-owned domain workflow and may need to commit atomically
+// with Service Term lifecycle changes and transactional outbox insertion.
 type MerchantFutureOfferingServicePeriodModel struct {
 	DB     *pgxpool.Pool
 	Logger *logging.Logger
-}
-
-type merchantFutureOfferingNumberedServicePeriodWindow struct {
-	PeriodNumber int
-	StartsOn     time.Time
-	EndsOn       time.Time
 }
 
 func scanMerchantFutureOfferingServicePeriod(
@@ -139,7 +134,6 @@ func scanMerchantFutureOfferingServicePeriod(
 		&period.PeriodNumber,
 		&period.PeriodStartsOn,
 		&period.PeriodEndsOn,
-		&period.SupersededAt,
 		&period.CreatedAt,
 	); err != nil {
 		return nil, err
@@ -151,11 +145,9 @@ func scanMerchantFutureOfferingServicePeriod(
 // normalizeMerchantFutureOfferingServicePeriodDate converts a caller-supplied
 // domain date into the package's canonical UTC-midnight representation.
 //
-// It intentionally preserves the input value's Year/Month/Day fields rather
-// than converting the represented instant into UTC first. Service Period
-// boundaries are domain calendar dates under STCD, not elapsed-time instants.
-// Callers must therefore supply a time.Time whose calendar fields already
-// represent the intended domain date.
+// The input Year/Month/Day fields are preserved rather than first converting
+// the represented instant into UTC. Service Period boundaries are domain
+// calendar dates under STCD, not elapsed-time instants.
 func normalizeMerchantFutureOfferingServicePeriodDate(
 	value time.Time,
 ) time.Time {
@@ -171,184 +163,54 @@ func normalizeMerchantFutureOfferingServicePeriodDate(
 	)
 }
 
-func validateAndNumberMerchantFutureOfferingServicePeriodWindows(
+func validateMerchantFutureOfferingServicePeriodWindow(
 	requiredStartsOn time.Time,
-	requiredEndsOn time.Time,
-	firstPeriodNumber int,
-	windows []MerchantFutureOfferingServicePeriodWindow,
-) ([]merchantFutureOfferingNumberedServicePeriodWindow, error) {
-	if requiredStartsOn.IsZero() || requiredEndsOn.IsZero() {
-		return nil, errors.New("required service period schedule boundary is missing")
-	}
-
-	requiredStartsOn = normalizeMerchantFutureOfferingServicePeriodDate(requiredStartsOn)
-	requiredEndsOn = normalizeMerchantFutureOfferingServicePeriodDate(requiredEndsOn)
-
-	if !requiredEndsOn.After(requiredStartsOn) {
-		return nil, errors.New("required service period schedule window is invalid")
-	}
-
-	if firstPeriodNumber <= 0 {
-		return nil, errors.New("first service period number must be greater than zero")
-	}
-
-	if len(windows) == 0 {
-		return nil, errors.New("at least one service period window is required")
-	}
-
-	// Because Service Period boundaries are DATE values and every period must
-	// have positive duration, a valid partition cannot contain more periods
-	// than calendar days in the required window. This is a derived Engineering
-	// safety invariant, not Service Period cadence policy.
-	maxPossiblePeriods := int(
-		requiredEndsOn.Sub(requiredStartsOn) / (24 * time.Hour),
-	)
-
-	if len(windows) > maxPossiblePeriods {
-		return nil, fmt.Errorf(
-			"service period schedule contains %d periods but the required window can contain at most %d positive-duration date periods",
-			len(windows),
-			maxPossiblePeriods,
-		)
-	}
-
-	normalized := make(
-		[]MerchantFutureOfferingServicePeriodWindow,
-		len(windows),
-	)
-
-	for i, window := range windows {
-		if window.StartsOn.IsZero() || window.EndsOn.IsZero() {
-			return nil, fmt.Errorf(
-				"service period window %d requires both starts_on and ends_on",
-				i+1,
-			)
-		}
-
-		normalized[i] = MerchantFutureOfferingServicePeriodWindow{
-			StartsOn: normalizeMerchantFutureOfferingServicePeriodDate(
-				window.StartsOn,
-			),
-			EndsOn: normalizeMerchantFutureOfferingServicePeriodDate(
-				window.EndsOn,
-			),
-		}
-
-		if !normalized[i].EndsOn.After(normalized[i].StartsOn) {
-			return nil, fmt.Errorf(
-				"service period window %d must end after it starts",
-				i+1,
-			)
-		}
-
-		if i > 0 &&
-			!normalized[i].StartsOn.After(normalized[i-1].StartsOn) {
-			return nil, fmt.Errorf(
-				"service period windows must be supplied in strictly ascending start-date order (position %d)",
-				i+1,
-			)
-		}
-	}
-
-	if !normalized[0].StartsOn.Equal(requiredStartsOn) {
-		return nil, errors.New(
-			"service period schedule must start exactly at the required boundary",
-		)
-	}
-
-	numbered := make(
-		[]merchantFutureOfferingNumberedServicePeriodWindow,
-		0,
-		len(normalized),
-	)
-
-	for i, window := range normalized {
-		if i > 0 &&
-			!window.StartsOn.Equal(normalized[i-1].EndsOn) {
-			return nil, fmt.Errorf(
-				"service period schedule has a gap or overlap between positions %d and %d",
-				i,
-				i+1,
-			)
-		}
-
-		numbered = append(
-			numbered,
-			merchantFutureOfferingNumberedServicePeriodWindow{
-				PeriodNumber: firstPeriodNumber + i,
-				StartsOn:     window.StartsOn,
-				EndsOn:       window.EndsOn,
-			},
-		)
-	}
-
-	if !normalized[len(normalized)-1].EndsOn.Equal(requiredEndsOn) {
-		return nil, errors.New(
-			"service period schedule must end exactly at the required boundary",
-		)
-	}
-
-	return numbered, nil
-}
-
-func validateCurrentMerchantFutureOfferingServicePeriodSchedule(
-	termStartsOn time.Time,
 	termEndsOn time.Time,
-	periods []*MerchantFutureOfferingServicePeriod,
-) error {
-	if len(periods) == 0 {
-		return errors.New("current service period schedule is empty")
+	window MerchantFutureOfferingServicePeriodWindow,
+) (MerchantFutureOfferingServicePeriodWindow, error) {
+	if requiredStartsOn.IsZero() ||
+		termEndsOn.IsZero() ||
+		window.StartsOn.IsZero() ||
+		window.EndsOn.IsZero() {
+		return MerchantFutureOfferingServicePeriodWindow{},
+			ErrMerchantFutureOfferingServicePeriodInvalidInput
 	}
 
-	termStartsOn = normalizeMerchantFutureOfferingServicePeriodDate(termStartsOn)
-	termEndsOn = normalizeMerchantFutureOfferingServicePeriodDate(termEndsOn)
+	requiredStartsOn =
+		normalizeMerchantFutureOfferingServicePeriodDate(requiredStartsOn)
+	termEndsOn =
+		normalizeMerchantFutureOfferingServicePeriodDate(termEndsOn)
 
-	for i, period := range periods {
-		if period == nil {
-			return errors.New("current service period schedule contains a nil period")
-		}
-
-		if period.PeriodNumber != i+1 {
-			return fmt.Errorf(
-				"current service period schedule expected period_number %d but found %d",
-				i+1,
-				period.PeriodNumber,
-			)
-		}
-
-		if !period.PeriodEndsOn.After(period.PeriodStartsOn) {
-			return fmt.Errorf(
-				"current service period %s has an invalid window",
-				period.ID,
-			)
-		}
-
-		if i == 0 {
-			if !period.PeriodStartsOn.Equal(termStartsOn) {
-				return errors.New(
-					"current service period schedule does not start at term_starts_on",
-				)
-			}
-
-			continue
-		}
-
-		if !period.PeriodStartsOn.Equal(periods[i-1].PeriodEndsOn) {
-			return fmt.Errorf(
-				"current service period schedule is not contiguous between period_number %d and %d",
-				periods[i-1].PeriodNumber,
-				period.PeriodNumber,
-			)
-		}
+	normalized := MerchantFutureOfferingServicePeriodWindow{
+		StartsOn: normalizeMerchantFutureOfferingServicePeriodDate(
+			window.StartsOn,
+		),
+		EndsOn: normalizeMerchantFutureOfferingServicePeriodDate(
+			window.EndsOn,
+		),
 	}
 
-	if !periods[len(periods)-1].PeriodEndsOn.Equal(termEndsOn) {
-		return errors.New(
-			"current service period schedule does not end at term_ends_on",
-		)
+	if !termEndsOn.After(requiredStartsOn) {
+		return MerchantFutureOfferingServicePeriodWindow{},
+			ErrMerchantFutureOfferingServicePeriodInvalidState
 	}
 
-	return nil
+	if !normalized.EndsOn.After(normalized.StartsOn) {
+		return MerchantFutureOfferingServicePeriodWindow{},
+			ErrMerchantFutureOfferingServicePeriodInvalidInput
+	}
+
+	if !normalized.StartsOn.Equal(requiredStartsOn) {
+		return MerchantFutureOfferingServicePeriodWindow{},
+			ErrMerchantFutureOfferingServicePeriodInvalidTransition
+	}
+
+	if normalized.EndsOn.After(termEndsOn) {
+		return MerchantFutureOfferingServicePeriodWindow{},
+			ErrMerchantFutureOfferingServicePeriodInvalidTransition
+	}
+
+	return normalized, nil
 }
 
 func (m *MerchantFutureOfferingServicePeriodModel) lockEstablishedServiceTermTx(
@@ -391,7 +253,7 @@ func (m *MerchantFutureOfferingServicePeriodModel) lockEstablishedServiceTermTx(
 		}
 
 		return time.Time{}, time.Time{}, fmt.Errorf(
-			"lock merchant future offering service term for service periods: %w",
+			"lock merchant future offering service term for service period: %w",
 			err,
 		)
 	}
@@ -404,22 +266,33 @@ func (m *MerchantFutureOfferingServicePeriodModel) lockEstablishedServiceTermTx(
 			ErrMerchantFutureOfferingServicePeriodInvalidState
 	}
 
-	return normalizeMerchantFutureOfferingServicePeriodDate(*startsOn),
-		normalizeMerchantFutureOfferingServicePeriodDate(*endsOn),
-		nil
+	normalizedStartsOn :=
+		normalizeMerchantFutureOfferingServicePeriodDate(*startsOn)
+	normalizedEndsOn :=
+		normalizeMerchantFutureOfferingServicePeriodDate(*endsOn)
+
+	if !normalizedEndsOn.After(normalizedStartsOn) {
+		return time.Time{},
+			time.Time{},
+			ErrMerchantFutureOfferingServicePeriodInvalidState
+	}
+
+	return normalizedStartsOn, normalizedEndsOn, nil
 }
 
-func translateMerchantFutureOfferingServicePeriodWriteError(err error) error {
+func translateMerchantFutureOfferingServicePeriodWriteError(
+	err error,
+) error {
 	switch {
 	case IsPgConstraint(
 		err,
-		"excl_merchant_future_offering_service_periods_no_current_overlap",
+		"excl_merchant_future_offering_service_periods_no_overlap",
 	):
 		return ErrMerchantFutureOfferingServicePeriodOverlap
 
 	case IsPgConstraint(
 		err,
-		"ux_merchant_future_offering_service_periods_current_term_number",
+		"ux_merchant_future_offering_service_periods_term_number",
 	):
 		return ErrMerchantFutureOfferingServicePeriodNumberConflict
 
@@ -446,12 +319,51 @@ func translateMerchantFutureOfferingServicePeriodWriteError(err error) error {
 	}
 }
 
+func (m *MerchantFutureOfferingServicePeriodModel) getLatestForServiceTermTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	serviceTermID uuid.UUID,
+	futureOfferingID uuid.UUID,
+) (*MerchantFutureOfferingServicePeriod, error) {
+	const query = `
+		SELECT ` + merchantFutureOfferingServicePeriodSelectColumns + `
+		FROM merchant_future_offering_service_periods AS p
+		WHERE p.service_term_id = $1
+			AND p.future_offering_id = $2
+		ORDER BY p.period_number DESC
+		LIMIT 1
+		FOR UPDATE
+	`
+
+	period, err := scanMerchantFutureOfferingServicePeriod(
+		tx.QueryRow(
+			ctx,
+			query,
+			serviceTermID,
+			futureOfferingID,
+		),
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf(
+			"get latest merchant future offering service period for update: %w",
+			err,
+		)
+	}
+
+	return period, nil
+}
+
 func (m *MerchantFutureOfferingServicePeriodModel) insertServicePeriodTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	serviceTermID uuid.UUID,
 	futureOfferingID uuid.UUID,
-	window merchantFutureOfferingNumberedServicePeriodWindow,
+	periodNumber int,
+	window MerchantFutureOfferingServicePeriodWindow,
 ) (*MerchantFutureOfferingServicePeriod, error) {
 	const query = `
 		INSERT INTO merchant_future_offering_service_periods AS p (
@@ -470,13 +382,14 @@ func (m *MerchantFutureOfferingServicePeriodModel) insertServicePeriodTx(
 			query,
 			serviceTermID,
 			futureOfferingID,
-			window.PeriodNumber,
+			periodNumber,
 			window.StartsOn,
 			window.EndsOn,
 		),
 	)
 	if err != nil {
-		translated := translateMerchantFutureOfferingServicePeriodWriteError(err)
+		translated :=
+			translateMerchantFutureOfferingServicePeriodWriteError(err)
 		if translated != err {
 			return nil, translated
 		}
@@ -490,64 +403,26 @@ func (m *MerchantFutureOfferingServicePeriodModel) insertServicePeriodTx(
 	return period, nil
 }
 
-// EstablishSchedule atomically establishes the initial complete Service Period
-// schedule for an established Service Term.
+// CreateFirstPeriodTx creates the first immutable Service Period for an
+// established Service Term inside a caller-owned transaction.
 //
-// The caller supplies concrete calendar windows. This method does not determine
-// cadence. The windows must completely and contiguously partition the
-// authoritative Service Term.
-func (m *MerchantFutureOfferingServicePeriodModel) EstablishSchedule(
-	ctx context.Context,
-	serviceTermID uuid.UUID,
-	futureOfferingID uuid.UUID,
-	windows []MerchantFutureOfferingServicePeriodWindow,
-) ([]*MerchantFutureOfferingServicePeriod, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
-	tx, err := m.DB.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"begin merchant future offering service period schedule establishment: %w",
-			err,
-		)
-	}
-	defer tx.Rollback(ctx)
-
-	periods, err := m.establishScheduleTx(
-		ctx,
-		tx,
-		serviceTermID,
-		futureOfferingID,
-		windows,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf(
-			"commit merchant future offering service period schedule establishment: %w",
-			err,
-		)
-	}
-
-	return periods, nil
-}
-
-// EstablishScheduleTx establishes an initial complete Service Period schedule
-// inside a caller-owned transaction.
+// The supplied window must begin exactly at term_starts_on. Calendar generation
+// is deliberately outside this data method; the service layer must derive the
+// canonical first window according to STCD.
 //
-// A savepoint keeps this operation atomic even when the caller continues using
-// its outer transaction after a rejected schedule.
-func (m *MerchantFutureOfferingServicePeriodModel) EstablishScheduleTx(
+// This operation acquires a lock on the owning Service Term, ensuring that
+// concurrent attempts for the same term serialize before period existence is
+// evaluated.
+func (m *MerchantFutureOfferingServicePeriodModel) CreateFirstPeriodTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	serviceTermID uuid.UUID,
 	futureOfferingID uuid.UUID,
-	windows []MerchantFutureOfferingServicePeriodWindow,
-) ([]*MerchantFutureOfferingServicePeriod, error) {
-	if tx == nil {
+	window MerchantFutureOfferingServicePeriodWindow,
+) (*MerchantFutureOfferingServicePeriod, error) {
+	if tx == nil ||
+		serviceTermID == uuid.Nil ||
+		futureOfferingID == uuid.Nil {
 		return nil, ErrMerchantFutureOfferingServicePeriodInvalidInput
 	}
 
@@ -557,18 +432,18 @@ func (m *MerchantFutureOfferingServicePeriodModel) EstablishScheduleTx(
 	nestedTx, err := tx.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"begin service period schedule establishment savepoint: %w",
+			"begin first service period creation savepoint: %w",
 			err,
 		)
 	}
 	defer nestedTx.Rollback(ctx)
 
-	periods, err := m.establishScheduleTx(
+	period, err := m.createFirstPeriodTx(
 		ctx,
 		nestedTx,
 		serviceTermID,
 		futureOfferingID,
-		windows,
+		window,
 	)
 	if err != nil {
 		return nil, err
@@ -576,220 +451,110 @@ func (m *MerchantFutureOfferingServicePeriodModel) EstablishScheduleTx(
 
 	if err := nestedTx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf(
-			"release service period schedule establishment savepoint: %w",
+			"release first service period creation savepoint: %w",
 			err,
 		)
 	}
 
-	return periods, nil
+	return period, nil
 }
 
-func (m *MerchantFutureOfferingServicePeriodModel) establishScheduleTx(
+func (m *MerchantFutureOfferingServicePeriodModel) createFirstPeriodTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	serviceTermID uuid.UUID,
 	futureOfferingID uuid.UUID,
-	windows []MerchantFutureOfferingServicePeriodWindow,
-) ([]*MerchantFutureOfferingServicePeriod, error) {
+	window MerchantFutureOfferingServicePeriodWindow,
+) (*MerchantFutureOfferingServicePeriod, error) {
 	logger := m.Logger.GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("EstablishMerchantFutureOfferingServicePeriodSchedule")
+		WithFunctionName("CreateFirstMerchantFutureOfferingServicePeriod")
 
-	if serviceTermID == uuid.Nil || futureOfferingID == uuid.Nil {
-		return nil, ErrMerchantFutureOfferingServicePeriodInvalidInput
-	}
-
-	termStartsOn, termEndsOn, err := m.lockEstablishedServiceTermTx(
-		ctx,
-		tx,
-		serviceTermID,
-		futureOfferingID,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	const existsQuery = `
-		SELECT EXISTS (
-			SELECT 1
-			FROM merchant_future_offering_service_periods
-			WHERE service_term_id = $1
-				AND future_offering_id = $2
-				AND superseded_at IS NULL
-		)
-	`
-
-	var exists bool
-	if err := tx.QueryRow(
-		ctx,
-		existsQuery,
-		serviceTermID,
-		futureOfferingID,
-	).Scan(&exists); err != nil {
-		return nil, fmt.Errorf(
-			"check existing merchant future offering service period schedule: %w",
-			err,
-		)
-	}
-
-	if exists {
-		return nil, ErrMerchantFutureOfferingServicePeriodScheduleAlreadyExists
-	}
-
-	numbered, err := validateAndNumberMerchantFutureOfferingServicePeriodWindows(
-		termStartsOn,
-		termEndsOn,
-		1,
-		windows,
-	)
-	if err != nil {
-		logger.Error(
-			"service period schedule validation failed",
-			"error", err,
-			"service_term_id", serviceTermID,
-			"future_offering_id", futureOfferingID,
-		)
-
-		return nil, fmt.Errorf(
-			"%w: %v",
-			ErrMerchantFutureOfferingServicePeriodInvalidSchedule,
-			err,
-		)
-	}
-
-	periods := make(
-		[]*MerchantFutureOfferingServicePeriod,
-		0,
-		len(numbered),
-	)
-
-	for _, window := range numbered {
-		period, err := m.insertServicePeriodTx(
+	termStartsOn, termEndsOn, err :=
+		m.lockEstablishedServiceTermTx(
 			ctx,
 			tx,
 			serviceTermID,
 			futureOfferingID,
-			window,
 		)
-		if err != nil {
-			return nil, err
-		}
-
-		periods = append(periods, period)
-	}
-
-	logger.Info(
-		"service period schedule established",
-		"service_term_id", serviceTermID,
-		"future_offering_id", futureOfferingID,
-		"period_count", len(periods),
-	)
-
-	return periods, nil
-}
-
-func (m *MerchantFutureOfferingServicePeriodModel) lockCurrentScheduleTx(
-	ctx context.Context,
-	tx pgx.Tx,
-	serviceTermID uuid.UUID,
-	futureOfferingID uuid.UUID,
-) ([]*MerchantFutureOfferingServicePeriod, error) {
-	const query = `
-		SELECT ` + merchantFutureOfferingServicePeriodSelectColumns + `
-		FROM merchant_future_offering_service_periods AS p
-		WHERE p.service_term_id = $1
-			AND p.future_offering_id = $2
-			AND p.superseded_at IS NULL
-		ORDER BY p.period_number ASC
-		FOR UPDATE
-	`
-
-	rows, err := tx.Query(
-		ctx,
-		query,
-		serviceTermID,
-		futureOfferingID,
-	)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"lock current merchant future offering service period schedule: %w",
-			err,
-		)
+		return nil, err
 	}
 
-	periods, err := pgx.CollectRows(
-		rows,
-		func(row pgx.CollectableRow) (*MerchantFutureOfferingServicePeriod, error) {
-			return scanMerchantFutureOfferingServicePeriod(row)
-		},
-	)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"collect current merchant future offering service period schedule: %w",
-			err,
-		)
-	}
-
-	return periods, nil
-}
-
-// ReplaceFutureSchedule atomically replaces the complete not-yet-begun suffix
-// of the current Service Period schedule.
-//
-// Every Service Period whose start date is today or earlier is preserved.
-// Replacement windows must begin exactly where that immutable prefix ends and
-// must continue contiguously through term_ends_on.
-//
-// This operation changes Service Period partitioning only. It cannot change the
-// authoritative Service Term window.
-func (m *MerchantFutureOfferingServicePeriodModel) ReplaceFutureSchedule(
-	ctx context.Context,
-	serviceTermID uuid.UUID,
-	futureOfferingID uuid.UUID,
-	windows []MerchantFutureOfferingServicePeriodWindow,
-) (*MerchantFutureOfferingServicePeriodScheduleReplacement, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
-	tx, err := m.DB.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"begin merchant future offering service period schedule replacement: %w",
-			err,
-		)
-	}
-	defer tx.Rollback(ctx)
-
-	result, err := m.replaceFutureScheduleTx(
+	latest, err := m.getLatestForServiceTermTx(
 		ctx,
 		tx,
 		serviceTermID,
 		futureOfferingID,
-		windows,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf(
-			"commit merchant future offering service period schedule replacement: %w",
-			err,
-		)
+	if latest != nil {
+		return nil, ErrMerchantFutureOfferingServicePeriodNumberConflict
 	}
 
-	return result, nil
+	normalized, err :=
+		validateMerchantFutureOfferingServicePeriodWindow(
+			termStartsOn,
+			termEndsOn,
+			window,
+		)
+	if err != nil {
+		logger.Error(
+			"first service period validation failed",
+			"error", err,
+			"service_term_id", serviceTermID,
+			"future_offering_id", futureOfferingID,
+		)
+		return nil, err
+	}
+
+	period, err := m.insertServicePeriodTx(
+		ctx,
+		tx,
+		serviceTermID,
+		futureOfferingID,
+		1,
+		normalized,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Info(
+		"first service period created",
+		"service_period_id", period.ID,
+		"service_term_id", serviceTermID,
+		"future_offering_id", futureOfferingID,
+		"period_number", period.PeriodNumber,
+		"period_starts_on", period.PeriodStartsOn,
+		"period_ends_on", period.PeriodEndsOn,
+	)
+
+	return period, nil
 }
 
-// ReplaceFutureScheduleTx atomically replaces the complete not-yet-begun
-// Service Period schedule suffix within a caller-owned transaction.
-func (m *MerchantFutureOfferingServicePeriodModel) ReplaceFutureScheduleTx(
+// CreateNextPeriodTx creates exactly one next immutable Service Period inside
+// an established Service Term.
+//
+// The service layer supplies the STCD-derived calendar window. This method
+// proves that the supplied window starts exactly at the end of the latest
+// persisted period, remains within term_ends_on, and receives the next
+// deterministic period number.
+//
+// It does not decide whether today's date is the appropriate workflow boundary.
+// Time-based eligibility and scheduling belong to the service/automation layer.
+func (m *MerchantFutureOfferingServicePeriodModel) CreateNextPeriodTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	serviceTermID uuid.UUID,
 	futureOfferingID uuid.UUID,
-	windows []MerchantFutureOfferingServicePeriodWindow,
-) (*MerchantFutureOfferingServicePeriodScheduleReplacement, error) {
-	if tx == nil {
+	window MerchantFutureOfferingServicePeriodWindow,
+) (*MerchantFutureOfferingServicePeriod, error) {
+	if tx == nil ||
+		serviceTermID == uuid.Nil ||
+		futureOfferingID == uuid.Nil {
 		return nil, ErrMerchantFutureOfferingServicePeriodInvalidInput
 	}
 
@@ -799,18 +564,18 @@ func (m *MerchantFutureOfferingServicePeriodModel) ReplaceFutureScheduleTx(
 	nestedTx, err := tx.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"begin service period schedule replacement savepoint: %w",
+			"begin next service period creation savepoint: %w",
 			err,
 		)
 	}
 	defer nestedTx.Rollback(ctx)
 
-	result, err := m.replaceFutureScheduleTx(
+	period, err := m.createNextPeriodTx(
 		ctx,
 		nestedTx,
 		serviceTermID,
 		futureOfferingID,
-		windows,
+		window,
 	)
 	if err != nil {
 		return nil, err
@@ -818,29 +583,36 @@ func (m *MerchantFutureOfferingServicePeriodModel) ReplaceFutureScheduleTx(
 
 	if err := nestedTx.Commit(ctx); err != nil {
 		return nil, fmt.Errorf(
-			"release service period schedule replacement savepoint: %w",
+			"release next service period creation savepoint: %w",
 			err,
 		)
 	}
 
-	return result, nil
+	return period, nil
 }
 
-func (m *MerchantFutureOfferingServicePeriodModel) replaceFutureScheduleTx(
+func (m *MerchantFutureOfferingServicePeriodModel) createNextPeriodTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	serviceTermID uuid.UUID,
 	futureOfferingID uuid.UUID,
-	windows []MerchantFutureOfferingServicePeriodWindow,
-) (*MerchantFutureOfferingServicePeriodScheduleReplacement, error) {
+	window MerchantFutureOfferingServicePeriodWindow,
+) (*MerchantFutureOfferingServicePeriod, error) {
 	logger := m.Logger.GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("ReplaceMerchantFutureOfferingServicePeriodSchedule")
+		WithFunctionName("CreateNextMerchantFutureOfferingServicePeriod")
 
-	if serviceTermID == uuid.Nil || futureOfferingID == uuid.Nil {
-		return nil, ErrMerchantFutureOfferingServicePeriodInvalidInput
+	_, termEndsOn, err :=
+		m.lockEstablishedServiceTermTx(
+			ctx,
+			tx,
+			serviceTermID,
+			futureOfferingID,
+		)
+	if err != nil {
+		return nil, err
 	}
 
-	termStartsOn, termEndsOn, err := m.lockEstablishedServiceTermTx(
+	latest, err := m.getLatestForServiceTermTx(
 		ctx,
 		tx,
 		serviceTermID,
@@ -850,160 +622,68 @@ func (m *MerchantFutureOfferingServicePeriodModel) replaceFutureScheduleTx(
 		return nil, err
 	}
 
-	current, err := m.lockCurrentScheduleTx(
-		ctx,
-		tx,
-		serviceTermID,
-		futureOfferingID,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(current) == 0 {
+	if latest == nil {
 		return nil, ErrMerchantFutureOfferingServicePeriodInvalidState
 	}
 
-	if err := validateCurrentMerchantFutureOfferingServicePeriodSchedule(
-		termStartsOn,
-		termEndsOn,
-		current,
-	); err != nil {
-		logger.Error(
-			"persisted current service period schedule is invalid",
-			"error", err,
-			"service_term_id", serviceTermID,
-			"future_offering_id", futureOfferingID,
+	latestEndsOn :=
+		normalizeMerchantFutureOfferingServicePeriodDate(
+			latest.PeriodEndsOn,
 		)
 
-		return nil, fmt.Errorf(
-			"%w: %v",
-			ErrMerchantFutureOfferingServicePeriodInvalidState,
-			err,
-		)
-	}
-
-	var currentDate time.Time
-	if err := tx.QueryRow(ctx, `SELECT CURRENT_DATE`).Scan(&currentDate); err != nil {
-		return nil, fmt.Errorf(
-			"read database current date for service period replacement: %w",
-			err,
-		)
-	}
-
-	currentDate = normalizeMerchantFutureOfferingServicePeriodDate(currentDate)
-
-	frozenCount := 0
-	for _, period := range current {
-		if period.PeriodStartsOn.After(currentDate) {
-			break
-		}
-
-		frozenCount++
-	}
-
-	if frozenCount == len(current) {
+	if !termEndsOn.After(latestEndsOn) {
 		return nil, ErrMerchantFutureOfferingServicePeriodInvalidTransition
 	}
 
-	replacementStartsOn := termStartsOn
-	if frozenCount > 0 {
-		replacementStartsOn = current[frozenCount-1].PeriodEndsOn
+	if latest.PeriodNumber <= 0 ||
+		latest.PeriodNumber >= 2147483647 {
+		return nil, ErrMerchantFutureOfferingServicePeriodInvalidState
 	}
 
-	numbered, err := validateAndNumberMerchantFutureOfferingServicePeriodWindows(
-		replacementStartsOn,
-		termEndsOn,
-		frozenCount+1,
-		windows,
-	)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"%w: %v",
-			ErrMerchantFutureOfferingServicePeriodInvalidSchedule,
-			err,
-		)
-	}
-
-	superseded := make(
-		[]*MerchantFutureOfferingServicePeriod,
-		0,
-		len(current)-frozenCount,
-	)
-
-	const supersedeQuery = `
-		UPDATE merchant_future_offering_service_periods AS p
-		SET superseded_at = NOW()
-		WHERE p.id = $1
-			AND p.service_term_id = $2
-			AND p.future_offering_id = $3
-			AND p.superseded_at IS NULL
-			AND p.period_starts_on > CURRENT_DATE
-		RETURNING ` + merchantFutureOfferingServicePeriodSelectColumns
-
-	for _, period := range current[frozenCount:] {
-		supersededPeriod, err := scanMerchantFutureOfferingServicePeriod(
-			tx.QueryRow(
-				ctx,
-				supersedeQuery,
-				period.ID,
-				serviceTermID,
-				futureOfferingID,
-			),
-		)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, ErrMerchantFutureOfferingServicePeriodMutationConflict
-			}
-
-			return nil, fmt.Errorf(
-				"supersede merchant future offering service period %s: %w",
-				period.ID,
-				err,
-			)
-		}
-
-		superseded = append(superseded, supersededPeriod)
-	}
-
-	established := make(
-		[]*MerchantFutureOfferingServicePeriod,
-		0,
-		len(numbered),
-	)
-
-	for _, window := range numbered {
-		period, err := m.insertServicePeriodTx(
-			ctx,
-			tx,
-			serviceTermID,
-			futureOfferingID,
+	normalized, err :=
+		validateMerchantFutureOfferingServicePeriodWindow(
+			latestEndsOn,
+			termEndsOn,
 			window,
 		)
-		if err != nil {
-			return nil, err
-		}
+	if err != nil {
+		logger.Error(
+			"next service period validation failed",
+			"error", err,
+			"service_term_id", serviceTermID,
+			"future_offering_id", futureOfferingID,
+			"latest_period_id", latest.ID,
+			"latest_period_number", latest.PeriodNumber,
+		)
+		return nil, err
+	}
 
-		established = append(established, period)
+	period, err := m.insertServicePeriodTx(
+		ctx,
+		tx,
+		serviceTermID,
+		futureOfferingID,
+		latest.PeriodNumber+1,
+		normalized,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	logger.Info(
-		"future service period schedule replaced",
+		"next service period created",
+		"service_period_id", period.ID,
 		"service_term_id", serviceTermID,
 		"future_offering_id", futureOfferingID,
-		"preserved_period_count", frozenCount,
-		"superseded_period_count", len(superseded),
-		"established_period_count", len(established),
+		"period_number", period.PeriodNumber,
+		"period_starts_on", period.PeriodStartsOn,
+		"period_ends_on", period.PeriodEndsOn,
 	)
 
-	return &MerchantFutureOfferingServicePeriodScheduleReplacement{
-		Superseded:  superseded,
-		Established: established,
-	}, nil
+	return period, nil
 }
 
-// GetByID retrieves a Service Period by canonical ID, whether current or
-// historical.
+// GetByID retrieves an immutable Service Period by canonical ID.
 func (m *MerchantFutureOfferingServicePeriodModel) GetByID(
 	ctx context.Context,
 	id uuid.UUID,
@@ -1038,11 +718,61 @@ func (m *MerchantFutureOfferingServicePeriodModel) GetByID(
 	return period, nil
 }
 
-// GetCurrentAt retrieves the authoritative current Service Period covering the
-// supplied date for a Future Offering.
+// GetAt retrieves the immutable Service Period whose authoritative window
+// covers the supplied date for a Future Offering, regardless of whether its
+// owning Service Term remains the currently established term.
 //
-// "Current" requires both a non-superseded Service Period and the Future
-// Offering's currently established Service Term.
+// This method is suitable for historical reconstruction.
+func (m *MerchantFutureOfferingServicePeriodModel) GetAt(
+	ctx context.Context,
+	futureOfferingID uuid.UUID,
+	at time.Time,
+) (*MerchantFutureOfferingServicePeriod, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	if futureOfferingID == uuid.Nil || at.IsZero() {
+		return nil, ErrMerchantFutureOfferingServicePeriodNotFound
+	}
+
+	atDate :=
+		normalizeMerchantFutureOfferingServicePeriodDate(at)
+
+	const query = `
+		SELECT ` + merchantFutureOfferingServicePeriodSelectColumns + `
+		FROM merchant_future_offering_service_periods AS p
+		WHERE p.future_offering_id = $1
+			AND p.period_starts_on <= $2::date
+			AND p.period_ends_on > $2::date
+	`
+
+	period, err := scanMerchantFutureOfferingServicePeriod(
+		m.DB.QueryRow(
+			ctx,
+			query,
+			futureOfferingID,
+			atDate,
+		),
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrMerchantFutureOfferingServicePeriodNotFound
+		}
+
+		return nil, fmt.Errorf(
+			"get merchant future offering service period at date: %w",
+			err,
+		)
+	}
+
+	return period, nil
+}
+
+// GetCurrentAt retrieves the authoritative Service Period covering the
+// supplied date only when its owning Service Term is currently established.
+//
+// Unlike GetAt, this method answers operational authority rather than
+// historical chronology.
 func (m *MerchantFutureOfferingServicePeriodModel) GetCurrentAt(
 	ctx context.Context,
 	futureOfferingID uuid.UUID,
@@ -1055,7 +785,8 @@ func (m *MerchantFutureOfferingServicePeriodModel) GetCurrentAt(
 		return nil, ErrMerchantFutureOfferingServicePeriodNotFound
 	}
 
-	atDate := normalizeMerchantFutureOfferingServicePeriodDate(at)
+	atDate :=
+		normalizeMerchantFutureOfferingServicePeriodDate(at)
 
 	const query = `
 		SELECT ` + merchantFutureOfferingServicePeriodSelectColumns + `
@@ -1064,14 +795,19 @@ func (m *MerchantFutureOfferingServicePeriodModel) GetCurrentAt(
 			ON t.id = p.service_term_id
 			AND t.future_offering_id = p.future_offering_id
 		WHERE p.future_offering_id = $1
-			AND p.superseded_at IS NULL
-			AND t.term_status = 'established'
-			AND p.period_starts_on <= $2::date
-			AND p.period_ends_on > $2::date
+			AND t.term_status = $2
+			AND p.period_starts_on <= $3::date
+			AND p.period_ends_on > $3::date
 	`
 
 	period, err := scanMerchantFutureOfferingServicePeriod(
-		m.DB.QueryRow(ctx, query, futureOfferingID, atDate),
+		m.DB.QueryRow(
+			ctx,
+			query,
+			futureOfferingID,
+			string(MerchantFutureOfferingServiceTermStatusEstablished),
+			atDate,
+		),
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -1087,48 +823,56 @@ func (m *MerchantFutureOfferingServicePeriodModel) GetCurrentAt(
 	return period, nil
 }
 
-// ListCurrentSchedule returns the authoritative current Service Period schedule
-// for the Future Offering's currently established Service Term.
-func (m *MerchantFutureOfferingServicePeriodModel) ListCurrentSchedule(
+// ListForServiceTerm returns all immutable Service Periods created so far for
+// one Service Term in canonical period-number order.
+//
+// Under the just-in-time doctrine this list contains history plus, where
+// applicable, the currently performing period. It is not a forecast schedule.
+func (m *MerchantFutureOfferingServicePeriodModel) ListForServiceTerm(
 	ctx context.Context,
+	serviceTermID uuid.UUID,
 	futureOfferingID uuid.UUID,
 ) ([]*MerchantFutureOfferingServicePeriod, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	if futureOfferingID == uuid.Nil {
+	if serviceTermID == uuid.Nil ||
+		futureOfferingID == uuid.Nil {
 		return nil, ErrMerchantFutureOfferingServicePeriodInvalidInput
 	}
 
 	const query = `
 		SELECT ` + merchantFutureOfferingServicePeriodSelectColumns + `
 		FROM merchant_future_offering_service_periods AS p
-		JOIN merchant_future_offering_service_terms AS t
-			ON t.id = p.service_term_id
-			AND t.future_offering_id = p.future_offering_id
-		WHERE p.future_offering_id = $1
-			AND p.superseded_at IS NULL
-			AND t.term_status = 'established'
+		WHERE p.service_term_id = $1
+			AND p.future_offering_id = $2
 		ORDER BY p.period_number ASC
 	`
 
-	rows, err := m.DB.Query(ctx, query, futureOfferingID)
+	rows, err := m.DB.Query(
+		ctx,
+		query,
+		serviceTermID,
+		futureOfferingID,
+	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"list current merchant future offering service period schedule: %w",
+			"list merchant future offering service periods for service term: %w",
 			err,
 		)
 	}
 
 	periods, err := pgx.CollectRows(
 		rows,
-		func(row pgx.CollectableRow) (*MerchantFutureOfferingServicePeriod, error) {
+		func(
+			row pgx.CollectableRow,
+		) (*MerchantFutureOfferingServicePeriod, error) {
 			return scanMerchantFutureOfferingServicePeriod(row)
 		},
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"collect current merchant future offering service period schedule: %w",
+			"collect merchant future offering service periods for service term: %w",
 			err,
 		)
 	}
@@ -1136,8 +880,8 @@ func (m *MerchantFutureOfferingServicePeriodModel) ListCurrentSchedule(
 	return periods, nil
 }
 
-// ListTimelineForFutureOffering returns Service Period history across Service
-// Term and schedule revisions using keyset pagination.
+// ListTimelineForFutureOffering returns immutable Service Period history across
+// Service Term revisions using keyset pagination.
 func (m *MerchantFutureOfferingServicePeriodModel) ListTimelineForFutureOffering(
 	ctx context.Context,
 	futureOfferingID uuid.UUID,
@@ -1152,16 +896,20 @@ func (m *MerchantFutureOfferingServicePeriodModel) ListTimelineForFutureOffering
 	}
 
 	if after != nil &&
-		(after.PeriodStartsOn.IsZero() || after.ID == uuid.Nil) {
+		(after.PeriodStartsOn.IsZero() ||
+			after.ID == uuid.Nil) {
 		return nil, ErrMerchantFutureOfferingServicePeriodInvalidInput
 	}
 
 	if limit <= 0 {
-		limit = merchantFutureOfferingServicePeriodTimelineDefaultLimit
+		limit =
+			merchantFutureOfferingServicePeriodTimelineDefaultLimit
 	}
 
-	if limit > merchantFutureOfferingServicePeriodTimelineMaxLimit {
-		limit = merchantFutureOfferingServicePeriodTimelineMaxLimit
+	if limit >
+		merchantFutureOfferingServicePeriodTimelineMaxLimit {
+		limit =
+			merchantFutureOfferingServicePeriodTimelineMaxLimit
 	}
 
 	var (
@@ -1185,9 +933,10 @@ func (m *MerchantFutureOfferingServicePeriodModel) ListTimelineForFutureOffering
 			limit,
 		)
 	} else {
-		afterStartsOn := normalizeMerchantFutureOfferingServicePeriodDate(
-			after.PeriodStartsOn,
-		)
+		afterStartsOn :=
+			normalizeMerchantFutureOfferingServicePeriodDate(
+				after.PeriodStartsOn,
+			)
 
 		const query = `
 			SELECT ` + merchantFutureOfferingServicePeriodSelectColumns + `
@@ -1217,7 +966,9 @@ func (m *MerchantFutureOfferingServicePeriodModel) ListTimelineForFutureOffering
 
 	periods, err := pgx.CollectRows(
 		rows,
-		func(row pgx.CollectableRow) (*MerchantFutureOfferingServicePeriod, error) {
+		func(
+			row pgx.CollectableRow,
+		) (*MerchantFutureOfferingServicePeriod, error) {
 			return scanMerchantFutureOfferingServicePeriod(row)
 		},
 	)
@@ -1231,11 +982,12 @@ func (m *MerchantFutureOfferingServicePeriodModel) ListTimelineForFutureOffering
 	return periods, nil
 }
 
-// BeginTx begins a caller-owned Service Period transaction.
+// BeginTx begins a caller-owned transaction for Service Period domain
+// composition.
 //
-// Service-layer orchestration may use this boundary when Service Period
-// persistence must commit atomically with other producer-owned domain work,
-// including future outbox/event publication.
+// The service layer may use this seam when Service Period persistence must
+// commit atomically with producer-owned Service Term lifecycle work and
+// transactional outbox insertion.
 func (m *MerchantFutureOfferingServicePeriodModel) BeginTx(
 	ctx context.Context,
 ) (pgx.Tx, error) {

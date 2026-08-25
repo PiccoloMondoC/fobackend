@@ -652,10 +652,9 @@ func (app *Application) Routes() http.Handler {
 			},
 		)
 
-
 		// Merchant Future Offering Service Periods
 		//
-		// Service Period schedule generation and prospective replacement are
+		// Service Period creation and Service Term boundary transitions are
 		// service/orchestration-owned capabilities. HTTP exposes privileged
 		// observation and historical retrieval only.
 		//
@@ -670,15 +669,6 @@ func (app *Application) Routes() http.Handler {
 
 				// Static routes must remain before the parameterized
 				// service-period route.
-				sp.With(
-					app.RequirePermission(
-						"list_merchant_future_offering_service_periods",
-					),
-				).Get(
-					"/current",
-					app.ListCurrentMerchantFutureOfferingServicePeriodScheduleHandler,
-				)
-
 				sp.With(
 					app.RequirePermission(
 						"read_merchant_future_offering_service_period",
@@ -707,7 +697,6 @@ func (app *Application) Routes() http.Handler {
 				)
 			},
 		)
-
 
 		// Merchant Program Subscriptions
 		v1.Route("/merchant-program-subscriptions", func(mps chi.Router) {

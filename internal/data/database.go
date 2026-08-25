@@ -1854,341 +1854,271 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		id DESC
 	);
 
-CREATE OR REPLACE FUNCTION
-	merchant_future_offering_service_terms_enforce_lifecycle()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-BEGIN
-	IF TG_OP = 'INSERT' THEN
-		IF NEW.term_status <> 'proposed' THEN
-			RAISE EXCEPTION
-				'merchant_future_offering_service_terms: service terms must be created in proposed status (id=%)',
-				NEW.id;
+	CREATE OR REPLACE FUNCTION
+		merchant_future_offering_service_terms_enforce_lifecycle()
+	RETURNS TRIGGER
+	LANGUAGE plpgsql
+	AS $$
+	BEGIN
+		IF TG_OP = 'INSERT' THEN
+			IF NEW.term_status <> 'proposed' THEN
+				RAISE EXCEPTION
+					'merchant_future_offering_service_terms: service terms must be created in proposed status (id=%)',
+					NEW.id;
+			END IF;
+
+			RETURN NEW;
 		END IF;
 
-		RETURN NEW;
-	END IF;
-
-	IF OLD.term_status = 'superseded' THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_terms: superseded service terms are immutable (id=%)',
-			OLD.id;
-	END IF;
-
-	IF OLD.future_offering_id <> NEW.future_offering_id THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_terms: future_offering_id is immutable (id=%)',
-			OLD.id;
-	END IF;
-
-	IF OLD.term_status = 'established' THEN
-		IF NEW.duration_months <> OLD.duration_months
-			OR NEW.term_starts_on IS DISTINCT FROM OLD.term_starts_on
-			OR NEW.term_ends_on IS DISTINCT FROM OLD.term_ends_on
-			OR NEW.established_at IS DISTINCT FROM OLD.established_at
-			OR NEW.supersedes_service_term_id
-				IS DISTINCT FROM OLD.supersedes_service_term_id
-		THEN
+		IF OLD.term_status = 'superseded' THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_service_terms: established service term facts are immutable (id=%)',
+				'merchant_future_offering_service_terms: superseded service terms are immutable (id=%)',
 				OLD.id;
 		END IF;
 
-		IF NEW.term_status NOT IN (
-			'established',
-			'superseded'
-		) THEN
+		IF OLD.future_offering_id <> NEW.future_offering_id THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_service_terms: invalid transition from established to % (id=%)',
+				'merchant_future_offering_service_terms: future_offering_id is immutable (id=%)',
+				OLD.id;
+		END IF;
+
+		IF OLD.term_status = 'established' THEN
+			IF NEW.duration_months <> OLD.duration_months
+				OR NEW.term_starts_on IS DISTINCT FROM OLD.term_starts_on
+				OR NEW.term_ends_on IS DISTINCT FROM OLD.term_ends_on
+				OR NEW.established_at IS DISTINCT FROM OLD.established_at
+				OR NEW.supersedes_service_term_id
+					IS DISTINCT FROM OLD.supersedes_service_term_id
+			THEN
+				RAISE EXCEPTION
+					'merchant_future_offering_service_terms: established service term facts are immutable (id=%)',
+					OLD.id;
+			END IF;
+
+			IF NEW.term_status NOT IN (
+				'established',
+				'superseded'
+			) THEN
+				RAISE EXCEPTION
+					'merchant_future_offering_service_terms: invalid transition from established to % (id=%)',
+					NEW.term_status,
+					OLD.id;
+			END IF;
+		END IF;
+
+		IF OLD.term_status = 'proposed'
+			AND NEW.term_status NOT IN (
+				'proposed',
+				'established'
+			)
+		THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_service_terms: invalid transition from proposed to % (id=%)',
 				NEW.term_status,
 				OLD.id;
 		END IF;
-	END IF;
 
-	IF OLD.term_status = 'proposed'
-		AND NEW.term_status NOT IN (
-			'proposed',
-			'established'
-		)
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_terms: invalid transition from proposed to % (id=%)',
-			NEW.term_status,
-			OLD.id;
-	END IF;
+		RETURN NEW;
+	END;
+	$$;
 
-	RETURN NEW;
-END;
-$$;
+	DROP TRIGGER IF EXISTS
+		trg_merchant_future_offering_service_terms_enforce_lifecycle
+		ON merchant_future_offering_service_terms;
 
-DROP TRIGGER IF EXISTS
-	trg_merchant_future_offering_service_terms_enforce_lifecycle
-	ON merchant_future_offering_service_terms;
-
-CREATE TRIGGER
-	trg_merchant_future_offering_service_terms_enforce_lifecycle
-BEFORE INSERT OR UPDATE ON merchant_future_offering_service_terms
-FOR EACH ROW
-EXECUTE FUNCTION
-	merchant_future_offering_service_terms_enforce_lifecycle();
+	CREATE TRIGGER
+		trg_merchant_future_offering_service_terms_enforce_lifecycle
+	BEFORE INSERT OR UPDATE ON merchant_future_offering_service_terms
+	FOR EACH ROW
+	EXECUTE FUNCTION
+		merchant_future_offering_service_terms_enforce_lifecycle();
 
 
 	-- Merchant Future Offering Service Periods
-CREATE TABLE IF NOT EXISTS merchant_future_offering_service_periods (
-	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	CREATE TABLE IF NOT EXISTS merchant_future_offering_service_periods (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-	service_term_id UUID NOT NULL,
-	future_offering_id UUID NOT NULL,
+		service_term_id UUID NOT NULL,
+		future_offering_id UUID NOT NULL,
 
-	period_number INTEGER NOT NULL
-		CHECK (period_number > 0),
+		period_number INTEGER NOT NULL
+			CHECK (period_number > 0),
 
-	period_starts_on DATE NOT NULL,
-	period_ends_on DATE NOT NULL,
+		period_starts_on DATE NOT NULL,
+		period_ends_on DATE NOT NULL,
 
-	superseded_at TIMESTAMPTZ,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		CONSTRAINT fk_merchant_future_offering_service_periods_service_term
+			FOREIGN KEY (
+				service_term_id,
+				future_offering_id
+			)
+			REFERENCES merchant_future_offering_service_terms (
+				id,
+				future_offering_id
+			)
+			ON DELETE RESTRICT,
 
-	CONSTRAINT fk_merchant_future_offering_service_periods_service_term
-		FOREIGN KEY (
-			service_term_id,
-			future_offering_id
-		)
-		REFERENCES merchant_future_offering_service_terms (
-			id,
-			future_offering_id
-		)
-		ON DELETE RESTRICT,
+		CONSTRAINT chk_merchant_future_offering_service_periods_window
+			CHECK (
+				period_ends_on > period_starts_on
+			),
 
-	CONSTRAINT chk_merchant_future_offering_service_periods_window
-		CHECK (
-			period_ends_on > period_starts_on
-		),
+		CONSTRAINT excl_merchant_future_offering_service_periods_no_overlap
+			EXCLUDE USING gist (
+				future_offering_id WITH =,
+				daterange(
+					period_starts_on,
+					period_ends_on,
+					'[)'
+				) WITH &&
+			)
+	);
 
-	CONSTRAINT chk_merchant_future_offering_service_periods_superseded_after_created
-		CHECK (
-			superseded_at IS NULL
-				OR superseded_at >= created_at
-		),
+	CREATE UNIQUE INDEX IF NOT EXISTS
+		ux_merchant_future_offering_service_periods_term_number
+	ON merchant_future_offering_service_periods (
+		service_term_id,
+		period_number
+	);
 
-	CONSTRAINT excl_merchant_future_offering_service_periods_no_current_overlap
-		EXCLUDE USING gist (
-			service_term_id WITH =,
-			daterange(
-				period_starts_on,
-				period_ends_on,
-				'[)'
-			) WITH &&
-		)
-		WHERE (
-			superseded_at IS NULL
-		)
-);
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offering_service_periods_term_timeline
+	ON merchant_future_offering_service_periods (
+		service_term_id,
+		period_starts_on,
+		id
+	);
 
-CREATE UNIQUE INDEX IF NOT EXISTS
-	ux_merchant_future_offering_service_periods_current_term_number
-ON merchant_future_offering_service_periods (
-	service_term_id,
-	period_number
-)
-WHERE superseded_at IS NULL;
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offering_service_periods_fo_timeline
+	ON merchant_future_offering_service_periods (
+		future_offering_id,
+		period_starts_on,
+		id
+	);
 
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_term_timeline
-ON merchant_future_offering_service_periods (
-	service_term_id,
-	period_starts_on,
-	id
-);
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offering_service_periods_term_sequence
+	ON merchant_future_offering_service_periods (
+		service_term_id,
+		period_number,
+		id
+	);
 
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_fo_timeline
-ON merchant_future_offering_service_periods (
-	future_offering_id,
-	period_starts_on,
-	id
-);
-
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_current_term_schedule
-ON merchant_future_offering_service_periods (
-	service_term_id,
-	period_number,
-	id
-)
-WHERE superseded_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_current_schedule
-ON merchant_future_offering_service_periods (
-	future_offering_id,
-	period_starts_on,
-	period_ends_on,
-	id
-)
-WHERE superseded_at IS NULL;
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offering_service_periods_fo_window
+	ON merchant_future_offering_service_periods (
+		future_offering_id,
+		period_starts_on,
+		period_ends_on,
+		id
+	);
 
 
-CREATE OR REPLACE FUNCTION
-	merchant_future_offering_service_periods_validate_insert()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-	v_term_starts_on DATE;
-	v_term_ends_on DATE;
-	v_term_status TEXT;
-BEGIN
-	SELECT
-		term_starts_on,
-		term_ends_on,
-		term_status
-	INTO
-		v_term_starts_on,
-		v_term_ends_on,
-		v_term_status
-	FROM merchant_future_offering_service_terms
-	WHERE id = NEW.service_term_id
-		AND future_offering_id = NEW.future_offering_id
-	FOR SHARE;
-
-	IF NOT FOUND THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service term % does not belong to future offering %',
-			NEW.service_term_id,
-			NEW.future_offering_id;
-	END IF;
-
-	IF v_term_status <> 'established' THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service term must be established before service periods may be created (service_term_id=%, status=%)',
-			NEW.service_term_id,
-			v_term_status;
-	END IF;
-
-	IF v_term_starts_on IS NULL
-		OR v_term_ends_on IS NULL
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: established service term must have a complete service window (service_term_id=%)',
-			NEW.service_term_id;
-	END IF;
-
-	IF NEW.period_starts_on < v_term_starts_on
-		OR NEW.period_ends_on > v_term_ends_on
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service period [%, %) must be contained within service term [%, %) (service_term_id=%)',
-			NEW.period_starts_on,
-			NEW.period_ends_on,
+	CREATE OR REPLACE FUNCTION
+		merchant_future_offering_service_periods_validate_insert()
+	RETURNS TRIGGER
+	LANGUAGE plpgsql
+	AS $$
+	DECLARE
+		v_term_starts_on DATE;
+		v_term_ends_on DATE;
+		v_term_status TEXT;
+	BEGIN
+		SELECT
+			term_starts_on,
+			term_ends_on,
+			term_status
+		INTO
 			v_term_starts_on,
 			v_term_ends_on,
-			NEW.service_term_id;
-	END IF;
+			v_term_status
+		FROM merchant_future_offering_service_terms
+		WHERE id = NEW.service_term_id
+			AND future_offering_id = NEW.future_offering_id
+		FOR SHARE;
 
-	IF NEW.superseded_at IS NOT NULL THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: a new service period cannot already be superseded';
-	END IF;
+		IF NOT FOUND THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_service_periods: service term % does not belong to future offering %',
+				NEW.service_term_id,
+				NEW.future_offering_id;
+		END IF;
 
-	RETURN NEW;
-END;
-$$;
+		IF v_term_status <> 'established' THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_service_periods: service term must be established before a service period may be created (service_term_id=%, status=%)',
+				NEW.service_term_id,
+				v_term_status;
+		END IF;
 
-DROP TRIGGER IF EXISTS
-	trg_merchant_future_offering_service_periods_validate_insert
-	ON merchant_future_offering_service_periods;
+		IF v_term_starts_on IS NULL
+			OR v_term_ends_on IS NULL
+		THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_service_periods: established service term must have a complete service window (service_term_id=%)',
+				NEW.service_term_id;
+		END IF;
 
-CREATE TRIGGER
-	trg_merchant_future_offering_service_periods_validate_insert
-BEFORE INSERT ON merchant_future_offering_service_periods
-FOR EACH ROW
-EXECUTE FUNCTION
-	merchant_future_offering_service_periods_validate_insert();
+		IF NEW.period_starts_on < v_term_starts_on
+			OR NEW.period_ends_on > v_term_ends_on
+		THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_service_periods: service period [%, %) must be contained within service term [%, %) (service_term_id=%)',
+				NEW.period_starts_on,
+				NEW.period_ends_on,
+				v_term_starts_on,
+				v_term_ends_on,
+				NEW.service_term_id;
+		END IF;
+
+		RETURN NEW;
+	END;
+	$$;
+
+	DROP TRIGGER IF EXISTS
+		trg_merchant_future_offering_service_periods_validate_insert
+		ON merchant_future_offering_service_periods;
+
+	CREATE TRIGGER
+		trg_merchant_future_offering_service_periods_validate_insert
+	BEFORE INSERT ON merchant_future_offering_service_periods
+	FOR EACH ROW
+	EXECUTE FUNCTION
+		merchant_future_offering_service_periods_validate_insert();
 
 
-CREATE OR REPLACE FUNCTION
-	merchant_future_offering_service_periods_enforce_lifecycle()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-	v_term_status TEXT;
-BEGIN
-	IF TG_OP = 'DELETE' THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service periods cannot be deleted (id=%)',
-			OLD.id;
-	END IF;
+	CREATE OR REPLACE FUNCTION
+		merchant_future_offering_service_periods_enforce_lifecycle()
+	RETURNS TRIGGER
+	LANGUAGE plpgsql
+	AS $$
+	BEGIN
+		IF TG_OP = 'DELETE' THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_service_periods: service periods cannot be deleted (id=%)',
+				OLD.id;
+		END IF;
 
-	IF OLD.superseded_at IS NOT NULL THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: superseded service periods are immutable (id=%)',
-			OLD.id;
-	END IF;
-
-	IF NEW.service_term_id <> OLD.service_term_id
-		OR NEW.future_offering_id <> OLD.future_offering_id
-		OR NEW.period_number <> OLD.period_number
-		OR NEW.period_starts_on <> OLD.period_starts_on
-		OR NEW.period_ends_on <> OLD.period_ends_on
-		OR NEW.created_at <> OLD.created_at
-	THEN
 		RAISE EXCEPTION
 			'merchant_future_offering_service_periods: established service period facts are immutable (id=%)',
 			OLD.id;
-	END IF;
+	END;
+	$$;
 
-	IF NEW.superseded_at IS NULL THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: no mutable service period facts were supplied (id=%)',
-			OLD.id;
-	END IF;
+	DROP TRIGGER IF EXISTS
+		trg_merchant_future_offering_service_periods_enforce_lifecycle
+		ON merchant_future_offering_service_periods;
 
-	SELECT
-		term_status
-	INTO
-		v_term_status
-	FROM merchant_future_offering_service_terms
-	WHERE id = OLD.service_term_id
-		AND future_offering_id = OLD.future_offering_id
-	FOR SHARE;
-
-	IF NOT FOUND
-		OR v_term_status <> 'established'
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: only periods belonging to the established service term may be prospectively superseded (id=%)',
-			OLD.id;
-	END IF;
-
-	IF OLD.period_starts_on <= CURRENT_DATE THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: a service period that has begun cannot be superseded (id=%, period_starts_on=%)',
-			OLD.id,
-			OLD.period_starts_on;
-	END IF;
-
-	-- Lifecycle timestamps are database-owned.
-	NEW.superseded_at := NOW();
-
-	RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS
-	trg_merchant_future_offering_service_periods_enforce_lifecycle
-	ON merchant_future_offering_service_periods;
-
-CREATE TRIGGER
-	trg_merchant_future_offering_service_periods_enforce_lifecycle
-BEFORE UPDATE OR DELETE
-ON merchant_future_offering_service_periods
-FOR EACH ROW
-EXECUTE FUNCTION
-	merchant_future_offering_service_periods_enforce_lifecycle();
+	CREATE TRIGGER
+		trg_merchant_future_offering_service_periods_enforce_lifecycle
+	BEFORE UPDATE OR DELETE
+	ON merchant_future_offering_service_periods
+	FOR EACH ROW
+	EXECUTE FUNCTION
+		merchant_future_offering_service_periods_enforce_lifecycle();
 
 
 	-- =====================================================================
@@ -6025,6 +5955,91 @@ EXECUTE FUNCTION
 
 	CREATE INDEX IF NOT EXISTS idx_affiliate_feed_import_errors_import
 		ON affiliate_feed_import_errors(import_id);
+
+
+	-- Outbox Events
+	CREATE TABLE IF NOT EXISTS outbox_events (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		aggregate_type TEXT NOT NULL
+			CHECK (btrim(aggregate_type) <> ''),
+
+		aggregate_id UUID NOT NULL,
+
+		event_type TEXT NOT NULL
+			CHECK (btrim(event_type) <> ''),
+
+		event_version INTEGER NOT NULL
+			CHECK (event_version > 0),
+
+		payload JSONB NOT NULL,
+
+		idempotency_key TEXT NOT NULL
+			CHECK (btrim(idempotency_key) <> ''),
+
+		correlation_id UUID,
+		causation_id UUID,
+
+		occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		published_at TIMESTAMPTZ,
+
+		attempt_count INTEGER NOT NULL DEFAULT 0
+			CHECK (attempt_count >= 0),
+
+		next_attempt_at TIMESTAMPTZ,
+
+		claimed_at TIMESTAMPTZ,
+		claimed_by TEXT,
+
+		last_error TEXT,
+		dead_lettered_at TIMESTAMPTZ,
+
+		CONSTRAINT ux_outbox_events_idempotency_key
+			UNIQUE (idempotency_key),
+
+		CONSTRAINT chk_outbox_events_published_after_created
+			CHECK (
+				published_at IS NULL
+				OR published_at >= created_at
+			),
+
+		CONSTRAINT chk_outbox_events_claim_identity
+			CHECK (
+				(claimed_at IS NULL AND claimed_by IS NULL)
+				OR
+				(claimed_at IS NOT NULL
+					AND claimed_by IS NOT NULL
+					AND btrim(claimed_by) <> '')
+			),
+
+		CONSTRAINT chk_outbox_events_dead_letter_after_created
+			CHECK (
+				dead_lettered_at IS NULL
+				OR dead_lettered_at >= created_at
+			)
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_outbox_events_publishable
+	ON outbox_events (
+		next_attempt_at,
+		created_at,
+		id
+	)
+	WHERE
+		published_at IS NULL
+		AND dead_lettered_at IS NULL;
+
+	CREATE INDEX IF NOT EXISTS
+		idx_outbox_events_aggregate_timeline
+	ON outbox_events (
+		aggregate_type,
+		aggregate_id,
+		created_at,
+		id
+	);
 
 
 	-- ===============================================================

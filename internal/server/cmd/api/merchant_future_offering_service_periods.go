@@ -11,13 +11,15 @@
 //	  Service Periods are the authoritative bounded performance windows within
 //	  an established Future Offering Service Term. This handler exposes
 //	  privileged observation and historical retrieval of those windows without
-//	  allowing HTTP callers to manufacture Service Period cadence, generation
-//	  policy, or authoritative schedule mutations.
+//	  allowing HTTP callers to manufacture Service Period cadence, create
+//	  Service Periods, or perform authoritative lifecycle transitions.
 //
-//	  Service Period schedule generation and prospective replacement are
-//	  service/orchestration responsibilities. The service layer resolves the
-//	  applicable Administration-governed generation policy and supplies concrete
-//	  windows to the data capability.
+//	  Service Period creation and Service Term boundary transitions are
+//	  service/orchestration responsibilities. Service Period cadence is an
+//	  Engineering invariant: each Service Period is one calendar-month
+//	  performance window generated according to STCD from the authoritative
+//	  Service Term anchor, with a shorter final period where necessary to end
+//	  exactly at the authoritative Service Term boundary.
 //
 // SPINE Rule:
 //
@@ -27,7 +29,8 @@
 //	Preserve Future Offering scope on every read.
 //	Preserve date-based Service Period semantics.
 //	Preserve bounded deterministic keyset pagination.
-//	Keep schedule generation and replacement out of the HTTP boundary.
+//	Keep Service Period creation and Service Term boundary transitions out of
+//	the HTTP boundary.
 //	Do not couple Service Periods to Billing Periods, Payment Periods,
 //	invoices, payments, settlement, or downstream event consumers.
 //	Block deployment if authorization, scoping, historical integrity,
@@ -83,14 +86,13 @@ const (
 // Time-of-day, elapsed-hour arithmetic, and server-local timezone are not
 // Service Period domain facts.
 type merchantFutureOfferingServicePeriodDTO struct {
-	ID               uuid.UUID  `json:"id"`
-	ServiceTermID    uuid.UUID  `json:"service_term_id"`
-	FutureOfferingID uuid.UUID  `json:"future_offering_id"`
-	PeriodNumber     int        `json:"period_number"`
-	PeriodStartsOn   string     `json:"period_starts_on"`
-	PeriodEndsOn     string     `json:"period_ends_on"`
-	SupersededAt     *time.Time `json:"superseded_at,omitempty"`
-	CreatedAt        time.Time  `json:"created_at"`
+	ID               uuid.UUID `json:"id"`
+	ServiceTermID    uuid.UUID `json:"service_term_id"`
+	FutureOfferingID uuid.UUID `json:"future_offering_id"`
+	PeriodNumber     int       `json:"period_number"`
+	PeriodStartsOn   string    `json:"period_starts_on"`
+	PeriodEndsOn     string    `json:"period_ends_on"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 func newMerchantFutureOfferingServicePeriodDTO(
@@ -103,7 +105,6 @@ func newMerchantFutureOfferingServicePeriodDTO(
 		PeriodNumber:     period.PeriodNumber,
 		PeriodStartsOn:   formatMerchantFutureOfferingServicePeriodDate(period.PeriodStartsOn),
 		PeriodEndsOn:     formatMerchantFutureOfferingServicePeriodDate(period.PeriodEndsOn),
-		SupersededAt:     period.SupersededAt,
 		CreatedAt:        period.CreatedAt,
 	}
 }
@@ -125,15 +126,6 @@ func newMerchantFutureOfferingServicePeriodDTOs(
 	}
 
 	return dtos
-}
-
-// merchantFutureOfferingServicePeriodScheduleResponse presents the current
-// authoritative Service Period schedule.
-//
-// The object envelope is intentional: it permits future schedule-level metadata
-// to be added without changing the API from an array into an object.
-type merchantFutureOfferingServicePeriodScheduleResponse struct {
-	Periods []merchantFutureOfferingServicePeriodDTO `json:"periods"`
 }
 
 // merchantFutureOfferingServicePeriodTimelineResponse presents a bounded
@@ -243,80 +235,6 @@ func (app *Application) GetMerchantFutureOfferingServicePeriodHandler(
 }
 
 // -----------------------------------------------------------------------------
-// Current schedule
-// -----------------------------------------------------------------------------
-
-// ListCurrentMerchantFutureOfferingServicePeriodScheduleHandler returns the
-// authoritative non-superseded Service Period schedule belonging to the Future
-// Offering's currently established Service Term.
-func (app *Application) ListCurrentMerchantFutureOfferingServicePeriodScheduleHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	const fn = "ListCurrentMerchantFutureOfferingServicePeriodScheduleHandler"
-
-	ctx, cancel := context.WithTimeout(
-		r.Context(),
-		cfgTimeout,
-	)
-	defer cancel()
-
-	if !app.HasPermission(
-		ctx,
-		permissionListMerchantFutureOfferingServicePeriods,
-	) {
-		app.respondWithError(
-			w,
-			errors.New("forbidden: insufficient permissions"),
-			http.StatusForbidden,
-		)
-		return
-	}
-
-	futureOfferingID, err :=
-		parseMerchantFutureOfferingServicePeriodPathUUID(
-			r,
-			"futureOfferingID",
-		)
-	if err != nil {
-		app.respondWithError(
-			w,
-			err,
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	periods, err :=
-		app.Models.MerchantFutureOfferingServicePeriod.
-			ListCurrentSchedule(
-				ctx,
-				futureOfferingID,
-			)
-	if err != nil {
-		app.respondMerchantFutureOfferingServicePeriodError(
-			w,
-			r,
-			fn,
-			err,
-		)
-		return
-	}
-
-	app.respondWithJSON(
-		w,
-		http.StatusOK,
-		jsonResponse{
-			Error:   false,
-			Message: "Current service period schedule retrieved successfully",
-			Data: merchantFutureOfferingServicePeriodScheduleResponse{
-				Periods: newMerchantFutureOfferingServicePeriodDTOs(periods),
-			},
-		},
-	)
-}
-
-// -----------------------------------------------------------------------------
 // Current at domain date
 // -----------------------------------------------------------------------------
 
@@ -409,8 +327,8 @@ func (app *Application) GetCurrentMerchantFutureOfferingServicePeriodAtDateHandl
 // -----------------------------------------------------------------------------
 
 // ListMerchantFutureOfferingServicePeriodTimelineHandler returns bounded
-// Service Period history across Service Term and schedule revisions using the
-// data layer's deterministic (period_starts_on, id) keyset.
+// immutable Service Period history across Service Term revisions using the
+// data layer's (period_starts_on, id) keyset.
 //
 // The data capability orders this timeline oldest-first.
 func (app *Application) ListMerchantFutureOfferingServicePeriodTimelineHandler(
@@ -695,7 +613,7 @@ func parseMerchantFutureOfferingServicePeriodPathUUID(
 // respondMerchantFutureOfferingServicePeriodError translates Service Period
 // data-layer failures into safe HTTP responses.
 //
-// This handler is intentionally read-only. Mutation-only lifecycle/schedule
+// This handler is intentionally read-only. Mutation-only lifecycle/write
 // sentinels reaching this boundary therefore represent unexpected internal
 // behavior and are not translated into public mutation semantics.
 func (app *Application) respondMerchantFutureOfferingServicePeriodError(

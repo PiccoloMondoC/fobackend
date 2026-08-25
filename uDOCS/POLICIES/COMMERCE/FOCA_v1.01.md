@@ -1,6 +1,6 @@
 ### Future Offering Commercial Architecture --- FOCA v1.01
 
-Purpose and governing commercial principle
+1. Purpose and governing commercial principle
 
 FOCA defines the commercial architecture of Sagrenti's Future Offering
 (FO) model.
@@ -22,25 +22,25 @@ relationship with Sagrenti.
 The governing progression is therefore:
 
 Merchant
-↓
+   ↓
 Future Offering
-↓
+   ↓
 Activation Cycle
-↓
+   ↓
 Consumer Anticipation
-↓
+   ↓
 Qualified Anticipation Entry (QAE)
-↓
+   ↓
 FO Fees / Commercial Obligations
-↓
+   ↓
 Invoice
-↓
+   ↓
 Settlement
 
 Every FO is its own commercial project with its own lifecycle,
 participation, measurement, fees and resulting obligations.
 
-Domain Language and Presentation Language Doctrine
+2. Domain Language and Presentation Language Doctrine
 
 Sagrenti separates canonical domain terminology from human-facing
 presentation terminology.
@@ -132,11 +132,10 @@ Payment Period
 Fee Type
 Platform Credit
 
-         ↓
- authoritative runtime
-
-terminology configuration
-↓
+             ↓
+     authoritative runtime
+   terminology configuration
+             ↓
 
 PRESENTATION
 ────────────────────────────
@@ -259,7 +258,7 @@ The governing rule throughout Sagrenti is therefore:
 Stable meaning belongs to the architecture. Changeable language
 belongs to configuration where appropriate.
 
-Four distinct Future Offering concerns
+3. Four distinct Future Offering concerns
 
 The Future Offering architecture separates four concepts that must not
 be conflated.
@@ -318,7 +317,7 @@ Qualified Anticipation Entries
 
 These concerns evolve independently.
 
-Watch and the anticipation relationship
+4. Watch and the anticipation relationship
 
 Watch is platform-owned.
 
@@ -343,18 +342,18 @@ Consumers with no engagement receive no ongoing intelligence for that
 FO. Once the anticipation relationship exists, the consumer receives the
 FO's continuing intelligence stream.
 
-Engagement is evolutionary, not prescriptive
+5. Engagement is evolutionary, not prescriptive
 
 A consumer might progress through:
 
 Watch
-↓
+  ↓
 Waitlist
-↓
+  ↓
 Beta
-↓
+  ↓
 Reservation Interest
-↓
+  ↓
 Preorder Intent
 
 But this is not a mandatory funnel.
@@ -367,7 +366,7 @@ operational history and analytics.
 
 Commercial billing does not count those events independently.
 
-Qualified Anticipation Entry --- QAE
+6. Qualified Anticipation Entry --- QAE
 
 The Qualified Anticipation Entry is Sagrenti's fundamental Anticipation
 Intelligence usage unit.
@@ -380,8 +379,8 @@ Offering during one activation cycle.
 Its uniqueness boundary is:
 
 Participant × Future Offering × Activation Cycle
-=
-at most one QAE
+                =
+          at most one QAE
 
 For example:
 
@@ -397,7 +396,7 @@ repeatedly charge the merchant for the same participant relationship.
 A participant engaging with 100 different FOs may generate 100 QAEs
 because each FO is commercially independent.
 
-Activation cycles establish QAE lifetime
+7. Activation cycles establish QAE lifetime
 
 Every activated FO operates within an identifiable activation cycle.
 
@@ -417,7 +416,7 @@ six-month, twelve-month or similar lifecycle assumptions. Administration
 may govern available choices, defaults and limits within safe
 Engineering boundaries.
 
-Billing periods do not reset QAE eligibility
+8. Billing periods do not reset QAE eligibility
 
 A billing period determines when a newly created QAE is billed.
 
@@ -431,21 +430,21 @@ or year has begun.
 Therefore periodic Anticipation Intelligence billing measures:
 
 Specific FO
-+
+   +
 Specific billing period
-+
+   +
 QAEs whose first qualifying entry occurred during that period
-+
+   +
 Applicable configured QAE price
-↓
+   ↓
 Fee Calculation
-↓
+   ↓
 Invoice Item
 
 QAE measures new anticipation relationships, not the continuing size
 of an FO's participant population.
 
-Current Future Offering fees
+9. Current Future Offering fees
 
 The current FO commercial architecture contemplates four product/service
 fee concepts:
@@ -480,7 +479,7 @@ Invoice architecture determines the additional snapshot and
 historical-integrity requirements that apply once such terminology
 becomes part of an authoritative financial record.
 
-Continuing FO service is not a subscription abstraction
+10. Continuing FO service is not a subscription abstraction
 
 An FO is not a conventional subscription product. The merchant establishes a
 commercial/service relationship with Sagrenti for the duration of a particular
@@ -491,39 +490,39 @@ FOCA therefore separates concepts previously collapsed under subscription:
 Concept                            Meaning
 
 FO Lifecycle                       The operational life of the FO:
-draft, activation, active/published,
-expiration, archive and any explicit
-relaunch
+                                   draft, activation, active/published,
+                                   expiration, archive and any explicit
+                                   relaunch
 
 Service Term                       The overall agreed duration for which a
-specific FO receives Sagrenti service
+                                   specific FO receives Sagrenti service
 
 Service Period                     An individual performance window occurring
-within the Service Term during which
-Sagrenti renders continuing service,
-measures applicable activity and provides
-utility
+                                   within the Service Term during which
+                                   Sagrenti renders continuing service,
+                                   measures applicable activity and provides
+                                   utility
 
 Billing Period                     The period or cadence according to which
-applicable continuing-service obligations
-are calculated and billed
+                                   applicable continuing-service obligations
+                                   are calculated and billed
 
 Payment Period                     The permitted period or schedule according
-to which the merchant satisfies the
-resulting financial obligation
+                                   to which the merchant satisfies the
+                                   resulting financial obligation
 
 These concepts are related but must not be conflated.
 
 The governing relationship is:
 
 Future Offering
-↓
+   ↓
 Service Term
-↓
+   ↓
 One or more Service Periods
-↓
+   ↓
 Applicable Billing Periods
-↓
+   ↓
 Permitted Payment Periods
 
 A Service Term answers:
@@ -549,7 +548,7 @@ govern FO continuing service. Related data structures should model Service
 Terms, Service Periods, Billing Periods and Payment Periods according to their
 actual semantics rather than preserving subscription terminology.
 
-Service Terms
+11. Service Terms
 
 The Service Term is the FO's overall service duration.
 
@@ -624,8 +623,7 @@ to merchants.
 For example:
 
 Engineering capability
-
-0 months ─────────────────────────────────────── 99 years
+> 0 months ─────────────────────────────────────── 99 years
 
 Administration policy
 1 month ───────── 9 years
@@ -650,18 +648,15 @@ Once an FO enters an authoritative commercial arrangement, its selected
 Service Term becomes historical commercial fact. Later changes to
 Administration's permitted range must not alter that existing agreement.
 
-Service Periods, Billing Periods, Payment Periods and payment economics
+12. Service Periods, Billing Periods, Payment Periods and payment economics
 
 Service Period
 
-A Service Period is an individual performance window occurring within a
-Service Term during which Sagrenti renders continuing service, measures
-applicable activity and provides utility.
+Service Period duration is an Engineering invariant. A Service Period is one calendar-month performance window within the authoritative Service Term. Service Period boundaries are generated according to STCD calendar semantics from the authoritative Service Term anchor. The final Service Period may be shorter than one calendar month where necessary to terminate exactly at the authoritative Service Term end boundary. Administration may not alter Service Period cadence or redefine the calendar meaning of a Service Period.
 
-A Service Period is not another name for the Service Term and is not the
-merchant's overall selected FO duration.
+A Service Period is not another name for the Service Term and is not the merchant's overall selected FO duration.
 
-For example, a 7-month Service Term may contain seven monthly Service Periods.
+A seven-calendar-month Service Term contains seven monthly Service Periods, subject only to the STCD calendar-boundary rules.
 
 Service Term
 ↓
@@ -673,17 +668,9 @@ Service Period 5
 Service Period 6
 Service Period 7
 
-where the applicable architecture establishes monthly Service Periods.
+Service Periods provide bounded operational windows within the larger authoritative Service Term. They may support continuing-service performance, period-specific commercial attribution, usage measurement, service-state tracking, billing inputs where applicable, historical reconstruction, operational scheduling and auditable period-by-period service provenance.
 
-Likewise, a longer Service Term may contain many successive Service Periods.
-
-Service Periods provide bounded operational windows within the larger agreed
-Service Term. They may support continuing-service performance, period-specific
-commercial attribution, usage measurement, service-state tracking, billing
-inputs where applicable, historical reconstruction, operational scheduling
-and auditable period-by-period service provenance.
-
-Beginning a new Service Period does not create a new Service Term.
+Beginning a new Service Period does not create a new Service Term. Once a Service Period has begun, its authoritative boundaries are historical facts and must not be retroactively redefined by subsequent configuration or policy changes.
 
 Billing Period
 
@@ -734,9 +721,7 @@ provenance and auditability separately from the production/service fee.
 
 Configuration determines what may be agreed; it never redefines what was agreed
 
-Administration may change future permitted Service Term ranges, Service Period
-configuration, Billing Period associations, Payment Period choices, labels,
-pricing and commercial policy.
+Administration may change future permitted Service Term ranges, Billing Period associations, Payment Period choices, labels, pricing and commercial policy. Service Period duration, cadence and calendar semantics are Engineering invariants and are not Administration configuration.
 
 But once an FO has entered an authoritative commercial arrangement, the
 material selected facts must be preserved.
@@ -748,7 +733,7 @@ Engineering must therefore preserve or snapshot the authoritative commercial
 facts applicable when the arrangement becomes binding, including the stable
 identities and material terms needed to reconstruct its historical meaning.
 
-FO Milestones, Merchant Responsibilities and Notifications
+14. FO Milestones, Merchant Responsibilities and Notifications
 
 Sagrenti should actively support merchants throughout the life of a
 Future Offering by helping them establish, maintain and act upon an
@@ -812,15 +797,15 @@ Once a merchant has established a milestone, Sagrenti has a clear basis
 for providing timely reminders.
 
 Merchant establishes milestone
-↓
+        ↓
 Sagrenti tracks milestone
-↓
+        ↓
 Configured advance-reminder threshold reached
-↓
+        ↓
 Dashboard / in-app notification
-↓
+        ↓
 Merchant takes required action
-↓
+        ↓
 Completion or updated milestone recorded
 
 Reminder timing such as X days before a milestone is legitimate
@@ -902,7 +887,7 @@ Payment Period, pricing or other material commercial terms must be
 resolved explicitly and preserved as part of the amended commercial
 arrangement rather than silently inferred from editing a duration field.
 
-Future Offering eligibility and governance boundaries
+15. Future Offering eligibility and governance boundaries
 
 Service duration must not become the definition of a Future Offering
 
@@ -1061,15 +1046,15 @@ Offering Architecture determines what genuinely constitutes future commerce.
 A merchant's freedom to determine the duration of a project must therefore
 coexist with two protections:
 
-Engineering's absolute safety envelope; and
+1. Engineering's absolute safety envelope; and
 
-the requirement that the underlying project genuinely qualify as a Future
+2. the requirement that the underlying project genuinely qualify as a Future
 Offering.
 
 Neither arbitrary duration packages nor arbitrary future dates should
 substitute for those principles.
 
-Activation creates the commercial event
+16. Activation creates the commercial event
 
 Submission of an FO for activation creates the Activation billable
 event.
@@ -1093,7 +1078,7 @@ How is that obligation ultimately satisfied?
 Payment therefore must not be treated as the Activation billable
 event.
 
-Activation requires commercial authorization, not universal prepayment
+17. Activation requires commercial authorization, not universal prepayment
 
 The existence of an Activation Fee does not imply that every merchant
 must pay it before activation.
@@ -1103,23 +1088,23 @@ Engineering must support at least two legitimate paths.
 Immediate settlement
 
 Activation Fee calculated
-↓
+        ↓
 Activation obligation/invoice
-↓
+        ↓
 Payment satisfied
-↓
+        ↓
 FO activated
 
 Authorized deferred settlement
 
 Activation Fee calculated
-↓
+        ↓
 Deferred/invoiced settlement authorized
-↓
+        ↓
 FO activated
-↓
+        ↓
 Activation Fee included on applicable invoice
-↓
+        ↓
 Settlement under configured terms
 
 This supports governments, universities, enterprises and other
@@ -1140,7 +1125,7 @@ record payment as satisfied when no payment occurred.
 
 Administration determines who qualifies for deferred terms.
 
-Invoice items represent Sagrenti products and services
+18. Invoice items represent Sagrenti products and services
 
 An invoice item represents:
 
@@ -1150,11 +1135,11 @@ one line on an invoice.
 The commercial progression is:
 
 Billable Event
-↓
+      ↓
 Fee Calculation
-↓
+      ↓
 Invoice Item
-↓
+      ↓
 Invoice
 
 Invoice items therefore represent Sagrenti products/services such as:
@@ -1176,20 +1161,20 @@ Credits, rebates, discounts, taxes, surcharges and payments are not
 transformed into products merely because they may appear visually near a
 product line on a rendered invoice.
 
-Invoice-item cardinality
+19. Invoice-item cardinality
 
 The agreed relationship is:
 
 1 Invoice
-↓
+   ↓
 many Invoice Items
 
 1 Invoice Item
-↓
+   ↓
 exactly 1 Fee Calculation
 
 1 Fee Calculation
-↓
+   ↓
 at most 1 Invoice Item
 
 Accordingly, fee_calculation_id belongs directly on
@@ -1203,12 +1188,12 @@ FO UM120 — August
 6,500 new QAE
 × configured CPQAE
 = calculated Anticipation Intelligence Fee
-↓
+        ↓
 one Fee Calculation
-↓
+        ↓
 one Invoice Item
 
-Adjustments do not redefine what Sagrenti sold
+20. Adjustments do not redefine what Sagrenti sold
 
 Invoice items preserve the truthful underlying product/service charge.
 
@@ -1235,7 +1220,7 @@ The $100 Activation Fee remains commercially true. The Platform Credit
 changes the resulting obligation rather than rewriting the underlying
 fee calculation.
 
-Commercial effects remain attributable to their cause
+21. Commercial effects remain attributable to their cause
 
 The governing provenance principle is:
 
@@ -1261,7 +1246,7 @@ for presentation convenience.
 The invoice aggregates established obligations; it does not redefine
 their provenance.
 
-Taxes reinforce FO-level commercial provenance
+22. Taxes reinforce FO-level commercial provenance
 
 Different FOs appearing on the same invoice may carry different
 jurisdictional and tax consequences.
@@ -1276,23 +1261,23 @@ Invoice-level totals may aggregate them for presentation.
 The broader hierarchy is:
 
 Merchant
-↓
+   ↓
 Future Offering
-│
-├── Commercial Charges
-│      ├── Activation Fee
-│      ├── Continuing-Service Fee
-│      ├── Asset Hosting Overage Fee
-│      └── Anticipation Intelligence Fee
-│
-└── Charge-related Monetary Effects
-├── Taxes
-├── Surcharges
-├── Platform Credits
-├── Rebates
-└── Discounts
+   │
+   ├── Commercial Charges
+   │      ├── Activation Fee
+   │      ├── Continuing-Service Fee
+   │      ├── Asset Hosting Overage Fee
+   │      └── Anticipation Intelligence Fee
+   │
+   └── Charge-related Monetary Effects
+          ├── Taxes
+          ├── Surcharges
+          ├── Platform Credits
+          ├── Rebates
+          └── Discounts
 
-Platform Credits are commercial policy, not product charges
+23. Platform Credits are commercial policy, not product charges
 
 Platform Credits are commercial reductions rather than invoice products.
 
@@ -1321,7 +1306,7 @@ merchant-facing name. Promotion and credit architecture may configure
 appropriate public terminology without changing the underlying identity
 or semantics.
 
-Merchant teams are not the commercial unit
+24. Merchant teams are not the commercial unit
 
 Merchant teams are an administrative capability.
 
@@ -1337,30 +1322,24 @@ compliance or advanced collaboration may justify different commercial
 products or plans because they provide additional value, but that is
 distinct from charging for ordinary team membership.
 
-Engineering and Administration boundary
+25. Engineering and Administration boundary
 
-Engineering implements the complete commercial capability and safe
-operating boundaries.
+Engineering implements the complete commercial capability and safe operating boundaries.
 
-Administration governs commercial and operational behavior within those
-boundaries.
+Administration governs commercial and operational behavior within those boundaries.
 
 This includes a deliberate separation of responsibility:
 
 Engineering owns stable domain semantics and identities.
-Administration owns legitimate configurable commercial policy and
-human-facing terminology.
+Administration owns legitimate configurable commercial policy and human-facing terminology.
 
 Administration should be capable of configuring matters such as:
 
-consumer-facing and merchant-facing terminology where designated
-configurable;
+consumer-facing and merchant-facing terminology where designated configurable;
 
 Service Term operating minimums, maximums and duration policy;
 
 merchant-facing fee names and descriptions;
-
-Service Period cadence and generation policy;
 
 Billing Period choices, cadence and associations;
 
@@ -1386,6 +1365,8 @@ canonical domain identity;
 
 stable domain semantics;
 
+Service Period duration, cadence and calendar-boundary semantics. A Service Period is one calendar-month performance window within the authoritative Service Term. Service Period boundaries are generated according to STCD calendar semantics from the authoritative Service Term anchor. The final Service Period may be shorter than one calendar month where necessary to terminate exactly at the authoritative Service Term end boundary. Administration may not alter Service Period cadence or redefine the calendar meaning of a Service Period;
+
 commercial provenance;
 
 exact monetary arithmetic;
@@ -1404,13 +1385,9 @@ historical integrity;
 
 data integrity.
 
-Engineering must provide the configuration and runtime-resolution
-capability needed to prevent legitimate terminology changes from
-becoming unnecessary software changes.
+Engineering must provide the configuration and runtime-resolution capability needed to prevent legitimate terminology changes from becoming unnecessary software changes.
 
-Administration may change configured presentation language and
-commercial policy, but cannot use configuration to redefine canonical
-domain semantics or weaken Engineering invariants.
+Administration may change configured presentation language and commercial policy, but cannot use configuration to redefine canonical domain semantics or weaken Engineering invariants.
 
 Accordingly:
 
@@ -1428,7 +1405,7 @@ Administration may not override:
 
 This is the governing Engineering/Admin boundary throughout FOCA.
 
-Architectural qualification
+26. Architectural qualification
 
 FOCA does not declare that Sagrenti can never introduce a merchant-level
 commercial product.
@@ -1464,8 +1441,7 @@ range → successive Service Periods occur within that Service Term → applicab
 Billing Periods determine billing windows/cadence → permitted Payment Period
 governs settlement scheduling.
 
-The Service Term is the FO's overall agreed service duration. A Service Period
-is an individual performance window within that Service Term. Billing Period
+The Service Term is the FO's overall agreed service duration. A Service Period is one calendar-month performance window within that Service Term, generated according to STCD calendar semantics from the authoritative Service Term anchor, with only the final Service Period permitted to be shorter where necessary to terminate exactly at the authoritative Service Term end boundary. Service Period cadence and calendar semantics are Engineering invariants, not Administration policy. Billing Period and Payment Period remain separate concepts. Billing Period
 and Payment Period remain separate concepts.
 
 Exceed included asset resources → Asset Hosting Overage Fee.
@@ -1506,59 +1482,59 @@ and human-facing language within those boundaries.
 The resulting commercial chain is:
 
 FUTURE OFFERING
-↓
+      ↓
 Activation Cycle
-↓
+      ↓
 Consumer enters anticipation
-↓
+      ↓
 Qualified Anticipation Entry
-↓
+      ↓
 Billing-period aggregation
-↓
+      ↓
 Fee Calculation
-↓
+      ↓
 Invoice Item
-↓
+      ↓
 Invoice
-↓
+      ↓
 Settlement
 
 while continuing FO service operates alongside it:
 
 ACTIVE FUTURE OFFERING
-↓
+      ↓
 Merchant-selected Service Term
-↓
+      ↓
 Successive Service Periods
-↓
+      ↓
 Applicable Billing Periods
-↓
+      ↓
 Permitted Payment Period
-↓
+      ↓
 Configured Continuing-Service Economics
 
 while merchant operations are supported by the FO milestone schedule:
 
 FO ACTIVATION
-↓
+      ↓
 Merchant establishes / confirms milestones
-↓
+      ↓
 Sagrenti tracks approaching dates
-↓
+      ↓
 Dashboard highlighting / in-app reminders
-↓
+      ↓
 Merchant action / token issuance / milestone update
-↓
+      ↓
 Completion and history preserved
 
 and the presentation architecture sits above the stable domain:
 
 STABLE DOMAIN SEMANTICS
-↓
+      ↓
 Authorized Administration Configuration
-↓
+      ↓
 Runtime Terminology Resolution
-↓
+      ↓
 Consumer / Merchant Presentation
 
 Together these establish the governing answer to FOCA's central question:
@@ -1583,5 +1559,3 @@ engagement options. A merchant may choose any applicable combination—including
 Waitlist without Preorder or Preorder without Waitlist. Where multiple
 engagement types coexist, their coexistence does not establish an inherent
 fulfillment priority.
-
-Service Term duration and calendar-window semantics are governed by the Service Term Calendar Doctrine (STCD). FOCA defines the commercial/domain meaning of the Service Term; STCD defines its authoritative calendar computation.
