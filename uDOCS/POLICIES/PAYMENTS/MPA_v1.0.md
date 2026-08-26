@@ -230,3 +230,74 @@ Payment Transaction
 > **Commerce determines what the merchant owes. Merchant Payments securely fulfills and records it.**
 
 That boundary is the foundation of MPA v1.0.
+
+
+# Future Offering Consumption Billing Model (FOCBM)
+
+## 7. Prepaid-Credit and Monthly Post-Pay Model
+
+Sagrenti combines FO-specific prepayment with monthly consumption/post-pay billing.
+
+A merchant may add prepaid funds or account credit to an individual FO.
+
+As QAEs and AHOs occur during the monthly Billing Period, their monetary charges accrue against that FO.
+
+Available prepaid funds eligible for those charges are economically consumed as the applicable consumption occurs.
+
+Prepayment therefore does not merely remain untouched until monthly invoice generation.
+
+Prepayment affects settlement of consumption; it does not reduce, obscure, or redefine the gross cost of that consumption.
+
+## 8. Prepayment and Exposure Control
+
+Sagrenti must not implicitly provide every merchant with an arbitrary or unlimited B2B credit facility.
+
+The merchant's FO funding behavior provides the basis for controlling permitted intra-month financial exposure.
+
+The model supports prepayment/funding levels associated with corresponding automatic-charge thresholds, for example:
+
+| FO funding level | Auto-charge threshold |
+| ---------------: | --------------------: |
+|               $0 |                    $0 |
+|              $25 |                   $25 |
+|              $50 |                   $50 |
+|             $250 |                  $250 |
+|           $1,000 |                $1,000 |
+|           $5,000 |                $5,000 |
+
+Engineering implements the safe capability and invariant financial controls. Administration may configure permitted operating thresholds and choices within those Engineering boundaries.
+
+An auto-charge threshold controls financial exposure. It does not define or modify a Billing Period.
+
+## 9. Funding and Billing Period Independence
+
+Funding and settlement events must never alter, split, shorten, extend, or otherwise redefine a Billing Period.
+
+Accordingly:
+
+* adding prepaid funds does not begin a new Billing Period;
+* consuming prepaid funds does not end a Billing Period;
+* exhausting prepaid funds does not end a Billing Period;
+* reaching an auto-charge threshold does not split a Billing Period;
+* an intra-month payment does not create a new Billing Period; and
+* making a large prepayment does not create an annual Billing Period.
+
+The monthly accounting window continues independently of funding and settlement activity.
+
+## 10. Annual Prepayment
+
+A merchant that wishes to fund approximately a year of Future Offering activity in advance may add sufficient funds or account credit to that FO.
+
+Such funding is a **prepayment**, not an annual plan.
+
+Sagrenti continues monthly consumption accounting and monthly invoicing.
+
+As each month progresses, eligible consumption charges are satisfied from the FO's available prepaid balance according to the applicable financial rules.
+
+Annual prepayment therefore does not create:
+
+* an annual Service Term;
+* an annual Billing Period;
+* an annual billing cycle;
+* an annual recurring invoice; or
+* a different consumption-accounting model.

@@ -212,6 +212,47 @@ var (
 		"merchant future offering service period mutation conflict",
 	)
 
+	// Merchant future offering billing periods.
+	ErrMerchantFutureOfferingBillingPeriodInvalidInput = errors.New(
+		"invalid merchant future offering billing period input",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodNotFound = errors.New(
+		"merchant future offering billing period not found",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodServiceTermNotFound = errors.New(
+		"merchant future offering billing period references a nonexistent or mismatched service term",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodInvalidState = errors.New(
+		"invalid merchant future offering billing period state",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodInvalidSchedule = errors.New(
+		"invalid merchant future offering billing period schedule",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodOverlap = errors.New(
+		"merchant future offering billing period overlaps an existing period",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodNumberConflict = errors.New(
+		"merchant future offering billing period number conflicts with an existing period",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodTermExhausted = errors.New(
+		"merchant future offering billing period service term coverage is complete",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodNotYetDue = errors.New(
+		"merchant future offering billing period is not yet due to begin",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodPersistenceConflict = errors.New(
+		"merchant future offering billing period persistence conflict",
+	)
+
 	// Merchant program subscription periods.
 	ErrMerchantProgramSubscriptionPeriodAlreadyExists = errors.New(
 		"merchant program subscription period already exists",

@@ -431,3 +431,54 @@ adjustment_amount model is superseded. The next implementation review
 may use this document as the architectural contract for
 merchant_invoices and merchant_invoice_items, including the final
 persistence-versus-derivation decision for canonical invoice aggregates.
+
+# Future Offering Consumption Billing Model (FOCBM)
+
+## 11. Monthly Invoice
+
+Sagrenti generates a monthly invoice covering all fees properly billable to the Future Offering for that billing cycle.
+
+The monthly invoice is not merely a usage invoice.
+
+Subject to the applicable fee rules, it may include:
+
+* Platform Service Fees;
+* Anticipation Intelligence Fees;
+* Asset Hosting Overage Fees; and
+* other fees properly billable during that cycle.
+
+The Anticipation Intelligence Activation Fee is ordinarily payable before activation is permitted and therefore normally does not appear on subsequent monthly invoices.
+
+Where Sagrenti has expressly authorized an arrangement permitting deferred payment of an Activation Fee, the applicable Activation Fee may instead appear on the appropriate monthly invoice.
+
+For example, assuming no Activation Fee is due:
+
+```
+September Platform Service Fee              $ 25
+September Anticipation Intelligence Fee      180
+September Asset Hosting Overage Fee            40
+                                            ----
+Gross September charges                     $245
+
+Prepaid funds already applied               (150)
+                                            ----
+Remaining amount payable                     $95
+```
+
+The gross invoice must preserve the full economic cost of the month's services and consumption.
+
+Amounts previously satisfied through eligible prepaid funds or other payments are presented as amounts already satisfied rather than being used to reduce the reported gross cost of the month.
+
+## 12. Invoice Inclusion and Prepayment Eligibility
+
+Whether a fee belongs on an invoice and whether prepaid FO funds may be applied to that fee are separate questions.
+
+The monthly invoice comprehensively reports all fees properly billable to the FO during the applicable billing cycle.
+
+Prepaid FO funds are consumed by fees designated as eligible for prepayment application, including Anticipation Intelligence Fees and Asset Hosting Overage Fees under the present model.
+
+A fee's presence on an invoice does not, by itself, make that fee eligible for satisfaction from prepaid FO funds.
+
+Accordingly:
+
+> **Invoiceable and prepayment-applicable are distinct financial properties.**

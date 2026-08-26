@@ -2132,23 +2132,15 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		future_offering_id UUID NOT NULL,
 
 		period_number INTEGER NOT NULL
-			CHECK (period_number > 0),
+			CHECK (
+				period_number > 0
+				AND period_number <= 1188
+			),
 
 		period_starts_on DATE NOT NULL,
 		period_ends_on DATE NOT NULL,
 
-		supersedes_billing_period_id UUID,
-
-		superseded_at TIMESTAMPTZ,
-
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT uq_merchant_future_offering_billing_periods_identity
-			UNIQUE (
-				id,
-				service_term_id,
-				future_offering_id
-			),
 
 		CONSTRAINT fk_merchant_future_offering_billing_periods_service_term
 			FOREIGN KEY (
@@ -2161,68 +2153,42 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			)
 			ON DELETE RESTRICT,
 
-		CONSTRAINT fk_merchant_future_offering_billing_periods_supersedes
-			FOREIGN KEY (
-				supersedes_billing_period_id,
-				service_term_id,
-				future_offering_id
-			)
-			REFERENCES merchant_future_offering_billing_periods (
-				id,
-				service_term_id,
-				future_offering_id
-			)
-			ON DELETE RESTRICT,
-
-		CONSTRAINT chk_merchant_future_offering_billing_periods_no_self_supersession
-			CHECK (
-				supersedes_billing_period_id IS NULL
-					OR supersedes_billing_period_id <> id
-			),
-
 		CONSTRAINT chk_merchant_future_offering_billing_periods_window
 			CHECK (
 				period_ends_on > period_starts_on
 			),
 
-		CONSTRAINT chk_merchant_future_offering_billing_periods_superseded_after_created
-			CHECK (
-				superseded_at IS NULL
-					OR superseded_at >= created_at
-			),
-
-		CONSTRAINT excl_merchant_future_offering_billing_periods_no_current_overlap
+		/*
+		* A Future Offering may have only one authoritative Billing Period
+		* covering any given date, including across Service Term revisions.
+		*
+		* Billing Periods use half-open intervals:
+		*
+		*     [period_starts_on, period_ends_on)
+		*/
+		CONSTRAINT excl_merchant_future_offering_billing_periods_no_overlap
 			EXCLUDE USING gist (
-				service_term_id WITH =,
+				future_offering_id WITH =,
 				daterange(
 					period_starts_on,
 					period_ends_on,
 					'[)'
 				) WITH &&
 			)
-			WHERE (
-				superseded_at IS NULL
-			)
 	);
 
-	-- Exactly one current revision may occupy a logical period number.
+
+	-- Exactly one authoritative Billing Period number exists within a
+	-- Service Term.
 	CREATE UNIQUE INDEX IF NOT EXISTS
-		ux_merchant_future_offering_billing_periods_current_term_number
+		ux_merchant_future_offering_billing_periods_term_number
 	ON merchant_future_offering_billing_periods (
 		service_term_id,
 		period_number
-	)
-	WHERE superseded_at IS NULL;
+	);
 
-	-- A superseded Billing Period may have at most one direct replacement.
-	CREATE UNIQUE INDEX IF NOT EXISTS
-		ux_merchant_future_offering_billing_periods_supersedes
-	ON merchant_future_offering_billing_periods (
-		supersedes_billing_period_id
-	)
-	WHERE supersedes_billing_period_id IS NOT NULL;
 
-	-- Full Service Term history.
+	-- Chronological Billing Period history for one Service Term.
 	CREATE INDEX IF NOT EXISTS
 		idx_merchant_future_offering_billing_periods_term_timeline
 	ON merchant_future_offering_billing_periods (
@@ -2231,7 +2197,9 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		id
 	);
 
-	-- Full Future Offering history across Service Term revisions.
+
+	-- Chronological Billing Period history for the Future Offering across
+	-- Service Term revisions.
 	CREATE INDEX IF NOT EXISTS
 		idx_merchant_future_offering_billing_periods_fo_timeline
 	ON merchant_future_offering_billing_periods (
@@ -2240,30 +2208,93 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		id
 	);
 
-	-- Current Billing Period schedule for a Future Offering.
-	CREATE INDEX IF NOT EXISTS
-		idx_merchant_future_offering_billing_periods_current_schedule
-	ON merchant_future_offering_billing_periods (
-		future_offering_id,
-		period_starts_on,
-		period_ends_on,
-		id
-	)
-	WHERE superseded_at IS NULL;
 
-	-- Efficient current point-in-time Billing Period lookup.
-	CREATE INDEX IF NOT EXISTS
-		idx_merchant_future_offering_billing_periods_current_window
-	ON merchant_future_offering_billing_periods
-	USING gist (
-		future_offering_id,
-		daterange(
-			period_starts_on,
-			period_ends_on,
-			'[)'
+	-- =====================================================================
+	-- Canonical Billing Period calendar boundary
+	-- =====================================================================
+	--
+	-- Billing Periods are monthly accounting windows.
+	--
+	-- Boundaries are calculated independently from the authoritative
+	-- Service Term start anchor. They do not derive from Service Period rows.
+	--
+	-- Calendar semantics:
+	--
+	--   ordinary anchor:
+	--       Jan 30 + 1 month -> Feb 28
+	--       Jan 30 + 2 months -> Mar 30
+	--
+	--   month-end anchor:
+	--       Jan 31 + 1 month -> Feb 28
+	--       Jan 31 + 2 months -> Mar 31
+	--
+	-- This preserves the original anchor and prevents short-month drift.
+	-- =====================================================================
+
+	CREATE OR REPLACE FUNCTION
+		merchant_future_offering_billing_period_boundary(
+			p_anchor DATE,
+			p_months INTEGER
 		)
-	)
-	WHERE superseded_at IS NULL;
+	RETURNS DATE
+	LANGUAGE plpgsql
+	IMMUTABLE
+	STRICT
+	AS $$
+	DECLARE
+		v_anchor_month_end DATE;
+		v_target_month_start DATE;
+		v_target_month_end DATE;
+		v_target_day INTEGER;
+	BEGIN
+		IF p_months < 0 THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_billing_period_boundary: month offset must not be negative';
+		END IF;
+
+		v_anchor_month_end :=
+			(
+				date_trunc(
+					'month',
+					p_anchor::timestamp
+				)
+				+ interval '1 month'
+				- interval '1 day'
+			)::date;
+
+		v_target_month_start :=
+			(
+				date_trunc(
+					'month',
+					p_anchor::timestamp
+				)
+				+ make_interval(months => p_months)
+			)::date;
+
+		v_target_month_end :=
+			(
+				v_target_month_start
+				+ interval '1 month'
+				- interval '1 day'
+			)::date;
+
+		-- Original anchor is month-end:
+		-- month-end remains month-end.
+		IF p_anchor = v_anchor_month_end THEN
+			RETURN v_target_month_end;
+		END IF;
+
+		v_target_day :=
+			LEAST(
+				EXTRACT(DAY FROM p_anchor)::INTEGER,
+				EXTRACT(DAY FROM v_target_month_end)::INTEGER
+			);
+
+		RETURN
+			v_target_month_start
+			+ (v_target_day - 1);
+	END;
+	$$;
 
 
 	-- =====================================================================
@@ -2280,9 +2311,17 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		v_term_ends_on DATE;
 		v_term_status TEXT;
 
-		v_superseded_period_number INTEGER;
-		v_superseded_at TIMESTAMPTZ;
+		v_latest_period_number INTEGER;
+		v_latest_period_ends_on DATE;
+
+		v_expected_period_number INTEGER;
+		v_expected_starts_on DATE;
+		v_expected_ends_on DATE;
 	BEGIN
+		/*
+		* Serialize Billing Period creation through the authoritative Service
+		* Term. This protects sequential chronology under concurrent creation.
+		*/
 		SELECT
 			term_starts_on,
 			term_ends_on,
@@ -2294,7 +2333,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		FROM merchant_future_offering_service_terms
 		WHERE id = NEW.service_term_id
 			AND future_offering_id = NEW.future_offering_id
-		FOR SHARE;
+		FOR UPDATE;
 
 		IF NOT FOUND THEN
 			RAISE EXCEPTION
@@ -2305,7 +2344,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 		IF v_term_status <> 'established' THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: service term must be established before billing periods may be created (service_term_id=%, status=%)',
+				'merchant_future_offering_billing_periods: service term must be established before a billing period may be created (service_term_id=%, status=%)',
 				NEW.service_term_id,
 				v_term_status;
 		END IF;
@@ -2318,57 +2357,115 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				NEW.service_term_id;
 		END IF;
 
-		IF NEW.period_starts_on < v_term_starts_on
-			OR NEW.period_ends_on > v_term_ends_on
-		THEN
+		/*
+		* Billing Periods are accounting facts, not a pre-generated future
+		* schedule.
+		*
+		* Late recovery/catch-up insertion remains possible because a past
+		* start date is allowed. Future Billing Period materialization is not.
+		*/
+		IF NEW.period_starts_on > CURRENT_DATE THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: billing period [%, %) must be contained within service term [%, %) (service_term_id=%)',
-				NEW.period_starts_on,
-				NEW.period_ends_on,
+				'merchant_future_offering_billing_periods: future billing periods must not be pre-generated (period_starts_on=%)',
+				NEW.period_starts_on;
+		END IF;
+
+		/*
+		* Determine the next authoritative Billing Period identity.
+		*
+		* The parent Service Term row is already locked, so concurrent writers
+		* for this Service Term serialize before reaching this point.
+		*/
+		SELECT
+			period_number,
+			period_ends_on
+		INTO
+			v_latest_period_number,
+			v_latest_period_ends_on
+		FROM merchant_future_offering_billing_periods
+		WHERE service_term_id = NEW.service_term_id
+			AND future_offering_id = NEW.future_offering_id
+		ORDER BY period_number DESC
+		LIMIT 1;
+
+		IF NOT FOUND THEN
+			v_expected_period_number := 1;
+		ELSE
+			v_expected_period_number :=
+				v_latest_period_number + 1;
+		END IF;
+
+		IF NEW.period_number <> v_expected_period_number THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_billing_periods: billing period number must be sequential (service_term_id=%, expected_period_number=%, supplied_period_number=%)',
+				NEW.service_term_id,
+				v_expected_period_number,
+				NEW.period_number;
+		END IF;
+
+		/*
+		* Every boundary is independently calculated from the original
+		* authoritative Service Term anchor.
+		*
+		* Never recursively derive the next calendar boundary from the
+		* previously persisted Billing Period.
+		*/
+		v_expected_starts_on :=
+			merchant_future_offering_billing_period_boundary(
 				v_term_starts_on,
-				v_term_ends_on,
+				NEW.period_number - 1
+			);
+
+		v_expected_ends_on :=
+			LEAST(
+				merchant_future_offering_billing_period_boundary(
+					v_term_starts_on,
+					NEW.period_number
+				),
+				v_term_ends_on
+			);
+
+		IF v_expected_starts_on >= v_term_ends_on THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_billing_periods: no further billing period exists within service term %',
 				NEW.service_term_id;
 		END IF;
 
-		IF NEW.supersedes_billing_period_id IS NOT NULL THEN
-			SELECT
-				period_number,
-				superseded_at
-			INTO
-				v_superseded_period_number,
-				v_superseded_at
-			FROM merchant_future_offering_billing_periods
-			WHERE id = NEW.supersedes_billing_period_id
-				AND service_term_id = NEW.service_term_id
-				AND future_offering_id = NEW.future_offering_id
-			FOR SHARE;
+		IF NEW.period_starts_on <> v_expected_starts_on
+			OR NEW.period_ends_on <> v_expected_ends_on
+		THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_billing_periods: invalid authoritative monthly window [%, %); expected [%, %) for service_term_id=% period_number=%',
+				NEW.period_starts_on,
+				NEW.period_ends_on,
+				v_expected_starts_on,
+				v_expected_ends_on,
+				NEW.service_term_id,
+				NEW.period_number;
+		END IF;
 
-			IF NOT FOUND THEN
-				RAISE EXCEPTION
-					'merchant_future_offering_billing_periods: superseded billing period % does not belong to service term % and future offering %',
-					NEW.supersedes_billing_period_id,
-					NEW.service_term_id,
-					NEW.future_offering_id;
-			END IF;
-
-			IF v_superseded_at IS NULL THEN
-				RAISE EXCEPTION
-					'merchant_future_offering_billing_periods: replacement billing period may reference only an already-superseded billing period (supersedes_billing_period_id=%)',
-					NEW.supersedes_billing_period_id;
-			END IF;
-
-			IF NEW.period_number <> v_superseded_period_number THEN
-				RAISE EXCEPTION
-					'merchant_future_offering_billing_periods: replacement billing period must retain predecessor period_number (supersedes_billing_period_id=%, expected_period_number=%, supplied_period_number=%)',
-					NEW.supersedes_billing_period_id,
-					v_superseded_period_number,
-					NEW.period_number;
-			END IF;
+		/*
+		* Defense against corrupted historical chronology.
+		*
+		* The expected-start calculation above is authoritative. If the
+		* preceding stored row does not meet that boundary, do not extend
+		* corruption by creating another row.
+		*/
+		IF v_latest_period_number IS NOT NULL
+			AND v_latest_period_ends_on <> v_expected_starts_on
+		THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_billing_periods: persisted billing chronology is not contiguous (service_term_id=%, preceding_period_number=%, preceding_ends_on=%, expected_next_starts_on=%)',
+				NEW.service_term_id,
+				v_latest_period_number,
+				v_latest_period_ends_on,
+				v_expected_starts_on;
 		END IF;
 
 		RETURN NEW;
 	END;
 	$$;
+
 
 	DROP TRIGGER IF EXISTS
 		trg_merchant_future_offering_billing_periods_validate_insert
@@ -2383,62 +2480,39 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 
 	-- =====================================================================
-	-- Lifecycle enforcement
+	-- Immutable accounting-fact lifecycle
 	-- =====================================================================
 
 	CREATE OR REPLACE FUNCTION
-		merchant_future_offering_billing_periods_enforce_lifecycle()
+		merchant_future_offering_billing_periods_enforce_immutability()
 	RETURNS TRIGGER
 	LANGUAGE plpgsql
 	AS $$
 	BEGIN
-		IF OLD.superseded_at IS NOT NULL THEN
+		IF TG_OP = 'DELETE' THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: superseded billing periods are immutable (id=%)',
+				'merchant_future_offering_billing_periods: billing periods cannot be deleted (id=%)',
 				OLD.id;
 		END IF;
 
-		IF NEW.service_term_id <> OLD.service_term_id
-			OR NEW.future_offering_id <> OLD.future_offering_id
-			OR NEW.period_number <> OLD.period_number
-			OR NEW.period_starts_on <> OLD.period_starts_on
-			OR NEW.period_ends_on <> OLD.period_ends_on
-			OR NEW.supersedes_billing_period_id
-				IS DISTINCT FROM OLD.supersedes_billing_period_id
-			OR NEW.created_at <> OLD.created_at
-		THEN
-			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: established billing period facts are immutable (id=%)',
-				OLD.id;
-		END IF;
-
-		IF NEW.superseded_at IS NULL THEN
-			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: no mutable billing period facts were supplied (id=%)',
-				OLD.id;
-		END IF;
-
-		IF OLD.period_starts_on <= CURRENT_DATE THEN
-			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: a billing period that has begun cannot be superseded (id=%, period_starts_on=%)',
-				OLD.id,
-				OLD.period_starts_on;
-		END IF;
-
-		RETURN NEW;
+		RAISE EXCEPTION
+			'merchant_future_offering_billing_periods: authoritative billing period facts are immutable (id=%)',
+			OLD.id;
 	END;
 	$$;
 
+
 	DROP TRIGGER IF EXISTS
-		trg_merchant_future_offering_billing_periods_enforce_lifecycle
+		trg_merchant_future_offering_billing_periods_enforce_immutability
 		ON merchant_future_offering_billing_periods;
 
 	CREATE TRIGGER
-		trg_merchant_future_offering_billing_periods_enforce_lifecycle
-	BEFORE UPDATE ON merchant_future_offering_billing_periods
+		trg_merchant_future_offering_billing_periods_enforce_immutability
+	BEFORE UPDATE OR DELETE
+	ON merchant_future_offering_billing_periods
 	FOR EACH ROW
 	EXECUTE FUNCTION
-		merchant_future_offering_billing_periods_enforce_lifecycle();
+		merchant_future_offering_billing_periods_enforce_immutability();
 
 
 	-- =====================================================================
@@ -2462,264 +2536,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	-- The current non-superseded rows for a Billing Period constitute that
 	-- Billing Period's authoritative Payment Period schedule.
 	-- =====================================================================
-
-CREATE TABLE IF NOT EXISTS merchant_future_offering_service_periods (
-	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-	service_term_id UUID NOT NULL,
-	future_offering_id UUID NOT NULL,
-
-	period_number INTEGER NOT NULL
-		CHECK (period_number > 0),
-
-	period_starts_on DATE NOT NULL,
-	period_ends_on DATE NOT NULL,
-
-	superseded_at TIMESTAMPTZ,
-
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-	CONSTRAINT fk_merchant_future_offering_service_periods_service_term
-		FOREIGN KEY (
-			service_term_id,
-			future_offering_id
-		)
-		REFERENCES merchant_future_offering_service_terms (
-			id,
-			future_offering_id
-		)
-		ON DELETE RESTRICT,
-
-	CONSTRAINT chk_merchant_future_offering_service_periods_window
-		CHECK (
-			period_ends_on > period_starts_on
-		),
-
-	CONSTRAINT chk_merchant_future_offering_service_periods_superseded_after_created
-		CHECK (
-			superseded_at IS NULL
-				OR superseded_at >= created_at
-		),
-
-	CONSTRAINT excl_merchant_future_offering_service_periods_no_current_overlap
-		EXCLUDE USING gist (
-			service_term_id WITH =,
-			daterange(
-				period_starts_on,
-				period_ends_on,
-				'[)'
-			) WITH &&
-		)
-		WHERE (
-			superseded_at IS NULL
-		)
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS
-	ux_merchant_future_offering_service_periods_current_term_number
-ON merchant_future_offering_service_periods (
-	service_term_id,
-	period_number
-)
-WHERE superseded_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_term_timeline
-ON merchant_future_offering_service_periods (
-	service_term_id,
-	period_starts_on,
-	id
-);
-
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_fo_timeline
-ON merchant_future_offering_service_periods (
-	future_offering_id,
-	period_starts_on,
-	id
-);
-
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_current_term_schedule
-ON merchant_future_offering_service_periods (
-	service_term_id,
-	period_number,
-	id
-)
-WHERE superseded_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS
-	idx_merchant_future_offering_service_periods_current_window
-ON merchant_future_offering_service_periods
-USING gist (
-	service_term_id,
-	daterange(
-		period_starts_on,
-		period_ends_on,
-		'[)'
-	)
-)
-WHERE superseded_at IS NULL;
-
-
-CREATE OR REPLACE FUNCTION
-	merchant_future_offering_service_periods_validate_insert()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-	v_term_starts_on DATE;
-	v_term_ends_on DATE;
-	v_term_status TEXT;
-BEGIN
-	SELECT
-		term_starts_on,
-		term_ends_on,
-		term_status
-	INTO
-		v_term_starts_on,
-		v_term_ends_on,
-		v_term_status
-	FROM merchant_future_offering_service_terms
-	WHERE id = NEW.service_term_id
-		AND future_offering_id = NEW.future_offering_id
-	FOR KEY SHARE;
-
-	IF NOT FOUND THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service term % does not belong to future offering %',
-			NEW.service_term_id,
-			NEW.future_offering_id;
-	END IF;
-
-	IF v_term_status <> 'established' THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service term must be established before service periods may be created (service_term_id=%, status=%)',
-			NEW.service_term_id,
-			v_term_status;
-	END IF;
-
-	IF v_term_starts_on IS NULL
-		OR v_term_ends_on IS NULL
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: established service term must have a complete service window (service_term_id=%)',
-			NEW.service_term_id;
-	END IF;
-
-	IF NEW.period_starts_on < v_term_starts_on
-		OR NEW.period_ends_on > v_term_ends_on
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service period [%, %) must be contained within service term [%, %) (service_term_id=%)',
-			NEW.period_starts_on,
-			NEW.period_ends_on,
-			v_term_starts_on,
-			v_term_ends_on,
-			NEW.service_term_id;
-	END IF;
-
-	IF NEW.superseded_at IS NOT NULL THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: a new service period cannot already be superseded';
-	END IF;
-
-	RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS
-	trg_merchant_future_offering_service_periods_validate_insert
-	ON merchant_future_offering_service_periods;
-
-CREATE TRIGGER
-	trg_merchant_future_offering_service_periods_validate_insert
-BEFORE INSERT ON merchant_future_offering_service_periods
-FOR EACH ROW
-EXECUTE FUNCTION
-	merchant_future_offering_service_periods_validate_insert();
-
-
-CREATE OR REPLACE FUNCTION
-	merchant_future_offering_service_periods_enforce_lifecycle()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-DECLARE
-	v_term_status TEXT;
-BEGIN
-	IF TG_OP = 'DELETE' THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: service periods cannot be deleted (id=%)',
-			OLD.id;
-	END IF;
-
-	IF OLD.superseded_at IS NOT NULL THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: superseded service periods are immutable (id=%)',
-			OLD.id;
-	END IF;
-
-	IF NEW.service_term_id <> OLD.service_term_id
-		OR NEW.future_offering_id <> OLD.future_offering_id
-		OR NEW.period_number <> OLD.period_number
-		OR NEW.period_starts_on <> OLD.period_starts_on
-		OR NEW.period_ends_on <> OLD.period_ends_on
-		OR NEW.created_at <> OLD.created_at
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: established service period facts are immutable (id=%)',
-			OLD.id;
-	END IF;
-
-	IF NEW.superseded_at IS NULL THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: no mutable service period facts were supplied (id=%)',
-			OLD.id;
-	END IF;
-
-	SELECT
-		term_status
-	INTO
-		v_term_status
-	FROM merchant_future_offering_service_terms
-	WHERE id = OLD.service_term_id
-		AND future_offering_id = OLD.future_offering_id
-	FOR KEY SHARE;
-
-	IF NOT FOUND
-		OR v_term_status <> 'established'
-	THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: only periods belonging to the established service term may be prospectively superseded (id=%)',
-			OLD.id;
-	END IF;
-
-	IF OLD.period_starts_on <= CURRENT_DATE THEN
-		RAISE EXCEPTION
-			'merchant_future_offering_service_periods: a service period that has begun cannot be superseded (id=%, period_starts_on=%)',
-			OLD.id,
-			OLD.period_starts_on;
-	END IF;
-
-	-- Persisted lifecycle time is database-owned.
-	NEW.superseded_at := NOW();
-
-	RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS
-	trg_merchant_future_offering_service_periods_enforce_lifecycle
-	ON merchant_future_offering_service_periods;
-
-CREATE TRIGGER
-	trg_merchant_future_offering_service_periods_enforce_lifecycle
-BEFORE UPDATE OR DELETE
-ON merchant_future_offering_service_periods
-FOR EACH ROW
-EXECUTE FUNCTION
-	merchant_future_offering_service_periods_enforce_lifecycle();
 
 
 	-- 

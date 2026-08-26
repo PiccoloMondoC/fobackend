@@ -454,11 +454,13 @@ Canonical Fee Concept              Commercial purpose
 Anticipation Intelligence        Entering an FO into active
 Activation Fee                   commercial service
 
-Continuing-Service Fee         Continuing platform service for an
+Platform-Service Fee         Continuing platform service for an
 (canonical name to be finalized) active FO
 
 Asset Hosting Overage Fee      FO asset consumption beyond its
 included allowance
+
+Anticipation Intelligence Fee      Anticipation Intelligence generated through QAEs
 
 These are FO-level charges, not merchant-account charges.
 
@@ -1559,3 +1561,159 @@ engagement options. A merchant may choose any applicable combination—including
 Waitlist without Preorder or Preorder without Waitlist. Where multiple
 engagement types coexist, their coexistence does not establish an inherent
 fulfillment priority.
+
+# Future Offering Consumption Billing Model (FOCBM)
+
+## 1. Purpose
+
+The Future Offering Consumption Billing Model defines the relationship among the Future Offering, Billing Period, consumption-based charges, FO financial account, prepayments, monthly invoicing, and settlement.
+
+The model preserves strict separation between service performance, consumption measurement, financial accounting, invoicing, and payment.
+
+## 2. Independent Domain Windows
+
+Service Term, Service Period, and Billing Period are distinct concepts serving different domain purposes.
+
+**Service Term** defines the overall duration during which Sagrenti provides the Future Offering service.
+
+**Service Period** defines an individual performance window within the Service Term.
+
+**Billing Period** defines the accounting and consumption window during which applicable Future Offering resource usage is accumulated for billing.
+
+Service Periods and Billing Periods may both use monthly boundaries, but this does not couple them. Their monthly cadence exists for different domain reasons.
+
+Billing Periods must not derive their identity, existence, or lifecycle from Service Periods.
+
+## 3. Monthly Consumption Billing
+
+Sagrenti uses monthly consumption billing for Future Offering resource usage.
+
+The principal consumption-based charges are:
+
+* Anticipation Intelligence Fees arising from actual Qualified Anticipation Entries (QAEs); and
+* Asset Hosting Overage Fees arising from actual Asset Hosting Overages (AHOs).
+
+These charges cannot be determined in advance because they depend upon actual resource consumption.
+
+They therefore accrue during the applicable monthly Billing Period and are billed in arrears.
+
+Sagrenti does not provide native annual Future Offering plans or recurring annual billing cycles.
+
+## 4. Billing Period Semantics
+
+A Billing Period is an authoritative monthly accounting window for a Future Offering.
+
+Billing Periods are not payment schedules, funding schedules, or projections of future commercial activity.
+
+Engineering defines their authoritative calendar semantics.
+
+Every date during an established Service Term for which billable activity may occur must belong to exactly one authoritative Billing Period.
+
+Billing Periods therefore must provide complete applicable coverage without overlap or unintended gaps capable of making legitimate billable activity unaccountable.
+
+Administration may make permitted configuration choices within Engineering's implemented Billing Period capabilities, if and where such configurable choices exist.
+
+## 5. Billing Period Lifecycle
+
+Billing Periods do not require a normal-domain supersession architecture.
+
+There is presently no identified commercial event requiring an authoritative Billing Period to be superseded, replaced, retired, or reconstructed through lineage chains.
+
+Accordingly, Billing Period architecture should not be based upon:
+
+* future schedules;
+* schedule establishment;
+* schedule tails;
+* prospective schedule replacement;
+* prospective retirement; or
+* Billing Period supersession.
+
+An authoritative Billing Period represents an accounting fact and is immutable.
+
+If an erroneous Billing Period requires exceptional correction, that is a governed corrective-data concern rather than an ordinary Billing Period lifecycle.
+
+## 6. Future Offering Financial Independence
+
+Each Future Offering is an **independent contractual and financial entity, independently accounted for and financially separate from the merchant's other Future Offerings**.
+
+Each FO may therefore maintain its own financial account and monetary position, including:
+
+* prepaid funds or account credit;
+* consumption charges;
+* applied funds;
+* outstanding amounts;
+* funding transactions; and
+* settlement history.
+
+The merchant remains the commercial obligor and owns the payment methods used to fund or settle its FO accounts.
+
+Funds, credits, charges, balances, and settlements attributable to one FO must not silently transfer to, subsidize, or be netted against another FO.
+
+## 7. Prepaid-Credit and Monthly Post-Pay Model
+
+Sagrenti combines FO-specific prepayment with monthly consumption/post-pay billing.
+
+A merchant may add prepaid funds or account credit to an individual FO.
+
+As QAEs and AHOs occur during the monthly Billing Period, their monetary charges accrue against that FO.
+
+Available prepaid funds eligible for those charges are economically consumed as the applicable consumption occurs.
+
+Prepayment therefore does not merely remain untouched until monthly invoice generation.
+
+Prepayment affects settlement of consumption; it does not reduce, obscure, or redefine the gross cost of that consumption.
+
+## 8. Prepayment and Exposure Control
+
+Sagrenti must not implicitly provide every merchant with an arbitrary or unlimited B2B credit facility.
+
+The merchant's FO funding behavior provides the basis for controlling permitted intra-month financial exposure.
+
+The model supports prepayment/funding levels associated with corresponding automatic-charge thresholds, for example:
+
+| FO funding level | Auto-charge threshold |
+| ---------------: | --------------------: |
+|               $0 |                    $0 |
+|              $25 |                   $25 |
+|              $50 |                   $50 |
+|             $250 |                  $250 |
+|           $1,000 |                $1,000 |
+|           $5,000 |                $5,000 |
+
+Engineering implements the safe capability and invariant financial controls. Administration may configure permitted operating thresholds and choices within those Engineering boundaries.
+
+An auto-charge threshold controls financial exposure. It does not define or modify a Billing Period.
+
+## 9. Funding and Billing Period Independence
+
+Funding and settlement events must never alter, split, shorten, extend, or otherwise redefine a Billing Period.
+
+Accordingly:
+
+* adding prepaid funds does not begin a new Billing Period;
+* consuming prepaid funds does not end a Billing Period;
+* exhausting prepaid funds does not end a Billing Period;
+* reaching an auto-charge threshold does not split a Billing Period;
+* an intra-month payment does not create a new Billing Period; and
+* making a large prepayment does not create an annual Billing Period.
+
+The monthly accounting window continues independently of funding and settlement activity.
+
+## 10. Annual Prepayment
+
+A merchant that wishes to fund approximately a year of Future Offering activity in advance may add sufficient funds or account credit to that FO.
+
+Such funding is a **prepayment**, not an annual plan.
+
+Sagrenti continues monthly consumption accounting and monthly invoicing.
+
+As each month progresses, eligible consumption charges are satisfied from the FO's available prepaid balance according to the applicable financial rules.
+
+Annual prepayment therefore does not create:
+
+* an annual Service Term;
+* an annual Billing Period;
+* an annual billing cycle;
+* an annual recurring invoice; or
+* a different consumption-accounting model.
+

@@ -44,8 +44,8 @@ Everything needed to let the platform commercially operate, even if all fees are
 >- [x] `merchant_program_subscriptions.go`               — Replaced by
 - [x] `merchant_future_offering_service_terms.go`        — Done
 >- [x] `merchant_program_subscription_periods.go`        — Replaced by
-- [ ] `merchant_future_offering_service_periods.go`         — 
-- [ ] `merchant_future_offering_billing_periods`         — 
+- [x] `merchant_future_offering_service_periods.go`      — Done
+- [ ] `merchant_future_offering_billing_periods.go`         — 
 - [x] `merchant_program_subscription_events.go`          — Done
 - [x] `merchant_platform_credit_accounts.go`             — Done
 - [x] `merchant_platform_credit_eligible_fee_types.go`   — Done

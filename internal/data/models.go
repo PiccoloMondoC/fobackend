@@ -74,7 +74,7 @@ type Models struct {
 	Action                 ActionModel                 // SPINE: minimal foundation — audit/action lookup governance
 	PlatformSetting        PlatformSettingModel        // SPINE: minimal foundation — system configuration infrastructure
 	PlatformSettingHistory PlatformSettingHistoryModel // SPINE: minimal foundation — immutable platform-setting value history
-	OutboxEvent            OutboxEventModel // SPINE: minimal foundation — transactional domain-event outbox
+	OutboxEvent            OutboxEventModel            // SPINE: minimal foundation — transactional domain-event outbox
 
 	// Layer 2.2 — Identity / Auth Domain
 	User            UserModel            // SPINE: minimal foundation — user account identity
@@ -121,6 +121,7 @@ type Models struct {
 	MerchantProgramEntitlement            MerchantProgramEntitlementModel            // SPINE: Future Offering v1 — merchant program entitlement/capability gate
 	MerchantFutureOfferingServiceTerm     MerchantFutureOfferingServiceTermModel     // SPINE: Future Offering — overall agreed FO service duration
 	MerchantFutureOfferingServicePeriod   MerchantFutureOfferingServicePeriodModel   // SPINE: Future Offering — bounded performance windows within a Service Term
+	MerchantFutureOfferingBillingPeriod   MerchantFutureOfferingBillingPeriodModel   // SPINE: Future Offering — immutable monthly accounting/consumption windows within a Service Term
 	MerchantProgramSubscription           MerchantProgramSubscriptionModel           // SPINE: Future Offering v1 — merchant program subscription lifecycle
 	MerchantProgramSubscriptionPeriod     MerchantProgramSubscriptionPeriodModel     // SPINE: Future Offering v1 — immutable subscription commercial periods
 	MerchantProgramSubscriptionEvent      MerchantProgramSubscriptionEventModel      // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
@@ -241,7 +242,8 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantProgramEntitlement:            MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},          // SPINE: Future Offering v1
 		MerchantFutureOfferingServiceTerm:     MerchantFutureOfferingServiceTermModel{DB: dbPool, Logger: logger},   // SPINE: Future Offering — overall agreed FO service duration
 		MerchantFutureOfferingServicePeriod:   MerchantFutureOfferingServicePeriodModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering — bounded performance windows within a Service Term
-		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},         // SPINE: Future Offering v1
+		MerchantFutureOfferingBillingPeriod:   MerchantFutureOfferingBillingPeriodModel{DB: dbPool, Logger: logger},
+		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		MerchantProgramSubscriptionPeriod:     MerchantProgramSubscriptionPeriodModel{DB: dbPool, Logger: logger},
 		MerchantProgramSubscriptionEvent:      MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		MerchantPlatformCreditEligibleFeeType: MerchantPlatformCreditEligibleFeeTypeModel{DB: dbPool, Logger: logger},
