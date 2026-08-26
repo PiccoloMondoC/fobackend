@@ -242,8 +242,8 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantProgramEntitlement:            MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},          // SPINE: Future Offering v1
 		MerchantFutureOfferingServiceTerm:     MerchantFutureOfferingServiceTermModel{DB: dbPool, Logger: logger},   // SPINE: Future Offering — overall agreed FO service duration
 		MerchantFutureOfferingServicePeriod:   MerchantFutureOfferingServicePeriodModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering — bounded performance windows within a Service Term
-		MerchantFutureOfferingBillingPeriod:   MerchantFutureOfferingBillingPeriodModel{DB: dbPool, Logger: logger},
-		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
+		MerchantFutureOfferingBillingPeriod:   MerchantFutureOfferingBillingPeriodModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering — immutable monthly accounting/consumption windows within a Service Term
+		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},         // SPINE: Future Offering v1
 		MerchantProgramSubscriptionPeriod:     MerchantProgramSubscriptionPeriodModel{DB: dbPool, Logger: logger},
 		MerchantProgramSubscriptionEvent:      MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		MerchantPlatformCreditEligibleFeeType: MerchantPlatformCreditEligibleFeeTypeModel{DB: dbPool, Logger: logger},

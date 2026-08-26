@@ -2311,6 +2311,9 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		v_term_ends_on DATE;
 		v_term_status TEXT;
 
+		v_successor_starts_on DATE;
+		v_effective_term_ends_on DATE;
+
 		v_latest_period_number INTEGER;
 		v_latest_period_ends_on DATE;
 
@@ -2319,21 +2322,28 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		v_expected_ends_on DATE;
 	BEGIN
 		/*
-		* Serialize Billing Period creation through the authoritative Service
-		* Term. This protects sequential chronology under concurrent creation.
+		* Serialize Billing Period creation through the owning Service Term.
+		*
+		* Established terms support ordinary JIT creation.
+		* Superseded terms support historical catch-up only.
 		*/
 		SELECT
-			term_starts_on,
-			term_ends_on,
-			term_status
+			st.term_starts_on,
+			st.term_ends_on,
+			st.term_status,
+			successor.term_starts_on
 		INTO
 			v_term_starts_on,
 			v_term_ends_on,
-			v_term_status
-		FROM merchant_future_offering_service_terms
-		WHERE id = NEW.service_term_id
-			AND future_offering_id = NEW.future_offering_id
-		FOR UPDATE;
+			v_term_status,
+			v_successor_starts_on
+		FROM merchant_future_offering_service_terms AS st
+		LEFT JOIN merchant_future_offering_service_terms AS successor
+			ON successor.supersedes_service_term_id = st.id
+			AND successor.future_offering_id = st.future_offering_id
+		WHERE st.id = NEW.service_term_id
+			AND st.future_offering_id = NEW.future_offering_id
+		FOR UPDATE OF st;
 
 		IF NOT FOUND THEN
 			RAISE EXCEPTION
@@ -2342,9 +2352,12 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				NEW.future_offering_id;
 		END IF;
 
-		IF v_term_status <> 'established' THEN
+		IF v_term_status NOT IN (
+			'established',
+			'superseded'
+		) THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: service term must be established before a billing period may be created (service_term_id=%, status=%)',
+				'merchant_future_offering_billing_periods: service term must be established or superseded before billing periods may be created (service_term_id=%, status=%)',
 				NEW.service_term_id,
 				v_term_status;
 		END IF;
@@ -2353,16 +2366,45 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			OR v_term_ends_on IS NULL
 		THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: established service term must have a complete service window (service_term_id=%)',
+				'merchant_future_offering_billing_periods: service term must have a complete authoritative service window (service_term_id=%)',
 				NEW.service_term_id;
 		END IF;
 
 		/*
-		* Billing Periods are accounting facts, not a pre-generated future
-		* schedule.
+		* For an established Service Term, its authoritative term end is the
+		* Billing Period coverage ceiling.
 		*
-		* Late recovery/catch-up insertion remains possible because a past
-		* start date is allowed. Future Billing Period materialization is not.
+		* For a superseded Service Term, historical catch-up may continue only
+		* through the boundary at which its direct successor became authoritative.
+		* The predecessor's original immutable term_ends_on must not reclaim dates
+		* that now belong to the successor.
+		*/
+		v_effective_term_ends_on := v_term_ends_on;
+
+		IF v_term_status = 'superseded' THEN
+			IF v_successor_starts_on IS NULL THEN
+				RAISE EXCEPTION
+					'merchant_future_offering_billing_periods: superseded service term requires a direct successor boundary for historical billing catch-up (service_term_id=%)',
+					NEW.service_term_id;
+			END IF;
+
+			v_effective_term_ends_on :=
+				LEAST(
+					v_term_ends_on,
+					v_successor_starts_on
+				);
+		END IF;
+
+		IF v_effective_term_ends_on <= v_term_starts_on THEN
+			RAISE EXCEPTION
+				'merchant_future_offering_billing_periods: effective billing window is invalid for service term %',
+				NEW.service_term_id;
+		END IF;
+
+		/*
+		* Billing Periods are accounting facts, not future schedules.
+		*
+		* Historical catch-up is permitted. Future pre-generation is not.
 		*/
 		IF NEW.period_starts_on > CURRENT_DATE THEN
 			RAISE EXCEPTION
@@ -2370,12 +2412,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				NEW.period_starts_on;
 		END IF;
 
-		/*
-		* Determine the next authoritative Billing Period identity.
-		*
-		* The parent Service Term row is already locked, so concurrent writers
-		* for this Service Term serialize before reaching this point.
-		*/
 		SELECT
 			period_number,
 			period_ends_on
@@ -2403,13 +2439,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				NEW.period_number;
 		END IF;
 
-		/*
-		* Every boundary is independently calculated from the original
-		* authoritative Service Term anchor.
-		*
-		* Never recursively derive the next calendar boundary from the
-		* previously persisted Billing Period.
-		*/
 		v_expected_starts_on :=
 			merchant_future_offering_billing_period_boundary(
 				v_term_starts_on,
@@ -2422,12 +2451,12 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 					v_term_starts_on,
 					NEW.period_number
 				),
-				v_term_ends_on
+				v_effective_term_ends_on
 			);
 
-		IF v_expected_starts_on >= v_term_ends_on THEN
+		IF v_expected_starts_on >= v_effective_term_ends_on THEN
 			RAISE EXCEPTION
-				'merchant_future_offering_billing_periods: no further billing period exists within service term %',
+				'merchant_future_offering_billing_periods: no further billing period exists within authoritative service coverage for service term %',
 				NEW.service_term_id;
 		END IF;
 
@@ -2444,13 +2473,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				NEW.period_number;
 		END IF;
 
-		/*
-		* Defense against corrupted historical chronology.
-		*
-		* The expected-start calculation above is authoritative. If the
-		* preceding stored row does not meet that boundary, do not extend
-		* corruption by creating another row.
-		*/
 		IF v_latest_period_number IS NOT NULL
 			AND v_latest_period_ends_on <> v_expected_starts_on
 		THEN
