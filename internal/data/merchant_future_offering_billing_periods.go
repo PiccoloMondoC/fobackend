@@ -834,6 +834,59 @@ func (m *MerchantFutureOfferingBillingPeriodModel) GetCurrentAt(
 	return period, nil
 }
 
+// GetLatestForServiceTerm returns the highest-numbered persisted Billing Period
+// for one Future Offering Service Term.
+//
+// A nil period with a nil error means no Billing Period has yet been created for
+// the identified Service Term.
+//
+// This is an authoritative chronology read. It does not determine whether
+// another Billing Period is presently due; creation eligibility remains owned by
+// the transaction-only creation path and its database-owned boundary checks.
+func (m *MerchantFutureOfferingBillingPeriodModel) GetLatestForServiceTerm(
+	ctx context.Context,
+	serviceTermID uuid.UUID,
+	futureOfferingID uuid.UUID,
+) (*MerchantFutureOfferingBillingPeriod, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	if serviceTermID == uuid.Nil ||
+		futureOfferingID == uuid.Nil {
+		return nil, ErrMerchantFutureOfferingBillingPeriodInvalidInput
+	}
+
+	const query = `
+		SELECT ` + merchantFutureOfferingBillingPeriodSelectColumns + `
+		FROM merchant_future_offering_billing_periods AS bp
+		WHERE bp.service_term_id = $1
+			AND bp.future_offering_id = $2
+		ORDER BY bp.period_number DESC
+		LIMIT 1
+	`
+
+	period, err := scanMerchantFutureOfferingBillingPeriod(
+		m.DB.QueryRow(
+			ctx,
+			query,
+			serviceTermID,
+			futureOfferingID,
+		),
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, fmt.Errorf(
+			"get latest merchant future offering billing period for service term: %w",
+			err,
+		)
+	}
+
+	return period, nil
+}
+
 // ListForServiceTerm returns all Billing Periods created for one Service Term in
 // canonical period-number order.
 //

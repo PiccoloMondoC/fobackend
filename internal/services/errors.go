@@ -91,4 +91,36 @@ var (
 	ErrMerchantFutureOfferingServicePeriodInvalidState = errors.New(
 		"merchant future offering service period orchestration encountered invalid state",
 	)
+
+	ErrMerchantFutureOfferingBillingPeriodInputInvalid = errors.New(
+		"invalid merchant future offering billing period orchestration request",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodServiceTermScopeMismatch = errors.New(
+		"merchant future offering service term was not found within the specified future offering",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodAlreadyExists = errors.New(
+		"merchant future offering billing period already exists",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodTermExhausted = errors.New(
+		"merchant future offering service term has no remaining billing period",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodCreationNotYetEligible = errors.New(
+		"merchant future offering billing period creation boundary has not yet been reached",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodConcurrentCreation = errors.New(
+		"merchant future offering billing period creation encountered a concurrent persistence conflict",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodEventConflict = errors.New(
+		"merchant future offering billing period outbox event conflict",
+	)
+
+	ErrMerchantFutureOfferingBillingPeriodInvalidState = errors.New(
+		"merchant future offering billing period orchestration encountered invalid state",
+	)
 )
