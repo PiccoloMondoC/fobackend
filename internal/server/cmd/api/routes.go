@@ -698,6 +698,70 @@ func (app *Application) Routes() http.Handler {
 			},
 		)
 
+		// Merchant Future Offering Billing Periods
+		//
+		// Billing Periods are immutable monthly accounting/consumption windows.
+		// Creation remains transaction-only and service/orchestration-owned;
+		// HTTP exposes privileged observation and historical retrieval only.
+		//
+		// These routes remain privileged until canonical Future Offering
+		// ownership/delegation enforcement exists for a merchant-facing surface.
+		// Merchant actors must not receive these permissions merely because they
+		// possess a Future Offering ID.
+		v1.Route(
+			"/future-offerings/{futureOfferingID}/billing-periods",
+			func(bp chi.Router) {
+				bp.Use(app.AuthMiddleware)
+
+				// Static routes must remain before the parameterized
+				// billing-period route.
+				bp.With(
+					app.RequirePermission(
+						"read_merchant_future_offering_billing_period",
+					),
+				).Get(
+					"/current-at",
+					app.GetCurrentMerchantFutureOfferingBillingPeriodAtDateHandler,
+				)
+
+				bp.With(
+					app.RequirePermission(
+						"list_merchant_future_offering_billing_periods",
+					),
+				).Get(
+					"/timeline",
+					app.ListMerchantFutureOfferingBillingPeriodTimelineHandler,
+				)
+
+				bp.With(
+					app.RequirePermission(
+						"read_merchant_future_offering_billing_period",
+					),
+				).Get(
+					"/service-terms/{serviceTermID}/at",
+					app.GetMerchantFutureOfferingBillingPeriodForServiceTermAtDateHandler,
+				)
+
+				bp.With(
+					app.RequirePermission(
+						"list_merchant_future_offering_billing_periods",
+					),
+				).Get(
+					"/service-terms/{serviceTermID}",
+					app.ListMerchantFutureOfferingBillingPeriodsForServiceTermHandler,
+				)
+
+				bp.With(
+					app.RequirePermission(
+						"read_merchant_future_offering_billing_period",
+					),
+				).Get(
+					"/{billingPeriodID}",
+					app.GetMerchantFutureOfferingBillingPeriodHandler,
+				)
+			},
+		)
+
 		// Merchant Program Subscriptions
 		v1.Route("/merchant-program-subscriptions", func(mps chi.Router) {
 			mps.Use(app.AuthMiddleware)

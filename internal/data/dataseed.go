@@ -1018,6 +1018,15 @@ const (
 			"list_merchant_future_offering_service_periods",
 			"Allows privileged listing of Future Offering Service Period history"
 		),
+		-- Merchant Future Offering Billing Periods
+		(
+			'read_merchant_future_offering_billing_period',
+			'Allows privileged reading of a Future Offering Billing Period'
+		),
+		(
+			'list_merchant_future_offering_billing_periods',
+			'Allows privileged listing of Future Offering Billing Period history'
+		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Allows creating merchant program subscription records'),
 		('read_merchant_program_subscription', 'Allows reading merchant program subscription records'),
@@ -1321,6 +1330,10 @@ const (
 			'merchant_future_offering_service_period',
 			'Future Offering Service Period bounded performance-window history entity'
 		),
+		(
+			'merchant_future_offering_billing_period',
+			'Immutable Future Offering Billing Period accounting-window history entity'
+		),
 		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
 		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
 		('merchant_program_subscription_period', 'Immutable merchant program subscription billing period entity'),
@@ -1616,6 +1629,15 @@ const (
 		(
 			"list_merchant_future_offering_service_periods",
 			"List Future Offering Service Period history"
+		),
+		-- Merchant Future Offering Billing Periods
+		(
+			'read_merchant_future_offering_billing_period',
+			'Read a Future Offering Billing Period'
+		),
+		(
+			'list_merchant_future_offering_billing_periods',
+			'List Future Offering Billing Period history'
 		),
 		-- Merchant Program Subscriptions
 		('create_merchant_program_subscription', 'Create a merchant program subscription'),
