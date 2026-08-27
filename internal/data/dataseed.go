@@ -236,9 +236,6 @@ const (
 		'read_user_dashboard_widgets','save_user_dashboard_preferences',
 		'read_user_wallet',
 		'read_user_settings','save_user_settings','update_user_settings',
-		'read_current_merchant_program_subscription',
-		'read_active_merchant_program_subscription',
-		'read_merchant_program_subscriptions_by_merchant',
 
 		'create_merchant_payment_method',
 		'read_merchant_payment_method',
@@ -1027,36 +1024,6 @@ const (
 			'list_merchant_future_offering_billing_periods',
 			'Allows privileged listing of Future Offering Billing Period history'
 		),
-		-- Merchant Program Subscriptions
-		('create_merchant_program_subscription', 'Allows creating merchant program subscription records'),
-		('read_merchant_program_subscription', 'Allows reading merchant program subscription records'),
-		('read_current_merchant_program_subscription', 'Allows reading the current merchant program subscription for a merchant'),
-		('read_active_merchant_program_subscription', 'Allows reading the active merchant program subscription for a merchant'),
-		('read_merchant_program_subscriptions_by_merchant', 'Allows listing merchant program subscriptions by merchant'),
-		('read_merchant_program_subscriptions_by_plan', 'Allows listing merchant program subscriptions by plan and status'),
-		('update_merchant_program_subscription_plan', 'Allows updating the plan assigned to a merchant program subscription'),
-		('update_merchant_program_subscription_status', 'Allows transitioning merchant program subscription status'),
-		('cancel_merchant_program_subscription', 'Allows cancelling merchant program subscriptions'),
-		('soft_delete_merchant_program_subscription', 'Allows soft-deleting merchant program subscriptions'),
-		('restore_merchant_program_subscription', 'Allows restoring soft-deleted merchant program subscriptions'),
-		-- Merchant Program Subscription Events
-		(
-			'read_merchant_program_subscription_event',
-			'Allows reading one immutable merchant program subscription lifecycle event'
-		),
-		(
-			'list_merchant_program_subscription_events',
-			'Allows listing immutable lifecycle events for a merchant program subscription'
-		),
-		-- Merchant Program Subscription Periods
-		(
-			'read_merchant_program_subscription_period',
-			'Allows reading immutable merchant program subscription billing-period facts'
-		),
-		(
-			'list_merchant_program_subscription_periods',
-			'Allows listing immutable billing periods for a merchant program subscription'
-		),
 		-- Merchant Platform Credit Accounts
 		('create_merchant_platform_credit_account', 'Allows creating merchant platform credit accounts'),
 		('read_merchant_platform_credit_account', 'Allows reading merchant platform credit accounts'),
@@ -1334,9 +1301,6 @@ const (
 			'merchant_future_offering_billing_period',
 			'Immutable Future Offering Billing Period accounting-window history entity'
 		),
-		('merchant_program_subscription', 'Merchant program subscription lifecycle entity'),
-		('merchant_program_subscription_event', 'Immutable merchant program subscription lifecycle event entity'),
-		('merchant_program_subscription_period', 'Immutable merchant program subscription billing period entity'),
 		('merchant_platform_credit_account', 'Platform-issued merchant commercial credit account entity'),
 		('merchant_platform_credit_eligible_fee_type', 'Merchant platform credit fee-type eligibility association'),
 		('merchant_billing_account', 'Merchant billing relationship and canonical billing-currency entity'),
@@ -1638,39 +1602,6 @@ const (
 		(
 			'list_merchant_future_offering_billing_periods',
 			'List Future Offering Billing Period history'
-		),
-		-- Merchant Program Subscriptions
-		('create_merchant_program_subscription', 'Create a merchant program subscription'),
-		('read_merchant_program_subscription', 'Read a merchant program subscription by ID'),
-		('read_current_merchant_program_subscription', 'Read the current merchant program subscription for a merchant'),
-		('read_active_merchant_program_subscription', 'Read the active merchant program subscription for a merchant'),
-		('read_merchant_program_subscriptions_by_merchant', 'List merchant program subscriptions by merchant'),
-		('read_merchant_program_subscriptions_by_plan', 'List merchant program subscriptions by plan and status'),
-		('update_merchant_program_subscription_plan', 'Update the plan assigned to a merchant program subscription'),
-		('update_merchant_program_subscription_status', 'Transition merchant program subscription status'),
-		('cancel_merchant_program_subscription', 'Cancel a merchant program subscription'),
-		('soft_delete_merchant_program_subscription', 'Soft-delete a merchant program subscription'),
-		('restore_merchant_program_subscription', 'Restore a merchant program subscription'),
-		-- Merchant Program Subscription Events
-		('read_merchant_program_subscription_event', 'Read one immutable merchant program subscription lifecycle event'),
-		('list_merchant_program_subscription_events', 'List immutable lifecycle events for a merchant program subscription'),
-		('read_latest_merchant_program_subscription_event', 'Read the latest immutable lifecycle event for a merchant program subscription'),
-		-- Merchant Program Subscription Periods
-		(
-			'read_merchant_program_subscription_period',
-			'Read one immutable merchant program subscription billing period'
-		),
-		(
-			'list_merchant_program_subscription_periods',
-			'List immutable billing periods for a merchant program subscription'
-		),
-		(
-			'read_latest_merchant_program_subscription_period',
-			'Read the latest immutable billing period for a merchant program subscription'
-		),
-		(
-			'read_merchant_program_subscription_period_at_instant',
-			'Read the billing period containing a given instant for a merchant program subscription'
 		),
 		-- Merchant Platform Credit Account
 		('create_merchant_platform_credit_account', 'Create a platform-issued merchant commercial credit account'),

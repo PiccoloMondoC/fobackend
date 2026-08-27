@@ -122,9 +122,6 @@ type Models struct {
 	MerchantFutureOfferingServiceTerm     MerchantFutureOfferingServiceTermModel     // SPINE: Future Offering — overall agreed FO service duration
 	MerchantFutureOfferingServicePeriod   MerchantFutureOfferingServicePeriodModel   // SPINE: Future Offering — bounded performance windows within a Service Term
 	MerchantFutureOfferingBillingPeriod   MerchantFutureOfferingBillingPeriodModel   // SPINE: Future Offering — immutable monthly accounting/consumption windows within a Service Term
-	MerchantProgramSubscription           MerchantProgramSubscriptionModel           // SPINE: Future Offering v1 — merchant program subscription lifecycle
-	MerchantProgramSubscriptionPeriod     MerchantProgramSubscriptionPeriodModel     // SPINE: Future Offering v1 — immutable subscription commercial periods
-	MerchantProgramSubscriptionEvent      MerchantProgramSubscriptionEventModel      // SPINE: Future Offering v1 — append-only merchant program subscription lifecycle history
 	MerchantPlatformCreditEligibleFeeType MerchantPlatformCreditEligibleFeeTypeModel // SPINE: Commerce Architecture — credit eligibility by canonical fee type
 	MerchantPlatformCreditAccount         MerchantPlatformCreditAccountModel         // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 	MerchantBillingAccount                MerchantBillingAccountModel                // SPINE: Commerce Architecture — merchant billing relationship and currency anchor
@@ -243,9 +240,6 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantFutureOfferingServiceTerm:     MerchantFutureOfferingServiceTermModel{DB: dbPool, Logger: logger},   // SPINE: Future Offering — overall agreed FO service duration
 		MerchantFutureOfferingServicePeriod:   MerchantFutureOfferingServicePeriodModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering — bounded performance windows within a Service Term
 		MerchantFutureOfferingBillingPeriod:   MerchantFutureOfferingBillingPeriodModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering — immutable monthly accounting/consumption windows within a Service Term
-		MerchantProgramSubscription:           MerchantProgramSubscriptionModel{DB: dbPool, Logger: logger},         // SPINE: Future Offering v1
-		MerchantProgramSubscriptionPeriod:     MerchantProgramSubscriptionPeriodModel{DB: dbPool, Logger: logger},
-		MerchantProgramSubscriptionEvent:      MerchantProgramSubscriptionEventModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		MerchantPlatformCreditEligibleFeeType: MerchantPlatformCreditEligibleFeeTypeModel{DB: dbPool, Logger: logger},
 		MerchantPlatformCreditAccount:         MerchantPlatformCreditAccountModel{DB: dbPool, Logger: logger},     // SPINE: Commerce Architecture — platform-issued merchant commercial credit
 		MerchantBillingAccount:                MerchantBillingAccountModel{DB: dbPool, Logger: logger},            // SPINE: Commerce Architecture — merchant billing relationship and currency anchor
