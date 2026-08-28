@@ -23,9 +23,8 @@
 //	The service layer decides which configured commercial terms apply and when a
 //	lifecycle transition is appropriate. This model validates canonical values,
 //	preserves immutable calculation facts, enforces safe lifecycle transitions,
-//	and translates database integrity failures. It does not decide whether plans,
-//	subscriptions, fee categories, promotions, adjustments, or credits are
-//	commercially enabled.
+//	and translates database integrity failures. It does not decide whether fee 
+//  categories, promotions, adjustments, or credits are commercially enabled.
 //
 // Source Integrity and Idempotency:
 //

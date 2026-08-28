@@ -1,6 +1,6 @@
 ## To update code on Github:
 git add -A
-git commit -m "remove merchant_program_subscriptions.go, merchant_program_subscription_periods.go, merchant_program_subscription_events.go all layers"
+git commit -m "remove merchant_program_subscriptions, merchant_program_subscription_periods semantics from code base all layers"
 git push
 
 | data layer | handler layer | service layer |

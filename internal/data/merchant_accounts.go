@@ -11,7 +11,7 @@
 //	  a merchant. It establishes whether the merchant platform relationship is
 //	  pending, active, suspended, or closed and preserves the original
 //	  onboarding milestone required by Merchant Center, Future Offering,
-//	  subscription, entitlement, billing, and merchant-operability workflows.
+//	  entitlement, billing, and merchant-operability workflows.
 //
 // SPINE Rule:
 //
@@ -99,10 +99,8 @@ type MerchantAccount struct {
 
 	// InitialPlanID records the merchant program plan associated with initial
 	// onboarding.
-	//
-	// This is historical onboarding context only. Current subscription,
-	// entitlement, billing, and access state belong to their respective
-	// merchant program domains.
+	// This is historical onboarding context only. Current entitlement,
+	// billing, and access state belong to their respective owning domains.
 	InitialPlanID *uuid.UUID `json:"initial_plan_id,omitempty" db:"initial_plan_id"`
 
 	CreatedAt time.Time  `json:"created_at" db:"created_at"`

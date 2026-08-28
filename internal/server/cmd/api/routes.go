@@ -985,7 +985,7 @@ func (app *Application) Routes() http.Handler {
 			mbe.With(app.RequirePermission("read_merchant_billable_event")).
 				Get(
 					"/by-subscription-period/{subscriptionPeriodID}",
-					app.GetMerchantBillableEventBySubscriptionPeriodIDHandler,
+					app.GetMerchantBillableEventByBillingPeriodIDHandler,
 				)
 
 			mbe.With(app.RequirePermission("read_merchant_billable_event")).

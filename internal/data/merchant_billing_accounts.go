@@ -38,7 +38,7 @@
 //
 //	This file does not determine:
 //
-//	  - whether a fee, plan, subscription, invoice, or collection is enabled;
+//	  - whether a fee, invoice, or collection is enabled;
 //	  - what a merchant owes;
 //	  - why Administration suspends or closes an account;
 //	  - whether a particular workflow may proceed in a given status;

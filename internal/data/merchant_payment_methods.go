@@ -10,9 +10,8 @@
 //	  merchant_payment_methods is release-critical payment-collection
 //	  infrastructure. It records the merchant-owned platform representation
 //	  of payment methods used to fulfill commercial obligations created by
-//	  Commerce Architecture. It does not determine fees, invoices, plans,
-//	  subscriptions, promotions, adjustments, provider selection, or provider
-//	  verification policy.
+//	  Commerce Architecture. It does not determine fees, invoices, promotions, 
+//    adjustments, provider selection, or provider verification policy.
 //
 // Architecture Boundary:
 //
@@ -973,7 +972,7 @@ func (m *MerchantPaymentMethodModel) SetDefault(ctx context.Context, merchantID,
 
 // SetDefaultTx performs the same default-reassignment as SetDefault, but
 // participates in a caller-supplied transaction. This is the transaction seam
-// for orchestration workflows (e.g. subscription activation requiring a
+// for orchestration workflows (e.g. anticipation intelligence activation requiring a
 // verified default payment method) that must combine this operation
 // atomically with other writes. The caller owns tx.Commit/tx.Rollback.
 func (m *MerchantPaymentMethodModel) SetDefaultTx(ctx context.Context, tx pgx.Tx, merchantID, paymentMethodID uuid.UUID) error {

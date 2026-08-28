@@ -37,7 +37,7 @@
 //	  - which fee types are credit-eligible;
 //	  - the order in which multiple accounts are consumed;
 //	  - whether a promotion is commercially enabled;
-//	  - whether subscriptions or fees are enabled; or
+//	  - whether fees are enabled; or
 //	  - whether an actor is authorized to grant or cancel credit.
 //
 //	Those decisions belong to Administration-governed configuration,

@@ -10,7 +10,7 @@
 //	Reason:
 //	  merchant_billable_events is the canonical source-linked commercial
 //	  occurrence record downstream of authoritative Future Offering,
-//	  subscription-period, and positive consumer-engagement facts and upstream
+//	  Billing Period, and positive consumer-engagement facts and upstream
 //	  of fee calculation, platform-credit application, invoicing, and payment
 //	  collection.
 //
@@ -47,8 +47,8 @@
 //
 //	Activation requires submitted_for_activation.
 //
-//	Subscription-period occurrences derive merchant ownership through the
-//	period's parent subscription and occurred_at from period_start.
+//	Platform Service Fee occurrences derive merchant ownership and occurrence
+//	time from the authoritative Billing Period source fact.
 //
 //	Consumer-engagement occurrences accept only:
 //	  watched                       -> watch
@@ -82,7 +82,7 @@
 // Concurrency:
 //
 //	The database partial unique indexes on future_offering_event_id,
-//	subscription_period_id, and engagement_event_id are the durable idempotency
+//	billing_period_id, and engagement_event_id are the durable idempotency
 //	authority. This service never performs SELECT-before-INSERT duplicate
 //	detection.
 //
@@ -266,23 +266,23 @@ func merchantBillableActivationEventFromSourceFact(
 	}, nil
 }
 
-func merchantBillableSubscriptionPeriodEventFromSourceFact(
-	subscriptionPeriodID uuid.UUID,
-	fact *data.MerchantBillableEventSubscriptionPeriodSourceFact,
+func merchantBillablePlatformServiceFeeEventFromSourceFact(
+	billingPeriodID uuid.UUID,
+	fact *data.MerchantBillableEventBillingPeriodSourceFact,
 	input MerchantBillableEventOccurrenceInput,
 ) (*data.MerchantBillableEvent, error) {
 	if fact == nil {
 		return nil, fmt.Errorf(
-			"%w: subscription period %s",
+			"%w: billing period %s",
 			ErrMerchantBillableEventSourceNotFound,
-			subscriptionPeriodID,
+			billingPeriodID,
 		)
 	}
 
 	return &data.MerchantBillableEvent{
 		MerchantID:           fact.MerchantID,
-		SubscriptionPeriodID: &subscriptionPeriodID,
-		BillableEventType:    data.MerchantBillableEventTypeSubscriptionPeriod,
+		BillingPeriodID: &billingPeriodID,
+		BillableEventType:    data.MerchantBillableEventTypePlatformServiceFee,
 		GrossEventValue:      input.GrossEventValue,
 		Currency:             input.Currency,
 		OccurredAt:           fact.OccurredAt,
@@ -438,12 +438,11 @@ func (s *Service) RecordMerchantBillableActivationEventTxInternal(
 	return result, nil
 }
 
-// RecordMerchantBillableSubscriptionPeriodEventInternal records one
-// subscription-period occurrence against an already committed authoritative
-// period.
-func (s *Service) RecordMerchantBillableSubscriptionPeriodEventInternal(
+// RecordMerchantBillablePlatformServiceFeeEventInternal records one Platform
+// Service Fee occurrence against an already committed authoritative Billing Period.
+func (s *Service) RecordMerchantBillablePlatformServiceFeeEventInternal(
 	ctx context.Context,
-	subscriptionPeriodID uuid.UUID,
+	billingPeriodID uuid.UUID,
 	input MerchantBillableEventOccurrenceInput,
 ) (*data.MerchantBillableEvent, error) {
 	dbCtx, cancel, err := s.merchantBillableEventContext(ctx)
@@ -455,19 +454,19 @@ func (s *Service) RecordMerchantBillableSubscriptionPeriodEventInternal(
 	fact, err :=
 		s.Models.
 			MerchantBillableEvent.
-			GetSubscriptionPeriodSourceFact(
+			GetBillingPeriodSourceFact(
 				dbCtx,
-				subscriptionPeriodID,
+				billingPeriodID,
 			)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"resolve merchant billable subscription-period source: %w",
+			"resolve merchant billable Platform Service Fee billing-period source: %w",
 			err,
 		)
 	}
 
-	event, err := merchantBillableSubscriptionPeriodEventFromSourceFact(
-		subscriptionPeriodID,
+	event, err := merchantBillablePlatformServiceFeeEventFromSourceFact(
+		billingPeriodID,
 		fact,
 		input,
 	)
@@ -484,7 +483,7 @@ func (s *Service) RecordMerchantBillableSubscriptionPeriodEventInternal(
 			)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"record merchant billable subscription-period event: %w",
+			"record merchant billable Platform Service Fee event: %w",
 			err,
 		)
 	}
@@ -492,12 +491,12 @@ func (s *Service) RecordMerchantBillableSubscriptionPeriodEventInternal(
 	return result, nil
 }
 
-// RecordMerchantBillableSubscriptionPeriodEventTxInternal is the
-// transaction-aware subscription-period recording seam.
-func (s *Service) RecordMerchantBillableSubscriptionPeriodEventTxInternal(
+// RecordMerchantBillablePlatformServiceFeeEventTxInternal is the
+// transaction-aware Platform Service Fee recording seam.
+func (s *Service) RecordMerchantBillablePlatformServiceFeeEventTxInternal(
 	ctx context.Context,
 	tx pgx.Tx,
-	subscriptionPeriodID uuid.UUID,
+	billingPeriodID uuid.UUID,
 	input MerchantBillableEventOccurrenceInput,
 ) (*data.MerchantBillableEvent, error) {
 	if ctx == nil {
@@ -515,20 +514,20 @@ func (s *Service) RecordMerchantBillableSubscriptionPeriodEventTxInternal(
 	fact, err :=
 		s.Models.
 			MerchantBillableEvent.
-			GetSubscriptionPeriodSourceFactTx(
+			GetBillingPeriodSourceFactTx(
 				ctx,
 				tx,
-				subscriptionPeriodID,
+				billingPeriodID,
 			)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"resolve merchant billable subscription-period source in transaction: %w",
+			"resolve merchant billable Platform Service Fee billing-period source in transaction: %w",
 			err,
 		)
 	}
 
-	event, err := merchantBillableSubscriptionPeriodEventFromSourceFact(
-		subscriptionPeriodID,
+	event, err := merchantBillablePlatformServiceFeeEventFromSourceFact(
+		billingPeriodID,
 		fact,
 		input,
 	)
@@ -546,7 +545,7 @@ func (s *Service) RecordMerchantBillableSubscriptionPeriodEventTxInternal(
 			)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"record merchant billable subscription-period event in transaction: %w",
+			"record merchant billable Platform Service Fee event in transaction: %w",
 			err,
 		)
 	}

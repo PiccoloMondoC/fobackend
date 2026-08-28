@@ -253,20 +253,6 @@ var (
 		"merchant future offering billing period persistence conflict",
 	)
 
-	// Merchant program subscription periods.
-	ErrMerchantProgramSubscriptionPeriodAlreadyExists = errors.New(
-		"merchant program subscription period already exists",
-	)
-	ErrMerchantProgramSubscriptionPeriodOverlap = errors.New(
-		"merchant program subscription period overlaps an existing period",
-	)
-	ErrMerchantProgramSubscriptionPeriodSubscriptionNotFound = errors.New(
-		"merchant program subscription period subscription not found",
-	)
-	ErrMerchantProgramSubscriptionPeriodPlanNotFound = errors.New(
-		"merchant program subscription period plan not found",
-	)
-
 	// Merchant platform credit accounts.
 	ErrMerchantPlatformCreditAccountNotFound = errors.New(
 		"merchant platform credit account not found",
@@ -340,11 +326,11 @@ var (
 	ErrMerchantBillableEventFutureOfferingEventNotFound = errors.New(
 		"merchant billable event references a nonexistent future offering event",
 	)
-	ErrMerchantBillableEventSubscriptionPeriodNotFound = errors.New(
-		"merchant billable event references a nonexistent subscription period",
-	)
 	ErrMerchantBillableEventEngagementEventNotFound = errors.New(
 		"merchant billable event references a nonexistent engagement event",
+	)
+	ErrMerchantBillableEventBillingPeriodNotFound = errors.New(
+		"merchant billable event references a nonexistent billing period",
 	)
 	ErrMerchantBillableEventInvalidTransition = errors.New(
 		"invalid merchant billable event lifecycle transition",

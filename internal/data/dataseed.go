@@ -784,7 +784,6 @@ const (
 		('anticipation_intelligence_activation_fee', 'Anticipation Intelligence Activation Fee'),
 		('anticipation_intelligence_fee', 'Anticipation Intelligence Fee'),
 		('campaign_performance_fee', 'Campaign Performance Fee'),
-		('subscription_fee', 'Subscription Fee')
 	ON CONFLICT (code) DO NOTHING;
 	`
 
@@ -2152,13 +2151,6 @@ const (
 			'Waives the setup fee for approved founding merchants.',
 			'setup_fee_waiver',
 			'{"waiver_type":"full"}'::jsonb
-		),
-		(
-			'founding_free_subscription',
-			'Founding Merchant Free Subscription',
-			'Provides complimentary subscription access for approved founding merchants.',
-			'subscription_free_months',
-			'{"months":3}'::jsonb
 		),
 		(
 			'founding_future_offering_credit',

@@ -319,7 +319,7 @@ type merchantBillableEventResponse struct {
 
 	FutureOfferingEventID *uuid.UUID `json:"future_offering_event_id,omitempty"`
 
-	SubscriptionPeriodID *uuid.UUID `json:"subscription_period_id,omitempty"`
+	BillingPeriodID *uuid.UUID `json:"billing_period_id,omitempty"`
 
 	EngagementEventID *uuid.UUID `json:"engagement_event_id,omitempty"`
 
@@ -351,7 +351,7 @@ func newMerchantBillableEventResponse(
 		ID:                    event.ID,
 		MerchantID:            event.MerchantID,
 		FutureOfferingEventID: event.FutureOfferingEventID,
-		SubscriptionPeriodID:  event.SubscriptionPeriodID,
+		BillingPeriodID:       event.BillingPeriodID,
 		EngagementEventID:     event.EngagementEventID,
 		BillableEventType:     event.BillableEventType,
 		GrossEventValue:       event.GrossEventValue,
@@ -717,18 +717,18 @@ func (app *Application) GetMerchantBillableEventByFutureOfferingEventIDHandler(
 	)
 }
 
-func (app *Application) GetMerchantBillableEventBySubscriptionPeriodIDHandler(
+func (app *Application) GetMerchantBillableEventByBillingPeriodIDHandler(
 	w http.ResponseWriter,
 	r *http.Request,
 ) {
 	app.getMerchantBillableEventBySource(
 		w,
 		r,
-		"GetMerchantBillableEventBySubscriptionPeriodIDHandler",
-		"subscriptionPeriodID",
-		"subscription period ID",
+		"GetMerchantBillableEventByBillingPeriodIDHandler",
+		"billingPeriodID",
+		"billing period ID",
 		app.Models.MerchantBillableEvent.
-			GetBySubscriptionPeriodID,
+			GetByBillingPeriodID,
 	)
 }
 

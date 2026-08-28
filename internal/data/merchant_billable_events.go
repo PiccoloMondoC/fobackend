@@ -15,7 +15,7 @@
 //	  Billable occurrences currently originate from:
 //
 //	    - Future Offering submission-for-activation lifecycle events;
-//	    - merchant program subscription periods; and
+//	    - Future Offering billing periods; and
 //	    - positive consumer Future Offering engagement events.
 //
 //	  This table sits downstream of authoritative source facts and upstream of
@@ -49,7 +49,7 @@
 //
 //	This file does not decide:
 //
-//	  - whether subscriptions, plans, or a fee category are enabled;
+//	  - whether a fee category is enabled;
 //	  - which source events Administration designates as commercially billable;
 //	  - the price of an occurrence;
 //	  - which fee schedule applies;
@@ -68,7 +68,7 @@
 //	Every row references exactly one authoritative source:
 //
 //	  - future_offering_event_id for activation;
-//	  - subscription_period_id for a recurring subscription period; or
+//	  - billing_period_id for a recurring billing period; or
 //	  - engagement_event_id for a consumer-engagement occurrence.
 //
 //	The partial unique indexes on those source columns form the durable
@@ -83,7 +83,7 @@
 //
 //	  - activation references a merchant_future_offerings_events row whose
 //	    event_type is submitted_for_activation;
-//	  - subscription_period references the authoritative subscription period,
+//	  - platform_service_fee references the authoritative billing period,
 //	    with occurred_at copied from period_start;
 //	  - watch references an engagement event whose event_type is watched;
 //	  - waitlist references an engagement event whose event_type is waitlisted;
@@ -99,7 +99,7 @@
 //	  - activation occurred_at is copied from the source Future Offering
 //	    event's created_at;
 //	  - the source belongs to the supplied merchant; and
-//	  - the subscription period belongs to that merchant's subscription.
+//	  - the billing period belongs to a Future Offering owned by the supplied merchant.
 //
 //	activation_payment_satisfied and activated are downstream Future Offering
 //	lifecycle facts. Neither is the source of the activation billable
@@ -212,7 +212,7 @@ const merchantBillableEventSelectColumns = `
 	id,
 	merchant_id,
 	future_offering_event_id,
-	subscription_period_id,
+	billing_period_id,
 	engagement_event_id,
 	billable_event_type,
 	gross_event_value,
@@ -228,7 +228,7 @@ const merchantBillableEventSelectColumns = `
 
 const (
 	merchantBillableEventFutureOfferingEventColumn = "future_offering_event_id"
-	merchantBillableEventSubscriptionPeriodColumn  = "subscription_period_id"
+	merchantBillableEventBillingPeriodColumn       = "billing_period_id"
 	merchantBillableEventEngagementEventColumn     = "engagement_event_id"
 )
 
@@ -242,11 +242,11 @@ const (
 	merchantBillableEventMerchantFKConstraint = "merchant_billable_events_merchant_id_fkey"
 
 	merchantBillableEventFutureOfferingEventFKConstraint = "merchant_billable_events_future_offering_event_id_fkey"
-	merchantBillableEventSubscriptionPeriodFKConstraint  = "fk_merchant_billable_events_subscription_period"
+	merchantBillableEventBillingPeriodFKConstraint       = "fk_merchant_billable_events_billing_period"
 	merchantBillableEventEngagementEventFKConstraint     = "merchant_billable_events_engagement_event_id_fkey"
 
 	merchantBillableEventFutureOfferingEventUniqueIndex = "uq_merchant_billable_events_future_offering_event"
-	merchantBillableEventSubscriptionPeriodUniqueIndex  = "uq_merchant_billable_events_subscription_period"
+	merchantBillableEventBillingPeriodUniqueIndex       = "uq_merchant_billable_events_billing_period"
 	merchantBillableEventEngagementEventUniqueIndex     = "uq_merchant_billable_events_engagement_event"
 
 	merchantBillableEventSourceCountCheckConstraint = "chk_merchant_billable_events_source_count"
@@ -268,9 +268,9 @@ const (
 	// Anticipation Intelligence services for a Future Offering.
 	MerchantBillableEventTypeActivation MerchantBillableEventType = "activation"
 
-	// MerchantBillableEventTypeSubscriptionPeriod represents one durable
-	// recurring subscription coverage period.
-	MerchantBillableEventTypeSubscriptionPeriod MerchantBillableEventType = "subscription_period"
+	// MerchantBillableEventTypePlatformServiceFee represents the recurring
+	// Platform Service Fee occurrence for one authoritative billing period.
+	MerchantBillableEventTypePlatformServiceFee MerchantBillableEventType = "platform_service_fee"
 
 	// MerchantBillableEventTypeWatch represents an authoritative consumer watch
 	// occurrence for a Future Offering.
@@ -314,7 +314,7 @@ func IsValidMerchantBillableEventType(
 ) bool {
 	switch NormalizeMerchantBillableEventType(eventType) {
 	case MerchantBillableEventTypeActivation,
-		MerchantBillableEventTypeSubscriptionPeriod,
+		MerchantBillableEventTypePlatformServiceFee,
 		MerchantBillableEventTypeWatch,
 		MerchantBillableEventTypeWaitlist,
 		MerchantBillableEventTypeEarlyAccessRequest,
@@ -387,7 +387,7 @@ type merchantBillableEventSourceKind string
 
 const (
 	merchantBillableEventSourceFutureOffering merchantBillableEventSourceKind = "future_offering_event"
-	merchantBillableEventSourceSubscription   merchantBillableEventSourceKind = "subscription_period"
+	merchantBillableEventSourceBillingPeriod  merchantBillableEventSourceKind = "billing_period"
 	merchantBillableEventSourceEngagement     merchantBillableEventSourceKind = "engagement_event"
 )
 
@@ -398,8 +398,8 @@ func merchantBillableEventSourceKindForType(
 	case MerchantBillableEventTypeActivation:
 		return merchantBillableEventSourceFutureOffering, nil
 
-	case MerchantBillableEventTypeSubscriptionPeriod:
-		return merchantBillableEventSourceSubscription, nil
+	case MerchantBillableEventTypePlatformServiceFee:
+		return merchantBillableEventSourceBillingPeriod, nil
 
 	case MerchantBillableEventTypeWatch,
 		MerchantBillableEventTypeWaitlist,
@@ -424,7 +424,7 @@ func merchantBillableEventSourceKindForType(
 // MerchantBillableEvent represents one source-linked occurrence preserved in
 // the canonical Commerce billable-occurrence record.
 //
-// Exactly one of FutureOfferingEventID, SubscriptionPeriodID, and
+// Exactly one of FutureOfferingEventID, BillingPeriodID, and
 // EngagementEventID must be non-nil.
 //
 // Source identity, MerchantID, BillableEventType, GrossEventValue, Currency,
@@ -433,7 +433,7 @@ type MerchantBillableEvent struct {
 	ID                    uuid.UUID                   `json:"id" db:"id"`
 	MerchantID            uuid.UUID                   `json:"merchant_id" db:"merchant_id"`
 	FutureOfferingEventID *uuid.UUID                  `json:"future_offering_event_id,omitempty" db:"future_offering_event_id"`
-	SubscriptionPeriodID  *uuid.UUID                  `json:"subscription_period_id,omitempty" db:"subscription_period_id"`
+	BillingPeriodID       *uuid.UUID                  `json:"billing_period_id,omitempty" db:"billing_period_id"`
 	EngagementEventID     *uuid.UUID                  `json:"engagement_event_id,omitempty" db:"engagement_event_id"`
 	BillableEventType     MerchantBillableEventType   `json:"billable_event_type" db:"billable_event_type"`
 	GrossEventValue       *string                     `json:"gross_event_value,omitempty" db:"gross_event_value"`
@@ -469,10 +469,10 @@ type MerchantBillableEventActivationSourceFact struct {
 	OccurredAt time.Time
 }
 
-// MerchantBillableEventSubscriptionPeriodSourceFact contains the minimum
+// MerchantBillableEventBillingPeriodSourceFact contains the minimum
 // authoritative source data required by service orchestration to validate a
-// subscription-period billable occurrence.
-type MerchantBillableEventSubscriptionPeriodSourceFact struct {
+// billing-period billable occurrence.
+type MerchantBillableEventBillingPeriodSourceFact struct {
 	MerchantID uuid.UUID
 	OccurredAt time.Time
 }
@@ -522,7 +522,7 @@ func scanMerchantBillableEvent(
 		&event.ID,
 		&event.MerchantID,
 		&event.FutureOfferingEventID,
-		&event.SubscriptionPeriodID,
+		&event.BillingPeriodID,
 		&event.EngagementEventID,
 		&event.BillableEventType,
 		&event.GrossEventValue,
@@ -560,7 +560,7 @@ func classifyMerchantBillableEventWriteError(err error) error {
 	),
 		IsPgConstraint(
 			err,
-			merchantBillableEventSubscriptionPeriodUniqueIndex,
+			merchantBillableEventBillingPeriodUniqueIndex,
 		),
 		IsPgConstraint(
 			err,
@@ -582,9 +582,9 @@ func classifyMerchantBillableEventWriteError(err error) error {
 
 	case IsPgConstraint(
 		err,
-		merchantBillableEventSubscriptionPeriodFKConstraint,
+		merchantBillableEventBillingPeriodFKConstraint,
 	):
-		return ErrMerchantBillableEventSubscriptionPeriodNotFound
+		return ErrMerchantBillableEventBillingPeriodNotFound
 
 	case IsPgConstraint(
 		err,
@@ -703,7 +703,7 @@ func validateMerchantBillableEventCurrency(
 func validateMerchantBillableEventSourceReferences(
 	eventType MerchantBillableEventType,
 	futureOfferingEventID *uuid.UUID,
-	subscriptionPeriodID *uuid.UUID,
+	billingPeriodID *uuid.UUID,
 	engagementEventID *uuid.UUID,
 ) error {
 	sourceKind, err := merchantBillableEventSourceKindForType(eventType)
@@ -722,10 +722,10 @@ func validateMerchantBillableEventSourceReferences(
 		sourceCount++
 	}
 
-	if subscriptionPeriodID != nil {
-		if *subscriptionPeriodID == uuid.Nil {
+	if billingPeriodID != nil {
+		if *billingPeriodID == uuid.Nil {
 			return merchantBillableEventInvalidInput(
-				"subscription_period_id must not be a nil UUID",
+				"billing_period_id must not be a nil UUID",
 			)
 		}
 		sourceCount++
@@ -755,10 +755,10 @@ func validateMerchantBillableEventSourceReferences(
 			)
 		}
 
-	case merchantBillableEventSourceSubscription:
-		if subscriptionPeriodID == nil {
+	case merchantBillableEventSourceBillingPeriod:
+		if billingPeriodID == nil {
 			return merchantBillableEventInvalidInput(
-				"billable_event_type %q requires subscription_period_id",
+				"billable_event_type %q requires billing_period_id",
 				eventType,
 			)
 		}
@@ -809,7 +809,7 @@ func validateMerchantBillableEventForInsert(
 	if err := validateMerchantBillableEventSourceReferences(
 		event.BillableEventType,
 		event.FutureOfferingEventID,
-		event.SubscriptionPeriodID,
+		event.BillingPeriodID,
 		event.EngagementEventID,
 	); err != nil {
 		return err
@@ -891,7 +891,7 @@ func validateMerchantBillableEventPersistedState(
 	if err := validateMerchantBillableEventSourceReferences(
 		eventType,
 		event.FutureOfferingEventID,
-		event.SubscriptionPeriodID,
+		event.BillingPeriodID,
 		event.EngagementEventID,
 	); err != nil {
 		return ErrMerchantBillableEventInvalidState
@@ -1161,27 +1161,27 @@ func (m *MerchantBillableEventModel) GetActivationSourceFactTx(
 	return fact, nil
 }
 
-func (m *MerchantBillableEventModel) getSubscriptionPeriodSourceFactViaQuerier(
+func (m *MerchantBillableEventModel) getBillingPeriodSourceFactViaQuerier(
 	ctx context.Context,
 	querier merchantBillableEventQueryRower,
-	subscriptionPeriodID uuid.UUID,
-) (*MerchantBillableEventSubscriptionPeriodSourceFact, error) {
+	billingPeriodID uuid.UUID,
+) (*MerchantBillableEventBillingPeriodSourceFact, error) {
 	const query = `
 		SELECT
-			mps.merchant_id,
-			mpsp.period_start
-		FROM merchant_program_subscription_periods AS mpsp
-		JOIN merchant_program_subscriptions AS mps
-		  ON mps.id = mpsp.subscription_id
-		WHERE mpsp.id = $1
+			mfo.merchant_id,
+			(mfobp.period_starts_on::timestamp AT TIME ZONE 'UTC')
+		FROM merchant_future_offering_billing_periods AS mfobp
+		JOIN merchant_future_offerings AS mfo
+		  ON mfo.id = mfobp.future_offering_id
+		WHERE mfobp.id = $1
 	`
 
-	var fact MerchantBillableEventSubscriptionPeriodSourceFact
+	var fact MerchantBillableEventBillingPeriodSourceFact
 
 	err := querier.QueryRow(
 		ctx,
 		query,
-		subscriptionPeriodID,
+		billingPeriodID,
 	).Scan(
 		&fact.MerchantID,
 		&fact.OccurredAt,
@@ -1196,24 +1196,22 @@ func (m *MerchantBillableEventModel) getSubscriptionPeriodSourceFactViaQuerier(
 	return &fact, nil
 }
 
-// GetSubscriptionPeriodSourceFact retrieves the authoritative source facts
-// needed to validate one subscription-period billable occurrence.
+// GetBillingPeriodSourceFact retrieves the authoritative source facts needed to
+// validate one Platform Service Fee billable occurrence.
 //
-// Historical ownership is resolved through the referenced subscription. A
-// subscription's current soft-delete state does not erase historical ownership.
-//
+// Ownership is resolved through billing_period -> Future Offering -> merchant.
 // Absence returns nil, nil.
-func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFact(
+func (m *MerchantBillableEventModel) GetBillingPeriodSourceFact(
 	ctx context.Context,
-	subscriptionPeriodID uuid.UUID,
-) (*MerchantBillableEventSubscriptionPeriodSourceFact, error) {
+	billingPeriodID uuid.UUID,
+) (*MerchantBillableEventBillingPeriodSourceFact, error) {
 	if err := m.validatePool(); err != nil {
 		return nil, err
 	}
 
 	if err := validateMerchantBillableEventSourceID(
-		subscriptionPeriodID,
-		"subscription_period_id",
+		billingPeriodID,
+		"billing_period_id",
 	); err != nil {
 		return nil, err
 	}
@@ -1221,14 +1219,14 @@ func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFact(
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	fact, err := m.getSubscriptionPeriodSourceFactViaQuerier(
+	fact, err := m.getBillingPeriodSourceFactViaQuerier(
 		ctx,
 		m.DB,
-		subscriptionPeriodID,
+		billingPeriodID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"get merchant billable subscription-period source fact: %w",
+			"get merchant billable billing-period source fact: %w",
 			err,
 		)
 	}
@@ -1236,16 +1234,16 @@ func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFact(
 	return fact, nil
 }
 
-// GetSubscriptionPeriodSourceFactTx is the transaction-aware form of
-// GetSubscriptionPeriodSourceFact.
+// GetBillingPeriodSourceFactTx is the transaction-aware form of
+// GetBillingPeriodSourceFact.
 //
 // The caller owns the transaction and overall workflow context. The data layer
 // retains its normal per-statement dbTimeout.
-func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFactTx(
+func (m *MerchantBillableEventModel) GetBillingPeriodSourceFactTx(
 	ctx context.Context,
 	tx pgx.Tx,
-	subscriptionPeriodID uuid.UUID,
-) (*MerchantBillableEventSubscriptionPeriodSourceFact, error) {
+	billingPeriodID uuid.UUID,
+) (*MerchantBillableEventBillingPeriodSourceFact, error) {
 	if err := m.validateBase(); err != nil {
 		return nil, err
 	}
@@ -1257,8 +1255,8 @@ func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFactTx(
 	}
 
 	if err := validateMerchantBillableEventSourceID(
-		subscriptionPeriodID,
-		"subscription_period_id",
+		billingPeriodID,
+		"billing_period_id",
 	); err != nil {
 		return nil, err
 	}
@@ -1266,14 +1264,14 @@ func (m *MerchantBillableEventModel) GetSubscriptionPeriodSourceFactTx(
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	fact, err := m.getSubscriptionPeriodSourceFactViaQuerier(
+	fact, err := m.getBillingPeriodSourceFactViaQuerier(
 		ctx,
 		tx,
-		subscriptionPeriodID,
+		billingPeriodID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf(
-			"get merchant billable subscription-period source fact in transaction: %w",
+			"get merchant billable billing-period source fact in transaction: %w",
 			err,
 		)
 	}
@@ -1432,11 +1430,11 @@ func merchantBillableEventLogFields(
 		)
 	}
 
-	if event.SubscriptionPeriodID != nil {
+	if event.BillingPeriodID != nil {
 		fields = append(
 			fields,
-			"subscription_period_id",
-			*event.SubscriptionPeriodID,
+			"billing_period_id",
+			*event.BillingPeriodID,
 		)
 	}
 
@@ -1479,7 +1477,7 @@ func (m *MerchantBillableEventModel) insert(
 			id,
 			merchant_id,
 			future_offering_event_id,
-			subscription_period_id,
+			billing_period_id,
 			engagement_event_id,
 			billable_event_type,
 			gross_event_value,
@@ -1507,7 +1505,7 @@ func (m *MerchantBillableEventModel) insert(
 			id,
 			event.MerchantID,
 			event.FutureOfferingEventID,
-			event.SubscriptionPeriodID,
+			event.BillingPeriodID,
 			event.EngagementEventID,
 			event.BillableEventType,
 			event.GrossEventValue,
@@ -1769,13 +1767,13 @@ func (m *MerchantBillableEventModel) GetByFutureOfferingEventID(
 	)
 }
 
-// GetBySubscriptionPeriodID retrieves the billable event referencing
-// subscriptionPeriodID.
+// GetByBillingPeriodID retrieves the billable event referencing
+// billingPeriodID.
 //
 // Absence returns nil, nil.
-func (m *MerchantBillableEventModel) GetBySubscriptionPeriodID(
+func (m *MerchantBillableEventModel) GetByBillingPeriodID(
 	ctx context.Context,
-	subscriptionPeriodID uuid.UUID,
+	billingPeriodID uuid.UUID,
 ) (*MerchantBillableEvent, error) {
 	if err := m.validatePool(); err != nil {
 		return nil, err
@@ -1783,10 +1781,10 @@ func (m *MerchantBillableEventModel) GetBySubscriptionPeriodID(
 
 	return m.getBySourceID(
 		ctx,
-		merchantBillableEventSubscriptionPeriodColumn,
-		subscriptionPeriodID,
-		"subscription_period_id",
-		"GetMerchantBillableEventBySubscriptionPeriodID",
+		merchantBillableEventBillingPeriodColumn,
+		billingPeriodID,
+		"billing_period_id",
+		"GetMerchantBillableEventByBillingPeriodID",
 	)
 }
 

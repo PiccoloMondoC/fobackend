@@ -1649,7 +1649,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		WHERE deleted_at IS NULL;
 
 	-- ===============================================================
-	-- Merchant Program Plans / Entitlements / Subscriptions
+	-- Merchant Program Plans / Entitlements 
 	-- ===============================================================
 	CREATE TABLE IF NOT EXISTS merchant_program_plans (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2772,55 +2772,77 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE TABLE IF NOT EXISTS merchant_future_offerings (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		offer_id UUID UNIQUE REFERENCES offers(id) ON DELETE SET NULL,
-		product_id UUID REFERENCES products(id) ON DELETE SET NULL,
-		category_id UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
-		subscription_id UUID NOT NULL REFERENCES merchant_program_subscriptions(id) ON DELETE RESTRICT,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-		offering_type TEXT NOT NULL CHECK (offering_type IN (
-			'product',
-			'service',
-			'event',
-			'venue',
-			'development',
-			'experience'
-		)),
+		offer_id UUID UNIQUE
+			REFERENCES offers(id)
+			ON DELETE SET NULL,
 
-		project_name TEXT NOT NULL CHECK (btrim(project_name) <> ''),
-		title TEXT NOT NULL CHECK (btrim(title) <> ''),
+		product_id UUID
+			REFERENCES products(id)
+			ON DELETE SET NULL,
+
+		category_id UUID NOT NULL
+			REFERENCES categories(id)
+			ON DELETE RESTRICT,
+
+		offering_type TEXT NOT NULL
+			CHECK (
+				offering_type IN (
+					'product',
+					'service',
+					'event',
+					'venue',
+					'development',
+					'experience'
+				)
+			),
+
+		project_name TEXT NOT NULL
+			CHECK (btrim(project_name) <> ''),
+
+		title TEXT NOT NULL
+			CHECK (btrim(title) <> ''),
+
 		summary TEXT NOT NULL DEFAULT '',
+
 		description TEXT,
 
 		launch_kind TEXT NOT NULL DEFAULT 'standard'
-			CHECK (launch_kind IN (
-				'standard',
-				'product_launch',
-				'drop',
-				'limited_release',
-				'creator_launch',
-				'startup_launch',
-				'collaboration',
-				'preorder',
-				'waitlist',
-				'early_access',
-				'invite_only'
-			)),
+			CHECK (
+				launch_kind IN (
+					'standard',
+					'product_launch',
+					'drop',
+					'limited_release',
+					'creator_launch',
+					'startup_launch',
+					'collaboration',
+					'preorder',
+					'waitlist',
+					'early_access',
+					'invite_only'
+				)
+			),
 
 		status TEXT NOT NULL DEFAULT 'draft'
-			CHECK (status IN (
-				'draft',
-				'submitted',
-				'trust_review',
-				'changes_requested',
-				'approved',
-				'published',
-				'paused',
-				'expired',
-				'rejected',
-				'unpublished',
-				'archived'
-			)),
+			CHECK (
+				status IN (
+					'draft',
+					'submitted',
+					'trust_review',
+					'changes_requested',
+					'approved',
+					'published',
+					'paused',
+					'expired',
+					'rejected',
+					'unpublished',
+					'archived'
+				)
+			),
 
 		launch_at TIMESTAMPTZ,
 		countdown_starts_at TIMESTAMPTZ,
@@ -2839,28 +2861,43 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		CONSTRAINT chk_merchant_future_offerings_countdown_before_launch
 			CHECK (
 				launch_at IS NULL
-				OR countdown_starts_at IS NULL
-				OR countdown_starts_at <= launch_at
+					OR countdown_starts_at IS NULL
+					OR countdown_starts_at <= launch_at
 			)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_future_offerings_merchant_status
-		ON merchant_future_offerings(merchant_id, status)
-		WHERE deleted_at IS NULL;
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_merchant_status
+	ON merchant_future_offerings (
+		merchant_id,
+		status
+	)
+	WHERE deleted_at IS NULL;
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_future_offerings_category_status
-		ON merchant_future_offerings(category_id, status, launch_at)
-		WHERE deleted_at IS NULL;
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_category_status
+	ON merchant_future_offerings (
+		category_id,
+		status,
+		launch_at
+	)
+	WHERE deleted_at IS NULL;
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_future_offerings_published
-		ON merchant_future_offerings(published_at DESC)
-		WHERE deleted_at IS NULL AND status = 'published';
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_published
+	ON merchant_future_offerings (
+		published_at DESC
+	)
+	WHERE deleted_at IS NULL
+		AND status = 'published';
 
-	DROP TRIGGER IF EXISTS enforce_merchant_future_offerings_trend_offer
-		ON public.merchant_future_offerings;
+	DROP TRIGGER IF EXISTS
+		enforce_merchant_future_offerings_trend_offer
+	ON public.merchant_future_offerings;
 
 	CREATE TRIGGER enforce_merchant_future_offerings_trend_offer
-	BEFORE INSERT OR UPDATE OF offer_id ON public.merchant_future_offerings
+	BEFORE INSERT OR UPDATE OF offer_id
+	ON public.merchant_future_offerings
 	FOR EACH ROW
 	WHEN (NEW.offer_id IS NOT NULL)
 	EXECUTE FUNCTION public.enforce_trend_offer();
@@ -2984,37 +3021,46 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	-- =====================================================================
 
 	-- Merchant Program Benefits
-	CREATE TABLE IF NOT EXISTS merchant_program_benefits (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+CREATE TABLE IF NOT EXISTS merchant_program_benefits (
+	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		code TEXT NOT NULL UNIQUE
-			CHECK (btrim(code) <> ''),
+	code TEXT NOT NULL UNIQUE
+		CHECK (
+			btrim(code) <> ''
+		),
 
-		name TEXT NOT NULL
-			CHECK (btrim(name) <> ''),
+	name TEXT NOT NULL
+		CHECK (
+			btrim(name) <> ''
+		),
 
-		description TEXT NOT NULL DEFAULT '',
+	description TEXT NOT NULL DEFAULT '',
 
-		benefit_type TEXT NOT NULL
-			CHECK (benefit_type IN (
+	benefit_type TEXT NOT NULL
+		CHECK (
+			benefit_type IN (
 				'fee_waiver',
 				'fee_discount',
-				'fee_credit',
-				'subscription_free_period'
-			)),
+				'fee_credit'
+			)
+		),
 
-		value_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+	value_json JSONB NOT NULL DEFAULT '{}'::jsonb
+		CHECK (
+			jsonb_typeof(value_json) = 'object'
+		),
 
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
+	is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+	deleted_at TIMESTAMPTZ,
 
-		CONSTRAINT chk_merchant_program_benefits_code_format
-			CHECK (code ~ '^[a-z][a-z0-9_]*$')
-	);
-
+	CONSTRAINT chk_merchant_program_benefits_code_format
+		CHECK (
+			code ~ '^[a-z][a-z0-9_]*$'
+		)
+);
 
 	CREATE TABLE IF NOT EXISTS merchant_program_plan_benefits (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -3289,8 +3335,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
 		offer_id UUID REFERENCES offers(id) ON DELETE SET NULL,
 		category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
-		subscription_id UUID REFERENCES merchant_program_subscriptions(id) ON DELETE SET NULL,
-
+		
 		title TEXT NOT NULL CHECK (btrim(title) <> ''),
 		summary TEXT NOT NULL DEFAULT '',
 		description TEXT,
@@ -3375,7 +3420,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	WHEN (NEW.offer_id IS NOT NULL)
 	EXECUTE FUNCTION public.enforce_deal_offer();
 
-
+	-- DEFERRED Merchant Launch Campaign Clicks
 	CREATE TABLE IF NOT EXISTS merchant_launch_campaign_clicks (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -3408,6 +3453,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		WHERE user_id IS NOT NULL;
 
 
+	-- merchant_launch_campaign_attribution_events Merchant Launch Campaign Attribution Events
 	CREATE TABLE IF NOT EXISTS merchant_launch_campaign_attribution_events (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -4439,27 +4485,29 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			ON DELETE RESTRICT,
 
 		billable_event_type TEXT NOT NULL
-			CHECK (billable_event_type IN (
-				'activation',
-				'subscription_period',
-				'watch',
-				'waitlist',
-				'early_access_request',
-				'beta',
-				'reservation_interest',
-				'preorder_intent'
-			)),
+			CHECK (
+				billable_event_type IN (
+					'activation',
+					'platform_service_fee',
+					'watch',
+					'waitlist',
+					'early_access_request',
+					'beta',
+					'reservation_interest',
+					'preorder_intent'
+				)
+			),
 
 		gross_event_value NUMERIC(19,4)
 			CHECK (
 				gross_event_value IS NULL
-				OR gross_event_value >= 0
+					OR gross_event_value >= 0
 			),
 
 		currency CHAR(3)
 			CHECK (
 				currency IS NULL
-				OR currency ~ '^[A-Z]{3}$'
+					OR currency ~ '^[A-Z]{3}$'
 			),
 
 		occurred_at TIMESTAMPTZ NOT NULL,
@@ -4469,12 +4517,14 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		reversed_at TIMESTAMPTZ,
 
 		status TEXT NOT NULL DEFAULT 'pending'
-			CHECK (status IN (
-				'pending',
-				'confirmed',
-				'rejected',
-				'reversed'
-			)),
+			CHECK (
+				status IN (
+					'pending',
+					'confirmed',
+					'rejected',
+					'reversed'
+				)
+			),
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -4483,7 +4533,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			CHECK (
 				num_nonnulls(
 					future_offering_event_id,
-					subscription_period_id,
+					billing_period_id,
 					engagement_event_id
 				) = 1
 			),
@@ -4496,8 +4546,8 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				)
 				OR
 				(
-					billable_event_type = 'subscription_period'
-					AND subscription_period_id IS NOT NULL
+					billable_event_type = 'platform_service_fee'
+					AND billing_period_id IS NOT NULL
 				)
 				OR
 				(
@@ -4558,32 +4608,43 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			)
 	);
 
-	CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_billable_events_future_offering_event
-		ON merchant_billable_events (future_offering_event_id)
-		WHERE future_offering_event_id IS NOT NULL;
+	CREATE UNIQUE INDEX IF NOT EXISTS
+		uq_merchant_billable_events_future_offering_event
+	ON merchant_billable_events (
+		future_offering_event_id
+	)
+	WHERE future_offering_event_id IS NOT NULL;
 
-	CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_billable_events_subscription_period
-		ON merchant_billable_events (subscription_period_id)
-		WHERE subscription_period_id IS NOT NULL;
+	CREATE UNIQUE INDEX IF NOT EXISTS
+		uq_merchant_billable_events_billing_period
+	ON merchant_billable_events (
+		billing_period_id
+	)
+	WHERE billing_period_id IS NOT NULL;
 
-	CREATE UNIQUE INDEX IF NOT EXISTS uq_merchant_billable_events_engagement_event
-		ON merchant_billable_events (engagement_event_id)
-		WHERE engagement_event_id IS NOT NULL;
+	CREATE UNIQUE INDEX IF NOT EXISTS
+		uq_merchant_billable_events_engagement_event
+	ON merchant_billable_events (
+		engagement_event_id
+	)
+	WHERE engagement_event_id IS NOT NULL;
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_billable_events_merchant_occurred
-		ON merchant_billable_events (
-			merchant_id,
-			occurred_at DESC,
-			id DESC
-		);
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_billable_events_merchant_occurred
+	ON merchant_billable_events (
+		merchant_id,
+		occurred_at DESC,
+		id DESC
+	);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_billable_events_merchant_status_occurred
-		ON merchant_billable_events (
-			merchant_id,
-			status,
-			occurred_at DESC,
-			id DESC
-		);
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_billable_events_merchant_status_occurred
+	ON merchant_billable_events (
+		merchant_id,
+		status,
+		occurred_at DESC,
+		id DESC
+	);
 
 
 	-- Merchant Fee Calculations
@@ -5864,11 +5925,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_program_plans ON merchant_program_plans;
 	CREATE TRIGGER set_updated_at_merchant_program_plans
 	BEFORE UPDATE ON merchant_program_plans
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_program_subscriptions ON merchant_program_subscriptions;
-	CREATE TRIGGER set_updated_at_merchant_program_subscriptions
-	BEFORE UPDATE ON merchant_program_subscriptions
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_trust_profiles ON merchant_trust_profiles;
