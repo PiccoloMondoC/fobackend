@@ -65,6 +65,12 @@
 //
 // Source and Idempotency Boundary:
 //
+//	Every row belongs to exactly one Future Offering and references exactly one
+//	authoritative source. future_offering_id is a derived Commerce-owned identity
+//	snapshot populated by the database from that source; callers do not choose it.
+//	This lets downstream Commerce consumers preserve FO isolation without reaching
+//	through producer-owned source schemas.
+//
 //	Every row references exactly one authoritative source:
 //
 //	  - future_offering_event_id for activation;
@@ -211,6 +217,7 @@ var (
 const merchantBillableEventSelectColumns = `
 	id,
 	merchant_id,
+	future_offering_id,
 	future_offering_event_id,
 	billing_period_id,
 	engagement_event_id,
@@ -239,20 +246,44 @@ const (
 // These values must remain synchronized with the authoritative migration.
 // Constraint-aware classification depends on stable persisted names.
 const (
-	merchantBillableEventMerchantFKConstraint = "merchant_billable_events_merchant_id_fkey"
+	merchantBillableEventMerchantFKConstraint =
+		"fk_merchant_billable_events_merchant"
 
-	merchantBillableEventFutureOfferingEventFKConstraint = "merchant_billable_events_future_offering_event_id_fkey"
-	merchantBillableEventBillingPeriodFKConstraint       = "fk_merchant_billable_events_billing_period"
-	merchantBillableEventEngagementEventFKConstraint     = "merchant_billable_events_engagement_event_id_fkey"
+	merchantBillableEventFutureOfferingFKConstraint =
+		"fk_merchant_billable_events_future_offering"
 
-	merchantBillableEventFutureOfferingEventUniqueIndex = "uq_merchant_billable_events_future_offering_event"
-	merchantBillableEventBillingPeriodUniqueIndex       = "uq_merchant_billable_events_billing_period"
-	merchantBillableEventEngagementEventUniqueIndex     = "uq_merchant_billable_events_engagement_event"
+	merchantBillableEventFutureOfferingEventFKConstraint =
+		"fk_merchant_billable_events_future_offering_event"
 
-	merchantBillableEventSourceCountCheckConstraint = "chk_merchant_billable_events_source_count"
-	merchantBillableEventSourceTypeCheckConstraint  = "chk_merchant_billable_events_source_type"
-	merchantBillableEventValueCurrencyConstraint    = "chk_merchant_billable_events_value_currency"
-	merchantBillableEventStatusTimestampConstraint  = "chk_merchant_billable_events_status_timestamps"
+	merchantBillableEventBillingPeriodFKConstraint =
+		"fk_merchant_billable_events_billing_period"
+
+	merchantBillableEventEngagementEventFKConstraint =
+		"fk_merchant_billable_events_engagement_event"
+
+	merchantBillableEventFutureOfferingEventUniqueIndex =
+		"uq_merchant_billable_events_future_offering_event"
+
+	merchantBillableEventBillingPeriodUniqueIndex =
+		"uq_merchant_billable_events_billing_period"
+
+	merchantBillableEventEngagementEventUniqueIndex =
+		"uq_merchant_billable_events_engagement_event"
+
+	merchantBillableEventSourceCountCheckConstraint =
+		"chk_merchant_billable_events_source_count"
+
+	merchantBillableEventSourceTypeCheckConstraint =
+		"chk_merchant_billable_events_source_type"
+
+	merchantBillableEventValueCurrencyConstraint =
+		"chk_merchant_billable_events_value_currency"
+
+	merchantBillableEventStatusTimestampConstraint =
+		"chk_merchant_billable_events_status_timestamps"
+
+	merchantBillableEventSourceIdentityCheckConstraint =
+		"chk_merchant_billable_events_source_identity"
 )
 
 // -----------------------------------------------------------------------------
@@ -432,6 +463,7 @@ func merchantBillableEventSourceKindForType(
 type MerchantBillableEvent struct {
 	ID                    uuid.UUID                   `json:"id" db:"id"`
 	MerchantID            uuid.UUID                   `json:"merchant_id" db:"merchant_id"`
+	FutureOfferingID      uuid.UUID                   `json:"future_offering_id" db:"future_offering_id"`
 	FutureOfferingEventID *uuid.UUID                  `json:"future_offering_event_id,omitempty" db:"future_offering_event_id"`
 	BillingPeriodID       *uuid.UUID                  `json:"billing_period_id,omitempty" db:"billing_period_id"`
 	EngagementEventID     *uuid.UUID                  `json:"engagement_event_id,omitempty" db:"engagement_event_id"`
@@ -521,6 +553,7 @@ func scanMerchantBillableEvent(
 	return row.Scan(
 		&event.ID,
 		&event.MerchantID,
+		&event.FutureOfferingID,
 		&event.FutureOfferingEventID,
 		&event.BillingPeriodID,
 		&event.EngagementEventID,
@@ -607,6 +640,10 @@ func classifyMerchantBillableEventWriteError(err error) error {
 		IsPgConstraint(
 			err,
 			merchantBillableEventStatusTimestampConstraint,
+		),
+		IsPgConstraint(
+			err,
+			merchantBillableEventSourceIdentityCheckConstraint,
 		):
 		return ErrMerchantBillableEventInvalidState
 
@@ -796,6 +833,12 @@ func validateMerchantBillableEventForInsert(
 		)
 	}
 
+	if event.FutureOfferingID != uuid.Nil {
+		return merchantBillableEventInvalidInput(
+			"future_offering_id is database-derived from the authoritative source",
+		)
+	}
+
 	event.BillableEventType = NormalizeMerchantBillableEventType(
 		event.BillableEventType,
 	)
@@ -875,6 +918,7 @@ func validateMerchantBillableEventPersistedState(
 	if event == nil ||
 		event.ID == uuid.Nil ||
 		event.MerchantID == uuid.Nil ||
+		event.FutureOfferingID == uuid.Nil ||
 		event.OccurredAt.IsZero() ||
 		event.CreatedAt.IsZero() ||
 		event.UpdatedAt.IsZero() {
@@ -1422,6 +1466,10 @@ func merchantBillableEventLogFields(
 		"status", event.Status,
 	}
 
+	if event.FutureOfferingID != uuid.Nil {
+		fields = append(fields, "future_offering_id", event.FutureOfferingID)
+	}
+
 	if event.FutureOfferingEventID != nil {
 		fields = append(
 			fields,
@@ -1472,6 +1520,9 @@ func (m *MerchantBillableEventModel) insert(
 		id = uuid.New()
 	}
 
+	// future_offering_id is intentionally omitted. The database BEFORE INSERT
+	// identity trigger derives it from the one authoritative source and rejects
+	// merchant/source mismatches before the row becomes durable.
 	const query = `
 		INSERT INTO merchant_billable_events (
 			id,

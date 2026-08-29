@@ -433,6 +433,9 @@ var (
 	ErrMerchantInvoiceItemInvoiceNotDraft = errors.New(
 		"merchant invoice item requires the parent invoice to be in draft status",
 	)
+	ErrMerchantInvoiceItemProvenanceMismatch = errors.New(
+	"merchant invoice item fee calculation does not match the parent invoice merchant, currency, or future offering",
+	)
 
 	// Merchant payment methods.
 	ErrMerchantPaymentMethodNotFound        = errors.New("merchant payment method not found")

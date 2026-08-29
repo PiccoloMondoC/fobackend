@@ -28,10 +28,10 @@
 //	    billed products).
 //
 //	Invoice items may represent any canonical Sagrenti product/service charge
-//	that has reached fee calculation, including Anticipation Intelligence
-//	Activation Fees, Anticipation Intelligence usage fees, and Subscription Fees
-//	where configured. Individual consumer engagement actions are not invoice
-//	products.
+//	that has reached fee calculation, including Activation Fees, Platform Service
+//	Fees, Anticipation Intelligence Fees, Asset Hosting Overage Fees, and other
+//	properly established charges. Individual consumer engagement actions are not
+//	invoice products.
 //
 // Provenance:
 //
@@ -57,9 +57,13 @@
 //	separate structured records in their owning domains and may be associated
 //	with the applicable charge by invoice composition/presentation logic.
 //
-//	Cross-table validation that the invoice item faithfully represents the
-//	referenced fee calculation, belongs to the same merchant, uses the invoice
-//	currency, and is eligible for invoicing belongs to service orchestration.
+//	The invoice-item write boundary relationally proves that the referenced fee
+//	calculation belongs to the same merchant and currency as the parent invoice
+//	and that its billable occurrence belongs to the same Future Offering. These
+//	are financial-integrity invariants, not configurable policy. Service
+//	orchestration remains responsible for deciding whether the calculation is in
+//	the appropriate lifecycle state for the invoicing workflow and for verifying
+//	that the line snapshot faithfully represents the calculated charge.
 //
 // Currency:
 //
@@ -108,16 +112,14 @@
 //
 // Cross-Table Invariants Not Enforced Here:
 //
-//	This table cannot relationally prove that its parent invoice and
-//	referenced fee calculation belong to the same merchant, or that the
-//	invoice's currency matches the calculation's currency, or that the
-//	calculation's lifecycle state is appropriate for the invoicing workflow, or
-//	that description/quantity/unit_amount/line_amount faithfully represent the
-//	calculated charge. Those are service-orchestration responsibilities using
-//	the authoritative MerchantInvoiceModel, MerchantFeeCalculationModel, and any
-//	relevant commercial-adjustment/credit records. Engineering must enforce
-//	financial truth; Administration governs only the variable commercial terms
-//	within those safe boundaries.
+//	This table does not decide whether the referenced fee calculation is in the
+//	appropriate lifecycle state for a particular invoicing workflow, and it cannot
+//	prove from its own columns that description/quantity/unit_amount/line_amount
+//	faithfully represent the calculated charge. Those remain service-orchestration
+//	responsibilities using the authoritative MerchantInvoiceModel,
+//	MerchantFeeCalculationModel, and any relevant monetary-effect records.
+//	Merchant/currency/Future-Offering identity is enforced at insertion by joining
+//	through the canonical fee calculation and billable event.
 //
 // Monetary Precision:
 //
@@ -143,6 +145,8 @@
 //	statement itself.
 //	Preserve currency inheritance from merchant_invoices; never add a local
 //	currency column.
+//	Preserve relational proof that invoice and charge share merchant, currency,
+//	and Future Offering identity before insertion.
 //	Do not expose generic update, upsert, delete, soft-delete, or restore
 //	methods.
 //	Do not represent Platform Credits, rebates, discounts, payments, or
@@ -247,7 +251,9 @@ type MerchantInvoiceItemDraftLine struct {
 	InvoiceID uuid.UUID
 
 	// FeeCalculationID is the sole direct provenance reference. At most one
-	// invoice item may ever exist for a given fee calculation.
+	// invoice item may ever exist for a given fee calculation. InsertDraftLineTx
+	// additionally proves that the calculation and its billable occurrence match
+	// the parent invoice's merchant, currency, and Future Offering.
 	FeeCalculationID uuid.UUID
 
 	// Description is the durable, caller-supplied snapshot of what was
@@ -552,6 +558,30 @@ func (m *MerchantInvoiceItemModel) getInvoiceStatusViaQuerier(
 	return &status, nil
 }
 
+// feeCalculationExistsViaQuerier reports whether feeCalculationID exists. It is
+// used only after the guarded invoice-item INSERT matched no row, so callers can
+// distinguish absence from an identity/provenance mismatch without using a
+// race-prone SELECT-before-INSERT uniqueness check.
+func (m *MerchantInvoiceItemModel) feeCalculationExistsViaQuerier(
+	ctx context.Context,
+	querier merchantInvoiceItemQueryRower,
+	feeCalculationID uuid.UUID,
+) (bool, error) {
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM merchant_fee_calculations
+			WHERE id = $1
+		)
+	`
+
+	var exists bool
+	if err := querier.QueryRow(ctx, query, feeCalculationID).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
 // -----------------------------------------------------------------------------
 // Single-record reads
 // -----------------------------------------------------------------------------
@@ -797,9 +827,21 @@ func (m *MerchantInvoiceItemModel) insertDraftLine(
 		return nil, err
 	}
 
+	// The parent invoice is the serialization point for invoice composition. The
+	// MATERIALIZED CTE guarantees that its draft-state row lock is acquired before
+	// the guarded insertion can succeed. The joined fee calculation and billable
+	// event then prove three non-configurable financial-integrity invariants:
+	//
+	//   - calculation merchant == billable-event merchant == invoice merchant;
+	//   - calculation currency == invoice currency; and
+	//   - billable-event Future Offering == invoice Future Offering.
+	//
+	// merchant_billable_events owns FutureOfferingID as part of the canonical
+	// Commerce billable-occurrence contract. Invoice items therefore do not reach
+	// through activation, Billing Period, or engagement producer schemas.
 	const query = `
-		WITH locked_invoice AS (
-			SELECT id
+		WITH locked_invoice AS MATERIALIZED (
+			SELECT id, merchant_id, future_offering_id, currency
 			FROM merchant_invoices
 			WHERE id = $2
 			  AND invoice_status = 'draft'
@@ -814,8 +856,23 @@ func (m *MerchantInvoiceItemModel) insertDraftLine(
 			unit_amount,
 			line_amount
 		)
-		SELECT $1, locked_invoice.id, $3, $4, $5::numeric, $6::numeric, $7::numeric
-		FROM locked_invoice
+		SELECT
+			$1,
+			li.id,
+			fc.id,
+			$4,
+			$5::numeric,
+			$6::numeric,
+			$7::numeric
+		FROM locked_invoice AS li
+		JOIN merchant_fee_calculations AS fc
+		  ON fc.id = $3
+		 AND fc.merchant_id = li.merchant_id
+		 AND fc.currency = li.currency
+		JOIN merchant_billable_events AS be
+		  ON be.id = fc.billable_event_id
+		 AND be.merchant_id = li.merchant_id
+		 AND be.future_offering_id = li.future_offering_id
 		RETURNING ` + merchantInvoiceItemSelectColumns
 
 	var result MerchantInvoiceItem
@@ -851,7 +908,29 @@ func (m *MerchantInvoiceItemModel) insertDraftLine(
 		if status == nil {
 			return nil, ErrMerchantInvoiceItemInvoiceNotFound
 		}
-		return nil, ErrMerchantInvoiceItemInvoiceNotDraft
+		if *status != MerchantInvoiceStatusDraft {
+			return nil, ErrMerchantInvoiceItemInvoiceNotDraft
+		}
+
+		exists, existsErr := m.feeCalculationExistsViaQuerier(
+			ctx,
+			querier,
+			item.FeeCalculationID,
+		)
+		if existsErr != nil {
+			return nil, existsErr
+		}
+		if !exists {
+			return nil, ErrMerchantInvoiceItemFeeCalculationNotFound
+		}
+
+		logger.Warn(
+			"Merchant invoice item fee calculation does not match parent invoice identity",
+			"error", ErrMerchantInvoiceItemProvenanceMismatch,
+			"invoice_id", item.InvoiceID,
+			"fee_calculation_id", item.FeeCalculationID,
+		)
+		return nil, ErrMerchantInvoiceItemProvenanceMismatch
 	}
 
 	if err := validateMerchantInvoiceItemPersistedState(&result); err != nil {
@@ -873,12 +952,24 @@ func (m *MerchantInvoiceItemModel) insertDraftLine(
 // transaction.
 //
 // InsertDraftLineTx does not begin, commit, or roll back tx. It row-locks the
-// parent invoice and permits insertion only while that invoice remains draft.
+// parent invoice, permits insertion only while that invoice remains draft, and
+// relationally proves merchant, currency, and Future Offering identity against
+// the canonical fee calculation and billable event in the same guarded write.
 // Before commit, the caller must reconcile any affected canonical invoice
 // composition totals inside the same transaction. Where the gross aggregate of
 // product/service lines is needed as an input to that composition, callers use
 // SumGrossLineAmountByInvoiceIDTx; that aggregate is not itself items_subtotal
 // or invoice total.
+//
+// This method intentionally does not decide whether the referenced fee
+// calculation is in a lifecycle state eligible for the caller's invoicing
+// workflow. That decision belongs to service orchestration. When eligibility
+// depends on the calculation remaining stable against concurrent lifecycle
+// transition (including reversal), the caller must first acquire the canonical
+// MerchantFeeCalculationModel.GetByIDForUpdateTx lock for feeCalculationID in
+// this same transaction, validate the applicable workflow state, and only then
+// call InsertDraftLineTx. This preserves one serialization boundary without
+// hard-coding invoicing policy into the invoice-item data model.
 func (m *MerchantInvoiceItemModel) InsertDraftLineTx(
 	ctx context.Context,
 	tx pgx.Tx,

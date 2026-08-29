@@ -4468,10 +4468,17 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
 		merchant_id UUID NOT NULL
+			CONSTRAINT fk_merchant_billable_events_merchant
 			REFERENCES merchants(id)
 			ON DELETE RESTRICT,
 
+		future_offering_id UUID NOT NULL
+			CONSTRAINT fk_merchant_billable_events_future_offering
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE RESTRICT,
+
 		future_offering_event_id UUID
+			CONSTRAINT fk_merchant_billable_events_future_offering_event
 			REFERENCES merchant_future_offerings_events(id)
 			ON DELETE RESTRICT,
 
@@ -4481,10 +4488,12 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 			ON DELETE RESTRICT,
 
 		engagement_event_id UUID
+			CONSTRAINT fk_merchant_billable_events_engagement_event
 			REFERENCES user_trend_engagement_events(id)
 			ON DELETE RESTRICT,
 
 		billable_event_type TEXT NOT NULL
+			CONSTRAINT chk_merchant_billable_events_type
 			CHECK (
 				billable_event_type IN (
 					'activation',
@@ -4499,12 +4508,14 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 			),
 
 		gross_event_value NUMERIC(19,4)
+			CONSTRAINT chk_merchant_billable_events_gross_event_value
 			CHECK (
 				gross_event_value IS NULL
 					OR gross_event_value >= 0
 			),
 
 		currency CHAR(3)
+			CONSTRAINT chk_merchant_billable_events_currency
 			CHECK (
 				currency IS NULL
 					OR currency ~ '^[A-Z]{3}$'
@@ -4517,6 +4528,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		reversed_at TIMESTAMPTZ,
 
 		status TEXT NOT NULL DEFAULT 'pending'
+			CONSTRAINT chk_merchant_billable_events_status
 			CHECK (
 				status IN (
 					'pending',
@@ -4543,11 +4555,15 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 				(
 					billable_event_type = 'activation'
 					AND future_offering_event_id IS NOT NULL
+					AND billing_period_id IS NULL
+					AND engagement_event_id IS NULL
 				)
 				OR
 				(
 					billable_event_type = 'platform_service_fee'
+					AND future_offering_event_id IS NULL
 					AND billing_period_id IS NOT NULL
+					AND engagement_event_id IS NULL
 				)
 				OR
 				(
@@ -4559,6 +4575,8 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 						'reservation_interest',
 						'preorder_intent'
 					)
+					AND future_offering_event_id IS NULL
+					AND billing_period_id IS NULL
 					AND engagement_event_id IS NOT NULL
 				)
 			),
@@ -4645,6 +4663,130 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		occurred_at DESC,
 		id DESC
 	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_billable_events_future_offering_occurred
+	ON merchant_billable_events (
+		future_offering_id,
+		occurred_at DESC,
+		id DESC
+	);
+
+	CREATE OR REPLACE FUNCTION public.enforce_merchant_billable_event_source_identity()
+	RETURNS TRIGGER AS $$
+	DECLARE
+		v_merchant_id UUID;
+		v_future_offering_id UUID;
+	BEGIN
+		IF TG_OP = 'UPDATE' AND (
+			NEW.merchant_id IS DISTINCT FROM OLD.merchant_id
+			OR NEW.future_offering_id IS DISTINCT FROM OLD.future_offering_id
+			OR NEW.future_offering_event_id IS DISTINCT FROM OLD.future_offering_event_id
+			OR NEW.billing_period_id IS DISTINCT FROM OLD.billing_period_id
+			OR NEW.engagement_event_id IS DISTINCT FROM OLD.engagement_event_id
+			OR NEW.billable_event_type IS DISTINCT FROM OLD.billable_event_type
+			OR NEW.gross_event_value IS DISTINCT FROM OLD.gross_event_value
+			OR NEW.currency IS DISTINCT FROM OLD.currency
+			OR NEW.occurred_at IS DISTINCT FROM OLD.occurred_at
+		) THEN
+			RAISE EXCEPTION
+				'merchant billable event commercial source identity is immutable'
+				USING
+					ERRCODE = '23514',
+					CONSTRAINT = 'chk_merchant_billable_events_source_identity';
+		END IF;
+
+		IF TG_OP = 'UPDATE' THEN
+			RETURN NEW;
+		END IF;
+
+		IF NEW.future_offering_event_id IS NOT NULL THEN
+			SELECT
+				mfo.merchant_id,
+				mfoe.future_offering_id
+			INTO
+				v_merchant_id,
+				v_future_offering_id
+			FROM merchant_future_offerings_events AS mfoe
+			JOIN merchant_future_offerings AS mfo
+				ON mfo.id = mfoe.future_offering_id
+			WHERE mfoe.id = NEW.future_offering_event_id;
+
+		ELSIF NEW.billing_period_id IS NOT NULL THEN
+			SELECT
+				mfo.merchant_id,
+				mfobp.future_offering_id
+			INTO
+				v_merchant_id,
+				v_future_offering_id
+			FROM merchant_future_offering_billing_periods AS mfobp
+			JOIN merchant_future_offerings AS mfo
+				ON mfo.id = mfobp.future_offering_id
+			WHERE mfobp.id = NEW.billing_period_id;
+
+		ELSIF NEW.engagement_event_id IS NOT NULL THEN
+			SELECT
+				mfo.merchant_id,
+				mfo.id
+			INTO
+				v_merchant_id,
+				v_future_offering_id
+			FROM user_trend_engagement_events AS utee
+			JOIN user_trend_engagements AS ute
+				ON ute.id = utee.engagement_id
+			JOIN merchant_future_offerings AS mfo
+				ON mfo.offer_id = ute.offer_id
+			WHERE utee.id = NEW.engagement_event_id;
+
+		ELSE
+			RAISE EXCEPTION
+				'merchant billable event requires exactly one authoritative source'
+				USING
+					ERRCODE = '23514',
+					CONSTRAINT = 'chk_merchant_billable_events_source_count';
+		END IF;
+
+		IF v_merchant_id IS NULL OR v_future_offering_id IS NULL THEN
+			RAISE EXCEPTION
+				'merchant billable event authoritative source could not be resolved'
+				USING
+					ERRCODE = '23503';
+		END IF;
+
+		IF NEW.merchant_id <> v_merchant_id THEN
+			RAISE EXCEPTION
+				'merchant billable event merchant does not match authoritative source merchant'
+				USING
+					ERRCODE = '23514',
+					CONSTRAINT = 'chk_merchant_billable_events_source_identity';
+		END IF;
+
+		NEW.future_offering_id := v_future_offering_id;
+
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS
+		enforce_merchant_billable_event_source_identity_trigger
+	ON public.merchant_billable_events;
+
+	CREATE TRIGGER
+		enforce_merchant_billable_event_source_identity_trigger
+	BEFORE INSERT OR UPDATE OF
+		merchant_id,
+		future_offering_id,
+		future_offering_event_id,
+		billing_period_id,
+		engagement_event_id,
+		billable_event_type,
+		gross_event_value,
+		currency,
+		occurred_at
+	ON public.merchant_billable_events
+	FOR EACH ROW
+	EXECUTE FUNCTION public.enforce_merchant_billable_event_source_identity();
+
 
 
 	-- Merchant Fee Calculations

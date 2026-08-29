@@ -79,6 +79,8 @@ charge; the fee calculation answers how much that charge is under
 applicable commercial terms; the invoice item snapshots the resulting
 product/service charge for invoicing.
 
+**Every durable financial fact must be traceable without ambiguity to the authoritative business fact that generated it, while carrying the commercial identity necessary to establish which independently accounted entity it belongs to. Financial aggregation, invoicing, settlement, and reporting must preserve that provenance rather than replace it with summary-only relationships.**
+
 4. Invoice-Item Definition and Cardinality
 
 An invoice item is one independently calculated Sagrenti product/service
