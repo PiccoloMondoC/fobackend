@@ -131,6 +131,8 @@ type Models struct {
 	MerchantInvoice                       MerchantInvoiceModel                       // SPINE: Commerce Architecture — durable merchant commercial obligation
 	MerchantInvoiceItem                   MerchantInvoiceItemModel                   // SPINE: Commerce Architecture — normalized invoice-line provenance bridge
 
+	MerchantFutureOffering MerchantFutureOfferingModel // SPINE: Future Offering v1 — authoritative FO aggregate
+
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
 	// Layer 2.4.a — Merchant / Affiliate Domain
@@ -149,11 +151,11 @@ type Models struct {
 	Platform   PlatformModel   // DEFERRED: platform/source lookup
 
 	// Layer 2.5.a — Present Commerce / Offers Domain
-	Offer             OfferModel             // SPINE: Future Offering v1 — canonical future offering record
+	Offer             OfferModel             // DEFERRED: present-commerce offer record
 	OfferClick        OfferClickModel        // DEFERRED: present-commerce offer click tracking
-	OfferFlag         OfferFlagModel         // DEFERRED: offer moderation flag
-	OfferPriceHistory OfferPriceHistoryModel // DEFERRED: offer price-history record
-	OfferStatus       OfferStatusModel       // DEFERRED: offer status lookup
+	OfferFlag         OfferFlagModel         // DEFERRED: present-commerce offer moderation flag
+	OfferPriceHistory OfferPriceHistoryModel // DEFERRED: present-commerce offer price-history record
+	OfferStatus       OfferStatusModel       // DEFERRED: present-commerce offer status lookup
 
 	ProductMerchant        ProductMerchantModel        // DEFERRED: merchant-product mapping
 	Coupon                 CouponModel                 // DEFERRED: coupon record
@@ -249,6 +251,8 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantInvoice:                       MerchantInvoiceModel{DB: dbPool, Logger: logger},                   // SPINE: Commerce Architecture — durable merchant commercial obligation
 		MerchantInvoiceItem:                   MerchantInvoiceItemModel{DB: dbPool, Logger: logger},               // SPINE: Commerce Architecture — normalized invoice-line provenance bridge
 
+		MerchantFutureOffering: MerchantFutureOfferingModel{DB: dbPool, Logger: logger},
+
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 
 		// Layer 2.4.a — Merchant / Affiliate Domain
@@ -267,11 +271,11 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		Platform:   PlatformModel{DB: dbPool, Logger: logger},   // DEFERRED
 
 		// Layer 2.5.a — Present Commerce / Offers Domain
-		Offer:             OfferModel{DB: dbPool, Logger: logger},             // SPINE
-		OfferClick:        OfferClickModel{DB: dbPool, Logger: logger},        // DEFERRED
-		OfferFlag:         OfferFlagModel{DB: dbPool, Logger: logger},         // DEFERRED
-		OfferPriceHistory: OfferPriceHistoryModel{DB: dbPool, Logger: logger}, // DEFERRED
-		OfferStatus:       OfferStatusModel{DB: dbPool, Logger: logger},       // DEFERRED
+		Offer:             OfferModel{DB: dbPool, Logger: logger},             // DEFERRED: present-commerce offer record
+		OfferClick:        OfferClickModel{DB: dbPool, Logger: logger},        // DEFERRED: present-commerce offer click tracking
+		OfferFlag:         OfferFlagModel{DB: dbPool, Logger: logger},         // DEFERRED: present-commerce offer moderation flag
+		OfferPriceHistory: OfferPriceHistoryModel{DB: dbPool, Logger: logger}, // DEFERRED: present-commerce offer price-history record
+		OfferStatus:       OfferStatusModel{DB: dbPool, Logger: logger},       // DEFERRED: present-commerce offer status lookup
 
 		ProductMerchant:        ProductMerchantModel{DB: dbPool, Logger: logger},        // DEFERRED
 		Coupon:                 CouponModel{DB: dbPool, Logger: logger},                 // DEFERRED

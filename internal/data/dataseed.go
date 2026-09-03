@@ -782,9 +782,36 @@ const (
 	insertMerchantFeeTypesQuery = `
 	INSERT INTO merchant_fee_types (code, display_name) VALUES
 		('anticipation_intelligence_activation_fee', 'Anticipation Intelligence Activation Fee'),
-		('anticipation_intelligence_fee', 'Anticipation Intelligence Fee'),
-		('campaign_performance_fee', 'Campaign Performance Fee'),
+		('platform_service_fee', 'Platform Service Fee'),
+		('anticipation_intelligence_fee', 'Anticipation Intelligence Fee')
 	ON CONFLICT (code) DO NOTHING;
+	`
+
+	insertMerchantBillableEventFeeTypesQuery = `
+	INSERT INTO merchant_billable_event_fee_types (
+		billable_event_type,
+		fee_type_id
+	)
+	SELECT
+		mapping.billable_event_type,
+		mft.id
+	FROM (
+		VALUES
+			('anticipation_intelligence_activation', 'anticipation_intelligence_activation_fee'),
+			('platform_service', 'platform_service_fee'),
+			('watch', 'anticipation_intelligence_fee'),
+			('waitlist', 'anticipation_intelligence_fee'),
+			('early_access_request', 'anticipation_intelligence_fee'),
+			('beta', 'anticipation_intelligence_fee'),
+			('reservation_interest', 'anticipation_intelligence_fee'),
+			('preorder_intent', 'anticipation_intelligence_fee')
+	) AS mapping (
+		billable_event_type,
+		fee_type_code
+	)
+	JOIN merchant_fee_types AS mft
+		ON mft.code = mapping.fee_type_code
+	ON CONFLICT (billable_event_type) DO NOTHING;
 	`
 
 	insertRolesQuery = `
@@ -1011,8 +1038,8 @@ const (
 			'Allows privileged reading of a Future Offering Service Period'
 		),
 		(
-			"list_merchant_future_offering_service_periods",
-			"Allows privileged listing of Future Offering Service Period history"
+			'list_merchant_future_offering_service_periods',
+			'Allows privileged listing of Future Offering Service Period history'
 		),
 		-- Merchant Future Offering Billing Periods
 		(
@@ -1590,8 +1617,8 @@ const (
 			'Read a Future Offering Service Period'
 		),
 		(
-			"list_merchant_future_offering_service_periods",
-			"List Future Offering Service Period history"
+			'list_merchant_future_offering_service_periods',
+			'List Future Offering Service Period history'
 		),
 		-- Merchant Future Offering Billing Periods
 		(

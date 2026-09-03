@@ -29,7 +29,7 @@
 //
 //	Invoice items may represent any canonical Sagrenti product/service charge
 //	that has reached fee calculation, including Activation Fees, Platform Service
-//	Fees, Anticipation Intelligence Fees, Asset Hosting Overage Fees, and other
+//	Fees, Anticipation Intelligence Fees, and other
 //	properly established charges. Individual consumer engagement actions are not
 //	invoice products.
 //

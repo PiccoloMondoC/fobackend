@@ -2776,55 +2776,80 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			REFERENCES merchants(id)
 			ON DELETE CASCADE,
 
-		offer_id UUID UNIQUE
-			REFERENCES offers(id)
-			ON DELETE SET NULL,
-
-		product_id UUID
-			REFERENCES products(id)
-			ON DELETE SET NULL,
-
-		category_id UUID NOT NULL
-			REFERENCES categories(id)
-			ON DELETE RESTRICT,
-
-		offering_type TEXT NOT NULL
-			CHECK (
-				offering_type IN (
-					'product',
-					'service',
-					'event',
-					'venue',
-					'development',
-					'experience'
-				)
-			),
-
+		/*
+		* Merchant-owned project identity.
+		*
+		* project_name is required from creation because every Future Offering
+		* is a merchant project and must have enough identity to be resumed.
+		*/
 		project_name TEXT NOT NULL
 			CHECK (btrim(project_name) <> ''),
 
-		title TEXT NOT NULL
-			CHECK (btrim(title) <> ''),
+		/*
+		* Authoritative Future Offering facts.
+		*
+		* These may be incomplete while status = 'draft'. Submission readiness
+		* is therefore not expressed by unconditional NOT NULL constraints here.
+		*/
+		title TEXT
+			CHECK (
+				title IS NULL
+					OR btrim(title) <> ''
+			),
 
 		summary TEXT NOT NULL DEFAULT '',
 
 		description TEXT,
 
-		launch_kind TEXT NOT NULL DEFAULT 'standard'
+		category_id UUID
+			REFERENCES categories(id)
+			ON DELETE RESTRICT,
+
+		offering_type TEXT
 			CHECK (
-				launch_kind IN (
-					'standard',
-					'product_launch',
-					'drop',
-					'limited_release',
-					'creator_launch',
-					'startup_launch',
-					'collaboration',
-					'preorder',
-					'waitlist',
-					'early_access',
-					'invite_only'
-				)
+				offering_type IS NULL
+					OR offering_type IN (
+						'product',
+						'service',
+						'event',
+						'venue',
+						'development',
+						'experience'
+					)
+			),
+
+		/*
+		* How the Future Offering is intended to become available.
+		*
+		* This is deliberately separate from:
+		*   - engagement options such as waitlist or preorder intent; and
+		*   - access policy such as invite-only.
+		*/
+		release_strategy TEXT
+			CHECK (
+				release_strategy IS NULL
+					OR release_strategy IN (
+						'drop',
+						'scheduled',
+						'rolling',
+						'limited_quantity'
+					)
+			),
+
+		/*
+		* Who may participate in the Future Offering.
+		*
+		* Access policy is distinct from release strategy and engagement
+		* capabilities.
+		*/
+		access_policy TEXT
+			CHECK (
+				access_policy IS NULL
+					OR access_policy IN (
+						'public',
+						'invite_only',
+						'approval_required'
+					)
 			),
 
 		status TEXT NOT NULL DEFAULT 'draft'
@@ -2844,9 +2869,20 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 				)
 			),
 
+		/*
+		* Planned availability.
+		*
+		* NULL is valid while the Future Offering is incomplete or where the
+		* merchant has not yet established an authoritative launch time.
+		*/
 		launch_at TIMESTAMPTZ,
-		countdown_starts_at TIMESTAMPTZ,
 
+		/*
+		* Lifecycle occurrence timestamps.
+		*
+		* These record facts that have occurred. They are not substitutes for
+		* the corresponding Future Offering event/history records.
+		*/
 		submitted_at TIMESTAMPTZ,
 		approved_at TIMESTAMPTZ,
 		published_at TIMESTAMPTZ,
@@ -2856,21 +2892,25 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_merchant_future_offerings_countdown_before_launch
-			CHECK (
-				launch_at IS NULL
-					OR countdown_starts_at IS NULL
-					OR countdown_starts_at <= launch_at
-			)
+		deleted_at TIMESTAMPTZ
 	);
 
 	CREATE INDEX IF NOT EXISTS
-		idx_merchant_future_offerings_merchant_status
+		idx_merchant_future_offerings_merchant_status_updated
 	ON merchant_future_offerings (
 		merchant_id,
-		status
+		status,
+		updated_at DESC,
+		id DESC
+	)
+	WHERE deleted_at IS NULL;
+
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_merchant_updated
+	ON merchant_future_offerings (
+		merchant_id,
+		updated_at DESC,
+		id DESC
 	)
 	WHERE deleted_at IS NULL;
 
@@ -2881,7 +2921,8 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		status,
 		launch_at
 	)
-	WHERE deleted_at IS NULL;
+	WHERE deleted_at IS NULL
+		AND category_id IS NOT NULL;
 
 	CREATE INDEX IF NOT EXISTS
 		idx_merchant_future_offerings_published
@@ -2890,17 +2931,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	)
 	WHERE deleted_at IS NULL
 		AND status = 'published';
-
-	DROP TRIGGER IF EXISTS
-		enforce_merchant_future_offerings_trend_offer
-	ON public.merchant_future_offerings;
-
-	CREATE TRIGGER enforce_merchant_future_offerings_trend_offer
-	BEFORE INSERT OR UPDATE OF offer_id
-	ON public.merchant_future_offerings
-	FOR EACH ROW
-	WHEN (NEW.offer_id IS NOT NULL)
-	EXECUTE FUNCTION public.enforce_trend_offer();
 
 
 	-- CE patch 3: merchant_future_offerings_assets — added updated_at column,
@@ -4496,8 +4526,8 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 			CONSTRAINT chk_merchant_billable_events_type
 			CHECK (
 				billable_event_type IN (
-					'activation',
-					'platform_service_fee',
+					'anticipation_intelligence_activation',
+					'platform_service',
 					'watch',
 					'waitlist',
 					'early_access_request',
@@ -4553,14 +4583,14 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		CONSTRAINT chk_merchant_billable_events_source_type
 			CHECK (
 				(
-					billable_event_type = 'activation'
+					billable_event_type = 'anticipation_intelligence_activation'
 					AND future_offering_event_id IS NOT NULL
 					AND billing_period_id IS NULL
 					AND engagement_event_id IS NULL
 				)
 				OR
 				(
-					billable_event_type = 'platform_service_fee'
+					billable_event_type = 'platform_service'
 					AND future_offering_event_id IS NULL
 					AND billing_period_id IS NOT NULL
 					AND engagement_event_id IS NULL
@@ -4571,7 +4601,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 						'watch',
 						'waitlist',
 						'early_access_request',
-						'beta',
+					billable_event	'beta',
 						'reservation_interest',
 						'preorder_intent'
 					)
@@ -4787,6 +4817,25 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	FOR EACH ROW
 	EXECUTE FUNCTION public.enforce_merchant_billable_event_source_identity();
 
+
+	CREATE TABLE IF NOT EXISTS merchant_billable_event_fee_types (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		billable_event_type TEXT NOT NULL,
+
+		fee_type_id UUID NOT NULL
+			CONSTRAINT fk_merchant_billable_event_fee_types_fee_type
+			REFERENCES merchant_fee_types(id)
+			ON DELETE RESTRICT,
+
+		is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT uq_merchant_billable_event_fee_types_event_type
+			UNIQUE (billable_event_type)
+	);
 
 
 	-- Merchant Fee Calculations

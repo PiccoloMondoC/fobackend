@@ -76,20 +76,39 @@ Everything needed to let the platform commercially operate, even if all fees are
 ### Phase 6 — Future Offering Core
 Now the merchant can actually publish.
 - [ ] `merchant_future_offerings.go`
+        Create FO Wizard(s); engagement options, goals, billing terms, assets
+        Primarily frontend/orchestration; probably no new durable domain
 - [ ] `merchant_future_offerings_assets.go`
 - [ ] `merchant_future_offering_engagement_options.go`
 - [ ] `merchant_future_offering_goals.go`
 - [ ] `merchant_future_offering_billing_terms.go`
 - [ ] `merchant_future_offerings_events.go`
 
+- [ ] `merchant_future_offering_milestones.go`
+        Merchant Milestones
+        FO Project Management; Derived Go capability, not new table
+
+
+
 ### Phase 7 — Merchant Intelligence
 - [ ] `merchant_intelligence_reports.go`
+        Anticipation Intelligence; Already represented, although present names may need reconsideration
 - [ ] `merchant_intelligence_report_metrics.go`
+        Anticipation Intelligence; watch-density snapshots
 
 ### Phase 8 — Consumer Intelligence
 Now consumers can interact.
 - [ ] `user_trend_engagements.go`
+        Consumer Engagement; Already substantially represented; aggregate/exposure capability needs explicit service treatment
 - [ ] `user_trend_engagement_events.go`
+        Consumer Engagement, FO engagement options; 
+        Already substantially represented; aggregate/exposure capability needs explicit service treatment
+- [ ] `merchant_future_offering_consumer_tokens.go`
+        Consumer Tokens
+- [ ] `future_offering_reviews.go`
+        Reviews / Reputation; merchant reputation derived
+- [ ] `consumer_merchant_follows.go`
+        Sagrenti User Drive; if Follow enters v1; sharing/recommendations mostly derived/application capabilities
 
 ### Phase 9 — Trust & Intelligence
 These protect the ecosystem.
@@ -101,8 +120,9 @@ These protect the ecosystem.
 ### Phase 10 — Infrastructure
 Everything needed for routing and observability.
 - [ ] `commerce_routes.go`
+        Consumer Discovery; route events; FO core
+        Existing pieces are insufficiently explicit; discovery service capability should be identified
 - [ ] `commerce_route_events.go`
-
 
 ## DEFERRED (explicitly out of scope for v1)
 

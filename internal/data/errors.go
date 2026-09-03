@@ -443,6 +443,15 @@ var (
 	ErrMerchantPaymentMethodInvalidState    = errors.New("invalid merchant payment method state")
 	ErrMerchantPaymentMethodDefaultConflict = errors.New("merchant payment method default assignment conflict")
 
+	// Merchant Future Offerings
+	ErrMerchantFutureOfferingInvalidInput = errors.New("invalid merchant future offering input")
+	ErrMerchantFutureOfferingNotFound = errors.New("merchant future offering not found")
+	ErrMerchantFutureOfferingMerchantNotFound = errors.New("merchant future offering references a nonexistent merchant")
+	ErrMerchantFutureOfferingCategoryNotFound = errors.New("merchant future offering references a nonexistent category")
+	ErrMerchantFutureOfferingInvalidState = errors.New("invalid merchant future offering state")
+	ErrMerchantFutureOfferingInvalidTransition = errors.New("invalid merchant future offering lifecycle transition")
+	ErrMerchantFutureOfferingEditConflict = errors.New("merchant future offering edit conflict")
+
 	// Affiliate programs and performance.
 	ErrAffiliatePerformanceNotFound   = errors.New("affiliate performance not found")
 	ErrAffiliateProgramNotFound       = errors.New("affiliate program not found")
