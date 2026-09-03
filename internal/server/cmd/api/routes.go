@@ -70,7 +70,13 @@ func (app *Application) Routes() http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedHeaders: []string{
+			"Accept",
+			"Authorization",
+			"Content-Type",
+			"X-CSRF-Token",
+			"X-Merchant-ID",
+		},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -1167,6 +1173,62 @@ func (app *Application) Routes() http.Handler {
 			mpm.With(app.RequirePermission("soft_delete_merchant_payment_method")).
 				Delete("/{merchantPaymentMethodID}", app.SoftDeleteMerchantPaymentMethodHandler)
 		})
+
+
+		// Future Offerings
+		//
+		// Merchant ownership is established from authenticated Merchant Account
+		// membership. X-Merchant-ID selects the merchant context but does not itself
+		// authorize access.
+		v1.Route("/future-offerings", func(fo chi.Router) {
+			fo.Use(app.AuthMiddleware)
+
+			fo.With(
+				app.RequirePermission(
+					"create_merchant_future_offering",
+				),
+			).Post(
+				"/",
+				app.CreateMerchantFutureOfferingDraftHandler,
+			)
+
+			fo.With(
+				app.RequirePermission(
+					"list_merchant_future_offerings",
+				),
+			).Get(
+				"/",
+				app.ListMerchantFutureOfferingsHandler,
+			)
+
+			fo.With(
+				app.RequirePermission(
+					"read_merchant_future_offering",
+				),
+			).Get(
+				"/{futureOfferingID}",
+				app.GetMerchantFutureOfferingHandler,
+			)
+
+			fo.With(
+				app.RequirePermission(
+					"update_merchant_future_offering_draft",
+				),
+			).Put(
+				"/{futureOfferingID}",
+				app.UpdateMerchantFutureOfferingDraftHandler,
+			)
+
+			fo.With(
+				app.RequirePermission(
+					"discard_merchant_future_offering_draft",
+				),
+			).Delete(
+				"/{futureOfferingID}",
+				app.DiscardMerchantFutureOfferingDraftHandler,
+			)
+		})
+
 
 		// Categories
 		v1.Route("/categories", func(cat chi.Router) {

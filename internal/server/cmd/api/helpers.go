@@ -245,16 +245,13 @@ func (app *Application) getAffiliateProgramIDFromContext(ctx context.Context) *u
 }
 
 // getMerchantIDFromContext extracts the merchant ID from the context
-// using the ctxMerchantID key. Returns a pointer to uuid.UUID or nil if not present or invalid.
+// using the ctxMerchantID key. Returns a pointer to uuid.UUID or nil if not present.
 func (app *Application) getMerchantIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxMerchantID).(string)
-	if !ok || val == "" {
+	id, ok := ctx.Value(ctxMerchantID).(uuid.UUID)
+	if !ok || id == uuid.Nil {
 		return nil
 	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
+
 	return &id
 }
 

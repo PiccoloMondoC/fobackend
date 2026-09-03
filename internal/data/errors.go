@@ -144,6 +144,7 @@ var (
 	ErrMerchantApplicationStatusAlreadyInactive = errors.New("merchant application status already inactive")
 	ErrMerchantPromotionNotFound                = errors.New("merchant promotion not found")
 	ErrMerchantFollowNotFound                   = errors.New("merchant follow not found")
+	ErrMerchantAccountAccessDenied              = errors.New("merchant account access denied")
 
 	// Merchant future offering service terms.
 	ErrMerchantFutureOfferingServiceTermInvalidInput = errors.New(

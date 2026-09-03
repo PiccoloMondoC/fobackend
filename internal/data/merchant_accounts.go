@@ -1091,3 +1091,62 @@ func (m MerchantAccountModel) lifecycleConflict(
 		)
 	}
 }
+
+
+// IsActiveMemberForMerchant reports whether userID is an active member of the
+// active, non-deleted canonical Merchant Account owned by merchantID.
+//
+// This method is an authorization-resolution primitive. merchantID may be
+// selected by a request, but the request gains no authority from possession
+// of that identifier; authority is established only by persisted membership.
+func (m *MerchantAccountModel) IsActiveMemberForMerchant(
+	ctx context.Context,
+	userID uuid.UUID,
+	merchantID uuid.UUID,
+) (bool, error) {
+	if m == nil || m.DB == nil {
+		return false, errors.New(
+			"merchant account model database is required",
+		)
+	}
+	if userID == uuid.Nil {
+		return false, errors.New("user_id is required")
+	}
+	if merchantID == uuid.Nil {
+		return false, errors.New("merchant_id is required")
+	}
+
+	ctx, cancel :=
+		context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	const query = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM merchant_accounts ma
+			INNER JOIN merchant_account_members mam
+				ON mam.merchant_account_id = ma.id
+			WHERE ma.merchant_id = $1
+			  AND ma.account_status = 'active'
+			  AND ma.deleted_at IS NULL
+			  AND mam.user_id = $2
+			  AND mam.status = 'active'
+		)
+	`
+
+	var authorized bool
+
+	if err := m.DB.QueryRow(
+		ctx,
+		query,
+		merchantID,
+		userID,
+	).Scan(&authorized); err != nil {
+		return false, fmt.Errorf(
+			"resolve active merchant account membership: %w",
+			err,
+		)
+	}
+
+	return authorized, nil
+}

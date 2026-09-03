@@ -247,6 +247,12 @@ const (
 		'update_merchant_payment_method_status',
 		'soft_delete_merchant_payment_method',
 		'restore_merchant_payment_method',
+
+		'create_merchant_future_offering',
+		'read_merchant_future_offering',
+		'list_merchant_future_offerings',
+		'update_merchant_future_offering_draft',
+		'discard_merchant_future_offering_draft',
 		
 		'delete_own_account'
 	)
@@ -1141,6 +1147,27 @@ const (
 		('update_merchant_payment_method_status', 'Allows transitioning merchant payment method status'),
 		('soft_delete_merchant_payment_method', 'Allows soft-deleting a merchant-owned payment method reference'),
 		('restore_merchant_payment_method', 'Allows restoring a soft-deleted merchant payment method reference'),
+		-- Merchant Future Offerings
+		(
+			'create_merchant_future_offering',
+			'Allows an authorized merchant to create a Future Offering draft'
+		),
+		(
+			'read_merchant_future_offering',
+			'Allows an authorized merchant to read its Future Offering'
+		),
+		(
+			'list_merchant_future_offerings',
+			'Allows an authorized merchant to list its Future Offerings'
+		),
+		(
+			'update_merchant_future_offering_draft',
+			'Allows an authorized merchant to update mutable Future Offering draft facts'
+		),
+		(
+			'discard_merchant_future_offering_draft',
+			'Allows an authorized merchant to discard a Future Offering draft'
+		),
 		-- Merchant Promotion
 		('create_merchant_promotion', 'Allows creating a new merchant promotion record'),
 		('extend_merchant_promotion_dates', 'Allows extending the start and/or end dates of an merchant promotion record'),
@@ -1336,6 +1363,10 @@ const (
 		('merchant_invoice', 'Canonical durable merchant commercial-obligation and settlement-lifecycle history'),
 		('merchant_invoice_item', 'Canonical durable merchant invoice-line history'),
 		('merchant_payment_method', 'Merchant billing payment-method reference entity'),
+		(
+			'merchant_future_offering',
+			'Canonical merchant-owned Future Offering aggregate'
+		),
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
 		('merchant_promotion', 'Merchant-specific promotion applied to offers'),
@@ -1693,6 +1724,19 @@ const (
 		('update_merchant_payment_method_status', 'Update merchant payment method status'),
 		('soft_delete_merchant_payment_method', 'Soft-delete a merchant payment method reference'),
 		('restore_merchant_payment_method', 'Restore a merchant payment method reference'),
+		-- Merchant Future Offerings
+		(
+			'create_merchant_future_offering',
+			'Create a merchant Future Offering draft'
+		),
+		(
+			'update_merchant_future_offering_draft',
+			'Update mutable facts of a merchant Future Offering draft'
+		),
+		(
+			'discard_merchant_future_offering_draft',
+			'Discard a merchant Future Offering draft'
+		),
 		-- Merchant Promotion
 		('create_merchant_promotion', 'Create a new merchant promotion record'),
 		('extend_merchant_promotion_dates', 'Extend the start and/or end dates of an merchant promotion record'),
