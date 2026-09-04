@@ -1,12 +1,26 @@
 ## To update code on Github:
 git add -A
-git commit -m "write merchant_future_offerings.go handler layer"
+git commit -m "write merchant_future_offerings_internal.go service layer"
 git push
 
 | data layer | handler layer | service layer |
 
 ### To Test
-gofmt -w ./internal/data/errors.go
+
+gofmt -w \
+  ./internal/data/merchant_future_offerings.go \
+  ./internal/services/merchant_future_offerings_internal.go \
+  ./internal/services/errors.go \
+  ./internal/server/cmd/api/merchant_future_offerings.go
+
+go vet ./internal/data/...
+go vet ./internal/services/...
+go vet ./internal/server/cmd/api/...
+
+go test ./internal/data
+go test ./internal/services
+go test ./internal/server/cmd/api
+
 
 ### Vertical Build Strategy
 Our strategy is  to build vertically across each of the 27 files listed below, not horizontally. Completing one file across data → handlers → services → startup → reviews means each slice reaches a genuine state of completion before we move on.

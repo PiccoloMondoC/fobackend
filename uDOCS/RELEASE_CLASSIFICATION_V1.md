@@ -22,6 +22,45 @@ Engineering builds capabilities; operations exercises them through configuration
 - Risk flags
 - Billing policies
 
+## Canonical Build Sequence
+
+The numbered phases classify backend capabilities by architectural responsibility. They do not prescribe a strictly numerical implementation order.
+
+The immediate build sequence is:
+
+# Phase 6 — Future Offering Core and Merchant Project
+
+Establish the FO, its configuration, milestones, project-management capabilities, API surface, and Angular merchant experience.
+
+# Phase 8 — Consumer Experience and Participation
+
+Establish discovery, engagement, background Watch, QAE eligibility, aggregate exposure, and the Angular consumer experience required to generate authoritative participation facts.
+
+# Phase 7 — Merchant Anticipation Intelligence
+
+Derive useful merchant intelligence from the FO project context, milestones, and consumer participation facts established by the preceding stages.
+
+Phase 8 precedes Phase 7 in the build sequence because Anticipation Intelligence depends on real consumer-engagement facts. Phase numbering remains unchanged because it expresses architectural classification rather than delivery dependency.
+
+Each capability must be delivered vertically:
+
+# Durable facts → Go services → API → Angular experience → working-site review
+
+Work proceeds through one short Capability Delivery Sheet at a time. Each sheet must state:
+
+What the user must be able to accomplish
+Which existing files contribute
+What backend work is missing
+Which API surface is required
+Which Angular artifacts are required
+What proves the capability works
+
+The first delivery sheet is:
+
+# M01 — Future Offering Creation
+
+A capability is complete only when its backend and frontend operate together and the resulting experience has been reviewed on the running site.
+
 ## SPINE (v1 build)
 
 ### Phase 1 — Admin Control Plane Foundation
@@ -73,28 +112,23 @@ Everything needed to let the platform commercially operate, even if all fees are
 - [ ] `platform_commercial_promotions.go`
 - [ ] `merchant_commercial_adjustments.go`
 
+>ORGANIZED IN BUILD ORDER
+
 ### Phase 6 — Future Offering Core
 Now the merchant can actually publish.
-- [ ] `merchant_future_offerings.go`
+- [x] `merchant_future_offerings.go`                     — Done
         Create FO Wizard(s); engagement options, goals, billing terms, assets
         Primarily frontend/orchestration; probably no new durable domain
 - [ ] `merchant_future_offerings_assets.go`
 - [ ] `merchant_future_offering_engagement_options.go`
-- [ ] `merchant_future_offering_goals.go`
-- [ ] `merchant_future_offering_billing_terms.go`
+- [ ] `merchant_future_offering_goals.go`               Derived capability
+- [ ] `merchant_future_offering_billing_terms.go`       Derived capability
 - [ ] `merchant_future_offerings_events.go`
 
-- [ ] `merchant_future_offering_milestones.go`
+- [ ] `merchant_future_offering_milestones.go`          Derived capability
         Merchant Milestones
         FO Project Management; Derived Go capability, not new table
 
-
-
-### Phase 7 — Merchant Intelligence
-- [ ] `merchant_intelligence_reports.go`
-        Anticipation Intelligence; Already represented, although present names may need reconsideration
-- [ ] `merchant_intelligence_report_metrics.go`
-        Anticipation Intelligence; watch-density snapshots
 
 ### Phase 8 — Consumer Intelligence
 Now consumers can interact.
@@ -109,6 +143,13 @@ Now consumers can interact.
         Reviews / Reputation; merchant reputation derived
 - [ ] `consumer_merchant_follows.go`
         Sagrenti User Drive; if Follow enters v1; sharing/recommendations mostly derived/application capabilities
+
+
+### Phase 7 — Merchant Intelligence
+- [ ] `merchant_intelligence_reports.go`
+        Anticipation Intelligence; Already represented, although present names may need reconsideration
+- [ ] `merchant_intelligence_report_metrics.go`
+        Anticipation Intelligence; watch-density snapshots
 
 ### Phase 9 — Trust & Intelligence
 These protect the ecosystem.

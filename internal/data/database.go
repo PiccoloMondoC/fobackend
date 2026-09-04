@@ -2958,6 +2958,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE INDEX IF NOT EXISTS idx_merchant_future_offerings_assets_future_offering
 		ON merchant_future_offerings_assets(future_offering_id, display_order);
 
+		
 	CREATE TABLE IF NOT EXISTS merchant_future_offering_engagement_options (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
