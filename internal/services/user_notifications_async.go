@@ -33,7 +33,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/observability/metrics"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/observability/metrics"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"

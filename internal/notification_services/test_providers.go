@@ -46,8 +46,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils/timeutil"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/utils/timeutil"
 )
 
 // maxCapturedTestMessages bounds in-memory capture per test service so a

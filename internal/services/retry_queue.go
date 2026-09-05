@@ -6,7 +6,7 @@
 package services
 
 import (
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/shared/models"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/shared/models"
 )
 
 // EnqueueFailedCuratedOfferForRetry sends a failed offer to your preferred queue

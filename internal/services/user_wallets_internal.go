@@ -40,7 +40,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 
 	"github.com/google/uuid"
 )

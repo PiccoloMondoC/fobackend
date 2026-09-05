@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
 
 	// Timestamps are intentionally DB-owned in this file.
 	// created_at comes from DEFAULT NOW(), and updated_at is maintained by

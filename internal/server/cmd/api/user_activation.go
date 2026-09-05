@@ -44,8 +44,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
-	notificationservices "github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/notification_services"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
 
 	"github.com/google/uuid"
 )

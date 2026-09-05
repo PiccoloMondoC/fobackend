@@ -1,3 +1,8 @@
+-- future_offerings/scripts/init.sql
+-- Create app database
+CREATE DATABASE future_offerings_db;
+
+-- Create (or reuse) application role
 DO $$
 BEGIN
    BEGIN
@@ -7,11 +12,12 @@ BEGIN
    END;
 END $$;
 
-GRANT ALL PRIVILEGES ON DATABASE sd_deals_db TO superu;
+-- Give the role database-level privileges
+GRANT ALL PRIVILEGES ON DATABASE future_offerings_db TO superu;
 
-ALTER DATABASE sd_deals_db SET timezone TO 'UTC';
+-- ▶️ Switch to the new database so the next GRANTs apply to its public schema
+\connect future_offerings_db
 
-\connect sd_deals_db
-
+-- Grant schema-level privileges and set sane defaults for future tables
 GRANT ALL PRIVILEGES ON SCHEMA public TO superu;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO superu;

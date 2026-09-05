@@ -1,8 +1,17 @@
-.env
-*.env
-bin/
-vendor/
-.DS_Store
-*.log
-node_modules/
+# Binaries
+/bin/
+/fobackend
 *.exe
+*.test
+
+# Env / secrets
+*.env
+.env.local
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Go build cache
+vendor/

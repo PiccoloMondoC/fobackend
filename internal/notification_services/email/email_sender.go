@@ -30,7 +30,7 @@ import (
 	"net/mail"
 	"strings"
 
-	notificationservices "github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/notification_services"
+	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
 )
 
 const (

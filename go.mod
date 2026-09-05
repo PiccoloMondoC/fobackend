@@ -1,4 +1,4 @@
-module github.com/PiccoloMondoC/sdworkspace/sdbackend
+module github.com/PiccoloMondoC/focodebase/fobackend
 
 go 1.25.0
 

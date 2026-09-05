@@ -43,12 +43,12 @@ package main
 import (
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/auth"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/bootstrap"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
-	notificationservices "github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/notification_services"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/services"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/auth"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/bootstrap"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
+	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/services"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

@@ -38,8 +38,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/auth"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/auth"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"

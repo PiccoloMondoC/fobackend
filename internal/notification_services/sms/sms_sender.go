@@ -32,8 +32,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
-	notificationservices "github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/notification_services"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
+	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
 )
 
 const maxSMSBodyRunes = 1600

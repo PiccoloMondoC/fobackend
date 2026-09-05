@@ -46,8 +46,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils/timeutil"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/utils/timeutil"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

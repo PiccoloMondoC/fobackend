@@ -35,8 +35,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/utils"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/utils"
 
 	"github.com/google/uuid"
 )

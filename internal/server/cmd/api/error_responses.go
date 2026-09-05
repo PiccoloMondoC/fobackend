@@ -4,7 +4,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
 )
 
 func (app *Application) serverErrorResponse(logger *logging.Logger, w http.ResponseWriter, r *http.Request, err error) {

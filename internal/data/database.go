@@ -47,8 +47,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/bootstrap"
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/bootstrap"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
 
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	"github.com/go-ozzo/ozzo-validation/v4/is"

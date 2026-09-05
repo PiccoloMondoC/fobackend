@@ -29,7 +29,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/data"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 )
 
 var canonicalMerchantProgramPlanDefaults = []data.MerchantProgramPlan{

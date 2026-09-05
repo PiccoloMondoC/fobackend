@@ -37,7 +37,7 @@ package data
 import (
 	"time"
 
-	"github.com/PiccoloMondoC/sdworkspace/sdbackend/internal/logging"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )

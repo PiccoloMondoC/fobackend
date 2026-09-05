@@ -1,4 +1,5 @@
 ## To update code on Github:
+cd ~/fobackend
 git add -A
 git commit -m "write merchant_future_offerings_internal.go service layer"
 git push
