@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for merchant platform credit
 // fee-type eligibility governance.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_platform_credit_eligible_fee_types.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_platform_credit_eligible_fee_types.go
 //
 // GTM:
 //
@@ -18,8 +18,7 @@
 //
 //	This handler governs privileged administrative configuration of
 //	fee-type eligibility only. It does not decide which merchants receive
-//	credit, which fee types are normally eligible, whether Plans,
-//	Subscriptions, Launch Campaigns, or Anticipation Intelligence fees are
+//	credit, which fee types are normally eligible, whether Anticipation Intelligence fees are
 //	enabled, or whether an eligibility set is commercially advisable. It
 //	does not apply credit to any invoice or billable event.
 //

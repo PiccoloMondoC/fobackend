@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for Merchant Future Offering Service
 // Terms.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_future_offering_service_terms.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_future_offering_service_terms.go
 //
 // GTM:
 //

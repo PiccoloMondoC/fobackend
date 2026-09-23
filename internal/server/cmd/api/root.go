@@ -1,4 +1,4 @@
-// sdworkspace/sdbackend/internal/server/cmd/api/root.go
+// focodebase/fobackend/internal/server/cmd/api/root.go
 //
 // Root ("GET /") handler and a JSON NotFound handler for consistent API UX.
 // The root endpoint is a lightweight, human-friendly entry point that confirms

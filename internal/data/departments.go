@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for departments,
 // categories, and other entities.
 //
-// sdworkspace/sdbackend/internal/data/departments.go
+// focodebase/fobackend/internal/data/departments.go
 //
 // GTM:
 //

@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for user profiles and related entities.
 //
-// File: sdworkspace/sdbackend/internal/data/user_profiles.go
+// File: focodebase/fobackend/internal/data/user_profiles.go
 //
 // GTM:
 //

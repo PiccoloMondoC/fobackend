@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for merchant
 // platform credit accounts.
 //
-// sdworkspace/sdbackend/internal/data/merchant_platform_credit_accounts.go
+// focodebase/fobackend/internal/data/merchant_platform_credit_accounts.go
 //
 // GTM:
 //

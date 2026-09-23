@@ -1,4 +1,4 @@
-// sdworkspace/sdbackend/internal/server/cmd/api/error_responses.go
+// focodebase/fobackend/internal/server/cmd/api/error_responses.go
 package main
 
 import (

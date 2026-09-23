@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for merchant accounts.
 //
-// sdworkspace/sdbackend/internal/data/merchant_accounts.go
+// focodebase/fobackend/internal/data/merchant_accounts.go
 //
 // GTM:
 //
@@ -18,12 +18,12 @@
 //	Keep compiling.
 //	Keep production-ready.
 //	Preserve exactly one canonical merchant account per merchant.
-//	Preserve merchant ownership immutability.
+//	Preserve principal ownership immutability.
 //	Preserve controlled account-status vocabulary.
+// Preserve principal-only v1 authorization.
 //	Preserve explicit and retry-safe lifecycle transitions.
 //	Preserve database-owned lifecycle timestamps.
 //	Preserve onboarded_at as the original onboarding milestone.
-//	Preserve initial_plan_id as historical onboarding context only.
 //	Preserve separation between account status, soft deletion, restoration,
 //	and permanent deletion.
 //	Block deployment if this file breaks merchant-account persistence,
@@ -44,6 +44,11 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+var (
+	ErrMerchantAccountAlreadyExists      = errors.New("merchant account already exists for merchant")
+	ErrMerchantPrincipalAlreadyOnboarded = errors.New("merchant principal already has a merchant account")
 )
 
 // MerchantAccountStatus is the controlled vocabulary for
@@ -71,9 +76,9 @@ const (
 const merchantAccountSelectColumns = `
 	id,
 	merchant_id,
+	principal_user_id,
 	account_status,
 	onboarded_at,
-	initial_plan_id,
 	created_at,
 	updated_at,
 	deleted_at
@@ -88,6 +93,11 @@ type MerchantAccount struct {
 	// Ownership is immutable after insertion.
 	MerchantID uuid.UUID `json:"merchant_id" db:"merchant_id"`
 
+	// PrincipalUserID identifies the authenticated User who directly owns and
+	// operates this Merchant Account. This is the canonical v1 ownership link.
+	// Ownership is immutable after insertion.
+	PrincipalUserID uuid.UUID `json:"principal_user_id" db:"principal_user_id"`
+
 	// AccountStatus is the current merchant platform-account lifecycle status.
 	AccountStatus MerchantAccountStatus `json:"account_status" db:"account_status"`
 
@@ -96,12 +106,6 @@ type MerchantAccount struct {
 	// It is nil before first activation and is never overwritten after being
 	// established.
 	OnboardedAt *time.Time `json:"onboarded_at,omitempty" db:"onboarded_at"`
-
-	// InitialPlanID records the merchant program plan associated with initial
-	// onboarding.
-	// This is historical onboarding context only. Current entitlement,
-	// billing, and access state belong to their respective owning domains.
-	InitialPlanID *uuid.UUID `json:"initial_plan_id,omitempty" db:"initial_plan_id"`
 
 	CreatedAt time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
@@ -139,9 +143,9 @@ func scanMerchantAccount(row pgx.Row, account *MerchantAccount) error {
 	return row.Scan(
 		&account.ID,
 		&account.MerchantID,
+		&account.PrincipalUserID,
 		&account.AccountStatus,
 		&account.OnboardedAt,
-		&account.InitialPlanID,
 		&account.CreatedAt,
 		&account.UpdatedAt,
 		&account.DeletedAt,
@@ -152,9 +156,9 @@ func scanMerchantAccountRows(rows pgx.Rows, account *MerchantAccount) error {
 	return rows.Scan(
 		&account.ID,
 		&account.MerchantID,
+		&account.PrincipalUserID,
 		&account.AccountStatus,
 		&account.OnboardedAt,
-		&account.InitialPlanID,
 		&account.CreatedAt,
 		&account.UpdatedAt,
 		&account.DeletedAt,
@@ -171,98 +175,80 @@ func isMerchantAccountForeignKeyViolation(err error) bool {
 	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
-// Insert creates the canonical merchant account for merchantID.
+// CreateForPrincipalTx creates the canonical v1 Merchant Account inside the
+// caller-owned merchant-onboarding transaction.
 //
-// Merchant accounts are always inserted in pending status. Activation and
-// onboarding completion are handled through Activate.
-func (m MerchantAccountModel) Insert(
-	ctx context.Context,
-	merchantID uuid.UUID,
-	initialPlanID *uuid.UUID,
+// Merchant Accounts are not independently created by administrators. A v1
+// account comes into existence only when merchant onboarding creates the
+// Merchant and its principal-owned Merchant Account atomically. Because that
+// transaction is onboarding completion, the account is inserted active and
+// onboarded_at is established immediately.
+func (m MerchantAccountModel) CreateForPrincipalTx(
+    ctx context.Context,
+    tx pgx.Tx,
+    merchantID uuid.UUID,
+    principalUserID uuid.UUID,
 ) (*MerchantAccount, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
-	logger := m.Logger.
-		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("InsertMerchantAccount")
-
-	if merchantID == uuid.Nil {
-		err := errors.New("merchant ID is required")
-		logger.Error("Merchant account validation failed", err)
-		return nil, err
+	if tx == nil {
+		return nil, errors.New("merchant account transaction is required")
 	}
-
-	if initialPlanID != nil && *initialPlanID == uuid.Nil {
-		err := errors.New("initial merchant program plan ID cannot be nil UUID")
-		logger.Error("Merchant account validation failed", err)
-		return nil, err
+	if merchantID == uuid.Nil {
+		return nil, errors.New("merchant ID is required")
+	}
+	if principalUserID == uuid.Nil {
+		return nil, errors.New("principal user ID is required")
 	}
 
 	account := &MerchantAccount{
-		ID:            uuid.New(),
-		MerchantID:    merchantID,
-		AccountStatus: MerchantAccountStatusPending,
-		InitialPlanID: initialPlanID,
+		ID:              uuid.New(),
+		MerchantID:      merchantID,
+		PrincipalUserID: principalUserID,
+		AccountStatus:   MerchantAccountStatusActive,
 	}
 
-	query := `
+	const query = `
 		INSERT INTO merchant_accounts (
 			id,
 			merchant_id,
+			principal_user_id,
 			account_status,
-			initial_plan_id
+			onboarded_at
 		)
-		VALUES ($1, $2, $3, $4)
-		RETURNING
-			onboarded_at,
-			created_at,
-			updated_at,
-			deleted_at
+		VALUES ($1, $2, $3, $4, NOW())
+		RETURNING ` + merchantAccountSelectColumns + `
 	`
 
-	err := m.DB.QueryRow(
-		ctx,
-		query,
-		account.ID,
-		account.MerchantID,
-		account.AccountStatus,
-		account.InitialPlanID,
-	).Scan(
-		&account.OnboardedAt,
-		&account.CreatedAt,
-		&account.UpdatedAt,
-		&account.DeletedAt,
-	)
-	if err != nil {
-		switch {
-		case isMerchantAccountUniqueViolation(err):
-			err = fmt.Errorf(
-				"merchant account already exists for merchant %s: %w",
-				merchantID,
-				err,
-			)
-
-		case isMerchantAccountForeignKeyViolation(err):
-			err = fmt.Errorf(
-				"merchant account references a missing merchant or initial merchant program plan: %w",
+	if err := scanMerchantAccount(
+		tx.QueryRow(
+			ctx,
+			query,
+			account.ID,
+			account.MerchantID,
+			account.PrincipalUserID,
+			account.AccountStatus,
+		),
+		account,
+	); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			switch pgErr.ConstraintName {
+			case "ux_merchant_accounts_merchant_id", "merchant_accounts_merchant_id_key":
+				return nil, ErrMerchantAccountAlreadyExists
+			case "ux_merchant_accounts_principal_user_id", "merchant_accounts_principal_user_id_key":
+				return nil, ErrMerchantPrincipalAlreadyOnboarded
+			}
+		}
+		if isMerchantAccountUniqueViolation(err) {
+			return nil, fmt.Errorf("create principal merchant account: uniqueness violation: %w", err)
+		}
+		if isMerchantAccountForeignKeyViolation(err) {
+			return nil, fmt.Errorf(
+				"merchant account references a missing merchant or principal user: %w",
 				err,
 			)
 		}
-
-		logger.Error(
-			"Insert merchant account failed",
-			err,
-			"merchant_id", merchantID,
-		)
-		return nil, err
+		return nil, fmt.Errorf("create principal merchant account: %w", err)
 	}
-
-	logger.Info(
-		"Insert merchant account successful",
-		"merchant_account_id", account.ID,
-		"merchant_id", account.MerchantID,
-	)
 
 	return account, nil
 }
@@ -1092,22 +1078,19 @@ func (m MerchantAccountModel) lifecycleConflict(
 	}
 }
 
-
-// IsActiveMemberForMerchant reports whether userID is an active member of the
+// IsPrincipalForMerchant reports whether userID is the principal of the
 // active, non-deleted canonical Merchant Account owned by merchantID.
 //
-// This method is an authorization-resolution primitive. merchantID may be
-// selected by a request, but the request gains no authority from possession
-// of that identifier; authority is established only by persisted membership.
-func (m *MerchantAccountModel) IsActiveMemberForMerchant(
+// X-Merchant-ID is a selector only. Authority comes from the persisted
+// principal_user_id relationship on merchant_accounts. Deferred delegated
+// membership is deliberately outside the v1 authorization path.
+func (m *MerchantAccountModel) IsPrincipalForMerchant(
 	ctx context.Context,
 	userID uuid.UUID,
 	merchantID uuid.UUID,
 ) (bool, error) {
 	if m == nil || m.DB == nil {
-		return false, errors.New(
-			"merchant account model database is required",
-		)
+		return false, errors.New("merchant account model database is required")
 	}
 	if userID == uuid.Nil {
 		return false, errors.New("user_id is required")
@@ -1116,37 +1099,91 @@ func (m *MerchantAccountModel) IsActiveMemberForMerchant(
 		return false, errors.New("merchant_id is required")
 	}
 
-	ctx, cancel :=
-		context.WithTimeout(ctx, dbTimeout)
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
 	const query = `
 		SELECT EXISTS (
 			SELECT 1
 			FROM merchant_accounts ma
-			INNER JOIN merchant_account_members mam
-				ON mam.merchant_account_id = ma.id
+			INNER JOIN merchants m ON m.id = ma.merchant_id
 			WHERE ma.merchant_id = $1
+			  AND ma.principal_user_id = $2
 			  AND ma.account_status = 'active'
 			  AND ma.deleted_at IS NULL
-			  AND mam.user_id = $2
-			  AND mam.status = 'active'
+			  AND m.deleted_at IS NULL
 		)
 	`
 
 	var authorized bool
+	if err := m.DB.QueryRow(ctx, query, merchantID, userID).Scan(&authorized); err != nil {
+		return false, fmt.Errorf("resolve merchant principal authorization: %w", err)
+	}
 
-	if err := m.DB.QueryRow(
-		ctx,
-		query,
-		merchantID,
-		userID,
-	).Scan(&authorized); err != nil {
-		return false, fmt.Errorf(
-			"resolve active merchant account membership: %w",
+	return authorized, nil
+}
+
+// ListActiveForPrincipal returns the active, non-deleted Merchant Accounts
+// canonically owned by principalUserID.
+//
+// Principal authority is established exclusively by
+// merchant_accounts.principal_user_id.
+func (m *MerchantAccountModel) ListActiveForPrincipal(
+	ctx context.Context,
+	principalUserID uuid.UUID,
+) ([]*MerchantAccount, error) {
+	if m == nil || m.DB == nil {
+		return nil, errors.New(
+			"merchant account model database is required",
+		)
+	}
+
+	if principalUserID == uuid.Nil {
+		return nil, errors.New("principal user ID is required")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	const query = `
+		SELECT ` + merchantAccountSelectColumns + `
+		FROM merchant_accounts
+		WHERE principal_user_id = $1
+		  AND account_status = 'active'
+		  AND deleted_at IS NULL
+		ORDER BY created_at ASC, id ASC
+	`
+
+	rows, err := m.DB.Query(ctx, query, principalUserID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"list active merchant accounts for principal: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+
+	accounts := make([]*MerchantAccount, 0)
+
+	for rows.Next() {
+		var account MerchantAccount
+
+		if err := scanMerchantAccountRows(rows, &account); err != nil {
+			return nil, fmt.Errorf(
+				"scan active merchant account for principal: %w",
+				err,
+			)
+		}
+
+		accounts = append(accounts, &account)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterate active merchant accounts for principal: %w",
 			err,
 		)
 	}
 
-	return authorized, nil
+	return accounts, nil
 }

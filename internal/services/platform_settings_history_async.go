@@ -1,7 +1,7 @@
 // Package services provides asynchronous completion-channel wrappers for
 // internal platform-setting value-history reads.
 //
-// sdworkspace/sdbackend/internal/services/platform_settings_history_async.go
+// focodebase/fobackend/internal/services/platform_settings_history_async.go
 //
 // GTM:
 //

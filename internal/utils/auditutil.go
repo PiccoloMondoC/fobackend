@@ -1,6 +1,6 @@
 // Package utils provides reusable helpers for audit logging across services.
 //
-// sdworkspace/sdbackend/internal/utils/auditutil.go
+// focodebase/fobackend/internal/utils/auditutil.go
 package utils
 
 import (

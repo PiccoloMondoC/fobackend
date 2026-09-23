@@ -1,7 +1,7 @@
 // Package data provides the production data-layer implementation for
 // Merchant Future Offering Billing Periods.
 //
-// sdworkspace/sdbackend/internal/data/merchant_future_offering_billing_periods.go
+// focodebase/fobackend/internal/data/merchant_future_offering_billing_periods.go
 //
 // GTM:
 //

@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for merchant
 // platform credit eligibility by fee type.
 //
-// sdworkspace/sdbackend/internal/data/merchant_platform_credit_eligible_fee_types.go
+// focodebase/fobackend/internal/data/merchant_platform_credit_eligible_fee_types.go
 //
 // GTM:
 //
@@ -21,7 +21,7 @@
 //	  - which merchants receive credit;
 //	  - how much credit they receive;
 //	  - which eligibility set Administration should assign;
-//	  - whether Plans, Subscriptions, Launch Campaigns, or fees are enabled;
+//	  - whether fees are enabled;
 //	  - which credit account is consumed first;
 //	  - whether an actor is authorized to configure eligibility; or
 //	  - how credit is applied to an invoice or billable event.

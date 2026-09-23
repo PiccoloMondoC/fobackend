@@ -1,7 +1,7 @@
 // Package main provides shared API helpers for trusted context extraction,
 // authorization predicates, pagination, retry behavior, and common boundary utilities.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/helpers.go
+// focodebase/fobackend/internal/server/cmd/api/helpers.go
 //
 // GTM:
 //
@@ -174,75 +174,6 @@ func (app *Application) getRoleIDFromContext(ctx context.Context) *uuid.UUID {
 	return &id
 }
 
-// getDashboardIDFromContext extracts the user dashboard ID from the context using ctxUserDashboardID.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getDashboardIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxUserDashboardID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getDashboardTemplateIDFromContext extracts the dashboard template ID from context using ctxDashboardTemplateID.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getDashboardTemplateIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxDashboardTemplateID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getMerchantApplicationIDFromContext extracts the merchant application ID from the context
-// using the ctxMerchantApplicationID key. Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getMerchantApplicationIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxMerchantApplicationID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getAffiliatePerformanceIDFromContext extracts the affiliate performance ID from the context
-// using the ctxAffiliatePerformanceID key. Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getAffiliatePerformanceIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxAffiliatePerformanceID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getAffiliateProgramIDFromContext extracts the affiliate program ID from the context using the ctxAffiliateProgramID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getAffiliateProgramIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxAffiliateProgramID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
 
 // getMerchantIDFromContext extracts the merchant ID from the context
 // using the ctxMerchantID key. Returns a pointer to uuid.UUID or nil if not present.
@@ -269,47 +200,6 @@ func (app *Application) getStatusIDFromContext(ctx context.Context) *uuid.UUID {
 	return &id
 }
 
-// getOfferIDFromContext extracts the offer ID from context using ctxOfferID.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getOfferIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxOfferID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getProductIDFromContext extracts the product ID from context.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getProductIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxProductID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getBrandIDFromContext extracts the brand ID from the context using the ctxBrandID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getBrandIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxBrandID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
 
 // getUPCFromContext extracts the UPC (Universal Product Code) from the context using the ctxUPC key.
 // Returns the string value or an empty string if not present or invalid.
@@ -321,27 +211,6 @@ func (app *Application) getUPCFromContext(ctx context.Context) string {
 	return val
 }
 
-// getProductLineFromContext extracts the product line string from context.
-func (app *Application) getProductLineFromContext(ctx context.Context) string {
-	val, ok := ctx.Value(ctxProductLine).(string)
-	if !ok || val == "" {
-		return ""
-	}
-	return val
-}
-
-// getPlatformIDFromContext extracts the platform ID from context.
-func (app *Application) getPlatformIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxPlatformID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
 
 // getContextValueAsString retrieves a string value from context using the provided key.
 func (app *Application) getContextValueAsString(ctx context.Context, key ctxKey) string {
@@ -422,115 +291,6 @@ func (app *Application) getContextValueAsUUID(ctx context.Context, key ctxKey) *
 	return &id
 }
 
-// getCouponIDFromContext extracts the coupon ID from the context using the ctxCouponID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getCouponIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxCouponID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getOfferPriceHistoryIDFromContext extracts offer_price_history_id from context
-func (app *Application) getOfferPriceHistoryIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxOfferPriceHistoryID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getPriceDropThresholdFromContext extracts a price drop threshold (float64) from the context
-// using the ctxPriceDropThreshold key. Returns a pointer to float64 or nil if not present or invalid.
-func (app *Application) getPriceDropThresholdFromContext(ctx context.Context) *float64 {
-	val, ok := ctx.Value(ctxPriceDropThreshold).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	threshold, err := strconv.ParseFloat(val, 64)
-	if err != nil {
-		return nil
-	}
-	return &threshold
-}
-
-// getPromotionIDFromContext extracts the promotion ID from the context.
-func (app *Application) getPromotionIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxPromotionID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getMerchantPromotionIDFromContext extracts the merchant promotion ID from the context using the ctxMerchantPromotionID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getMerchantPromotionIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxMerchantPromotionID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getOfferRatingIDFromContext extracts the offer rating ID from the context using the ctxOfferRatingID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getOfferRatingIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxOfferRatingID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getOfferSponsorshipIDFromContext extracts the offer sponsorship ID from the context using the ctxOfferSponsorshipID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getOfferSponsorshipIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxOfferSponsorshipID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
-
-// getOfferStatusIDFromContext extracts the offer status ID from the context using the ctxOfferStatusID key.
-// Returns a pointer to uuid.UUID or nil if not present or invalid.
-func (app *Application) getOfferStatusIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxOfferStatusID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
 
 // getAdminIDFromContext extracts the admin ID from context using ctxAdminID.
 func (app *Application) getAdminIDFromContext(ctx context.Context) *uuid.UUID {
@@ -545,28 +305,6 @@ func (app *Application) getAdminIDFromContext(ctx context.Context) *uuid.UUID {
 	return &id
 }
 
-// getBrandNameFromContext extracts the brand name from context using ctxBrandName.
-// Returns the string value or empty string if not present.
-func (app *Application) getBrandNameFromContext(ctx context.Context) string {
-	val, ok := ctx.Value(ctxBrandName).(string)
-	if !ok {
-		return ""
-	}
-	return val
-}
-
-// getUserFavoriteIDFromContext extracts the user favorite ID from context.
-func (app *Application) getUserFavoriteIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value(ctxUserFavoriteID).(string)
-	if !ok || val == "" {
-		return nil
-	}
-	id, err := uuid.Parse(val)
-	if err != nil {
-		return nil
-	}
-	return &id
-}
 
 // -----------------------------------------------------------------------------
 // Pagination Helpers

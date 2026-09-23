@@ -1,7 +1,7 @@
 // Package services provides internal service-layer orchestration for
 // privileged reads of immutable platform-setting value history.
 //
-// sdworkspace/sdbackend/internal/services/platform_settings_history_internal.go
+// focodebase/fobackend/internal/services/platform_settings_history_internal.go
 //
 // GTM:
 //

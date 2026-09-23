@@ -1,6 +1,6 @@
 // Package main provides HTTP handlers for platform setting governance.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/platform_settings.go
+// focodebase/fobackend/internal/server/cmd/api/platform_settings.go
 //
 // GTM:
 //

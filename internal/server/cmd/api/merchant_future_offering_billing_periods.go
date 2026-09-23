@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for privileged observation and
 // historical retrieval of Merchant Future Offering Billing Periods.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_future_offering_billing_periods.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_future_offering_billing_periods.go
 //
 // GTM:
 //

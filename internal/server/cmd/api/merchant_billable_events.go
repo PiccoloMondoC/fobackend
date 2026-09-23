@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for privileged merchant billable-event
 // commercial-history and reconciliation reads.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_billable_events.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_billable_events.go
 //
 // GTM:
 //

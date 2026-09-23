@@ -1,6 +1,6 @@
 // Package main provides HTTP handlers for the Platform API.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/roles.go
+// focodebase/fobackend/internal/server/cmd/api/roles.go
 //
 // GTM:
 //

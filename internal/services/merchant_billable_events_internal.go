@@ -1,7 +1,7 @@
 // Package services contains internal merchant billable-event source-integrity
 // validation and lifecycle orchestration.
 //
-// sdworkspace/sdbackend/internal/services/merchant_billable_events_internal.go
+// focodebase/fobackend/internal/services/merchant_billable_events_internal.go
 //
 // GTM:
 //

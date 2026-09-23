@@ -1,7 +1,7 @@
 // Package services contains business orchestration for internal platform
 // workflows.
 //
-// sdworkspace/sdbackend/internal/services/merchant_billing_accounts_internal.go
+// focodebase/fobackend/internal/services/merchant_billing_accounts_internal.go
 //
 // GTM:
 //
@@ -24,7 +24,7 @@
 //	  - which currencies Administration commercially enables;
 //	  - why an account should be suspended, reactivated, or closed;
 //	  - what the merchant owes;
-//	  - whether a fee, plan, subscription, invoice, or payment is enabled;
+//	  - whether a fee, invoice, or payment is enabled;
 //	  - whether another workflow may proceed because of account status;
 //	  - which payment method or payment provider is used; or
 //	  - whether payment must precede another platform capability.

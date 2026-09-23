@@ -1,7 +1,7 @@
 // Package services contains business orchestration for internal platform
 // workflows.
 //
-// sdworkspace/sdbackend/internal/services/merchant_platform_credit_eligible_fee_types_internal.go
+// focodebase/fobackend/internal/services/merchant_platform_credit_eligible_fee_types_internal.go
 //
 // GTM:
 //
@@ -19,7 +19,7 @@
 //	This service exposes the complete eligibility operational capability
 //	without deciding commercial policy. It does not determine which fee
 //	types should normally be eligible, does not infer eligibility from
-//	plans, subscriptions, promotions, merchant status, or fee enablement,
+//	merchant status, or fee enablement,
 //	does not select which credit account to consume, and does not apply
 //	credit to an invoice or billable event. Those decisions belong to
 //	Administration-governed configuration and higher-layer credit-application

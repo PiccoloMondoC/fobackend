@@ -1,6 +1,6 @@
 // Package main provides HTTP handlers for canonical merchant payment methods.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_payment_methods.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_payment_methods.go
 //
 // GTM:
 //
@@ -28,7 +28,7 @@
 //	recording do not belong to this file. They belong to
 //	merchant_payments.go.
 //
-//	Commercial obligations, fees, plans, subscriptions, invoices,
+//	Commercial obligations, fees, invoices,
 //	promotions, and adjustments do not belong to this file. They belong to
 //	the Commerce Architecture and its canonical billing domains.
 //
@@ -81,7 +81,7 @@
 //
 //	This handler must not hard-code provider selection, provider availability,
 //	enabled-method policy, onboarding policy, verification policy, pricing,
-//	plans, subscriptions, or collection policy.
+//	or collection policy.
 //
 // SPINE Rule:
 //

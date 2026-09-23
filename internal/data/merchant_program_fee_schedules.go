@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for merchant
-// program monetization fee schedules.
+// monetization fee schedules.
 //
-// sdworkspace/sdbackend/internal/data/merchant_program_fee_schedules.go
+// focodebase/fobackend/internal/data/merchant_program_fee_schedules.go
 //
 // GTM:
 //
@@ -9,10 +9,9 @@
 //	Release Class: SPINE
 //	Reason:
 //	  merchant_program_fee_schedules is release-critical monetization
-//	  infrastructure for merchant setup fees, subscriptions, Future Offering
-//	  fees, Launch Intelligence monetization, Campaign Performance Fees,
-//	  adjustments, refunds, reversals, plan-specific pricing, global pricing
-//	  policy, and Merchant Center billing configuration.
+//	  infrastructure for effective-dated merchant fee configuration,
+//	  Future Offering monetization, adjustments, refunds, reversals,
+//	  and Merchant Center billing configuration.
 //
 // SPINE Rule:
 //
@@ -20,12 +19,12 @@
 //	Keep production-ready.
 //	Preserve fixed-precision monetary values.
 //	Preserve effective-dated commercial-policy integrity.
-//	Preserve deterministic plan-specific-over-global fee resolution.
+//	Preserve deterministic effective fee resolution.
 //	Preserve immutable commercial terms after insertion.
 //	Preserve non-negative refund and reversal amount semantics.
 //	Block deployment if this file breaks merchant billing readiness,
 //	Future Offering monetization readiness, effective fee resolution,
-//	plan/global precedence, or monetary precision.
+//	or monetary precision.
 package data
 
 import (
@@ -47,20 +46,8 @@ import (
 const (
 	feeScheduleMaxPageSize = 100
 
-	pgCodeForeignKeyViolation = "23503"
-	pgCodeCheckViolation      = "23514"
-	pgCodeExclusionViolation  = "23P01"
-)
-
-// MerchantFeeScope identifies whether a fee schedule is global or plan-scoped.
-type MerchantFeeScope string
-
-const (
-	// MerchantFeeScopeGlobal applies a fee schedule platform-wide.
-	MerchantFeeScopeGlobal MerchantFeeScope = "global"
-
-	// MerchantFeeScopePlan applies a fee schedule to one merchant program plan.
-	MerchantFeeScopePlan MerchantFeeScope = "plan"
+	pgCodeCheckViolation     = "23514"
+	pgCodeExclusionViolation = "23P01"
 )
 
 // MerchantFeeType identifies the commercial purpose of a merchant fee.
@@ -135,8 +122,6 @@ const (
 
 const merchantProgramFeeScheduleSelectColumns = `
 	id,
-	fee_scope,
-	plan_id,
 	fee_type,
 	billing_interval,
 	calculation_method,
@@ -144,8 +129,6 @@ const merchantProgramFeeScheduleSelectColumns = `
 	percentage_rate,
 	minimum_fee,
 	maximum_fee,
-	included_seats,
-	extra_seat_fee,
 	currency,
 	is_active,
 	effective_from,
@@ -163,8 +146,6 @@ const merchantProgramFeeScheduleSelectColumns = `
 // preserve the distinction between SQL NULL and numeric zero.
 type MerchantProgramFeeSchedule struct {
 	ID                uuid.UUID                    `json:"id" db:"id"`
-	FeeScope          MerchantFeeScope             `json:"fee_scope" db:"fee_scope"`
-	PlanID            *uuid.UUID                   `json:"plan_id,omitempty" db:"plan_id"`
 	FeeType           MerchantFeeType              `json:"fee_type" db:"fee_type"`
 	BillingInterval   MerchantBillingInterval      `json:"billing_interval" db:"billing_interval"`
 	CalculationMethod MerchantFeeCalculationMethod `json:"calculation_method" db:"calculation_method"`
@@ -172,8 +153,6 @@ type MerchantProgramFeeSchedule struct {
 	PercentageRate    *string                      `json:"percentage_rate,omitempty" db:"percentage_rate"`
 	MinimumFee        *string                      `json:"minimum_fee,omitempty" db:"minimum_fee"`
 	MaximumFee        *string                      `json:"maximum_fee,omitempty" db:"maximum_fee"`
-	IncludedSeats     int                          `json:"included_seats" db:"included_seats"`
-	ExtraSeatFee      *string                      `json:"extra_seat_fee,omitempty" db:"extra_seat_fee"`
 	Currency          string                       `json:"currency" db:"currency"`
 	IsActive          bool                         `json:"is_active" db:"is_active"`
 	EffectiveFrom     time.Time                    `json:"effective_from" db:"effective_from"`
@@ -188,21 +167,6 @@ type MerchantProgramFeeSchedule struct {
 type MerchantProgramFeeScheduleModel struct {
 	DB     *pgxpool.Pool
 	Logger *logging.Logger
-}
-
-// NormalizeMerchantFeeScope returns the canonical fee-scope value.
-func NormalizeMerchantFeeScope(value MerchantFeeScope) MerchantFeeScope {
-	return MerchantFeeScope(normalizeIdentifier(string(value)))
-}
-
-// IsValidMerchantFeeScope reports whether value is an allowed fee scope.
-func IsValidMerchantFeeScope(value MerchantFeeScope) bool {
-	switch NormalizeMerchantFeeScope(value) {
-	case MerchantFeeScopeGlobal, MerchantFeeScopePlan:
-		return true
-	default:
-		return false
-	}
 }
 
 // NormalizeMerchantFeeType returns the canonical merchant-fee type.
@@ -306,8 +270,6 @@ func scanMerchantProgramFeeSchedule(
 ) error {
 	return row.Scan(
 		&schedule.ID,
-		&schedule.FeeScope,
-		&schedule.PlanID,
 		&schedule.FeeType,
 		&schedule.BillingInterval,
 		&schedule.CalculationMethod,
@@ -315,8 +277,6 @@ func scanMerchantProgramFeeSchedule(
 		&schedule.PercentageRate,
 		&schedule.MinimumFee,
 		&schedule.MaximumFee,
-		&schedule.IncludedSeats,
-		&schedule.ExtraSeatFee,
 		&schedule.Currency,
 		&schedule.IsActive,
 		&schedule.EffectiveFrom,
@@ -333,8 +293,6 @@ func scanMerchantProgramFeeScheduleFromRows(
 ) error {
 	return rows.Scan(
 		&schedule.ID,
-		&schedule.FeeScope,
-		&schedule.PlanID,
 		&schedule.FeeType,
 		&schedule.BillingInterval,
 		&schedule.CalculationMethod,
@@ -342,8 +300,6 @@ func scanMerchantProgramFeeScheduleFromRows(
 		&schedule.PercentageRate,
 		&schedule.MinimumFee,
 		&schedule.MaximumFee,
-		&schedule.IncludedSeats,
-		&schedule.ExtraSeatFee,
 		&schedule.Currency,
 		&schedule.IsActive,
 		&schedule.EffectiveFrom,
@@ -355,7 +311,6 @@ func scanMerchantProgramFeeScheduleFromRows(
 }
 
 func normalizeMerchantProgramFeeSchedule(schedule *MerchantProgramFeeSchedule) {
-	schedule.FeeScope = NormalizeMerchantFeeScope(schedule.FeeScope)
 	schedule.FeeType = NormalizeMerchantFeeType(schedule.FeeType)
 	schedule.BillingInterval = NormalizeMerchantBillingInterval(schedule.BillingInterval)
 	schedule.CalculationMethod = NormalizeMerchantFeeCalculationMethod(schedule.CalculationMethod)
@@ -365,7 +320,6 @@ func normalizeMerchantProgramFeeSchedule(schedule *MerchantProgramFeeSchedule) {
 	normalizeOptionalDecimal(&schedule.PercentageRate)
 	normalizeOptionalDecimal(&schedule.MinimumFee)
 	normalizeOptionalDecimal(&schedule.MaximumFee)
-	normalizeOptionalDecimal(&schedule.ExtraSeatFee)
 
 	schedule.EffectiveFrom = schedule.EffectiveFrom.UTC()
 	if schedule.EffectiveTo != nil {
@@ -391,22 +345,6 @@ func validateMerchantProgramFeeSchedule(
 	}
 
 	normalizeMerchantProgramFeeSchedule(schedule)
-
-	if !IsValidMerchantFeeScope(schedule.FeeScope) {
-		return fmt.Errorf("invalid merchant fee scope: %s", schedule.FeeScope)
-	}
-
-	switch schedule.FeeScope {
-	case MerchantFeeScopeGlobal:
-		if schedule.PlanID != nil {
-			return errors.New("global fee schedules must not specify plan_id")
-		}
-
-	case MerchantFeeScopePlan:
-		if schedule.PlanID == nil || *schedule.PlanID == uuid.Nil {
-			return errors.New("plan-scoped fee schedules require plan_id")
-		}
-	}
 
 	if !IsValidMerchantFeeType(schedule.FeeType) {
 		return fmt.Errorf("invalid merchant fee type: %s", schedule.FeeType)
@@ -454,13 +392,6 @@ func validateMerchantProgramFeeSchedule(
 	}
 
 	if err := validateOptionalNonNegativeDecimalString(
-		schedule.FlatAmount,
-		"flat_amount",
-	); err != nil {
-		return err
-	}
-
-	if err := validateOptionalNonNegativeDecimalString(
 		schedule.PercentageRate,
 		"percentage_rate",
 	); err != nil {
@@ -481,13 +412,6 @@ func validateMerchantProgramFeeSchedule(
 		return err
 	}
 
-	if err := validateOptionalNonNegativeDecimalString(
-		schedule.ExtraSeatFee,
-		"extra_seat_fee",
-	); err != nil {
-		return err
-	}
-
 	if schedule.MinimumFee != nil && schedule.MaximumFee != nil {
 		less, err := merchantDecimalLess(
 			*schedule.MaximumFee,
@@ -499,10 +423,6 @@ func validateMerchantProgramFeeSchedule(
 		if less {
 			return errors.New("maximum_fee must not be less than minimum_fee")
 		}
-	}
-
-	if schedule.IncludedSeats < 1 {
-		return errors.New("included_seats must be at least 1")
 	}
 
 	if schedule.Currency == "" {
@@ -608,12 +528,6 @@ func translateFeeScheduleWriteError(err error) error {
 			err,
 		)
 
-	case pgCodeForeignKeyViolation:
-		return fmt.Errorf(
-			"merchant program fee schedule references an unknown merchant program plan: %w",
-			err,
-		)
-
 	case pgCodeCheckViolation:
 		return fmt.Errorf(
 			"merchant program fee schedule violates a database constraint: %w",
@@ -652,8 +566,6 @@ func (m *MerchantProgramFeeScheduleModel) Insert(
 	const query = `
 		INSERT INTO merchant_program_fee_schedules (
 			id,
-			fee_scope,
-			plan_id,
 			fee_type,
 			billing_interval,
 			calculation_method,
@@ -661,8 +573,6 @@ func (m *MerchantProgramFeeScheduleModel) Insert(
 			percentage_rate,
 			minimum_fee,
 			maximum_fee,
-			included_seats,
-			extra_seat_fee,
 			currency,
 			is_active,
 			effective_from,
@@ -683,8 +593,6 @@ func (m *MerchantProgramFeeScheduleModel) Insert(
 		ctx,
 		query,
 		schedule.ID,
-		schedule.FeeScope,
-		schedule.PlanID,
 		schedule.FeeType,
 		schedule.BillingInterval,
 		schedule.CalculationMethod,
@@ -692,8 +600,6 @@ func (m *MerchantProgramFeeScheduleModel) Insert(
 		schedule.PercentageRate,
 		schedule.MinimumFee,
 		schedule.MaximumFee,
-		schedule.IncludedSeats,
-		schedule.ExtraSeatFee,
 		schedule.Currency,
 		schedule.IsActive,
 		schedule.EffectiveFrom,
@@ -709,8 +615,6 @@ func (m *MerchantProgramFeeScheduleModel) Insert(
 		logger.Error(
 			"Insert merchant program fee schedule failed",
 			err,
-			"fee_scope",
-			schedule.FeeScope,
 			"fee_type",
 			schedule.FeeType,
 			"billing_interval",
@@ -723,8 +627,6 @@ func (m *MerchantProgramFeeScheduleModel) Insert(
 		"Insert merchant program fee schedule successful",
 		"fee_schedule_id",
 		schedule.ID,
-		"fee_scope",
-		schedule.FeeScope,
 		"fee_type",
 		schedule.FeeType,
 	)
@@ -818,7 +720,6 @@ func (m *MerchantProgramFeeScheduleModel) GetAll(
 		ORDER BY
 			fee_type ASC,
 			billing_interval ASC,
-			fee_scope ASC,
 			effective_from DESC,
 			id ASC
 		LIMIT $1 OFFSET $2
@@ -840,117 +741,6 @@ func (m *MerchantProgramFeeScheduleModel) GetAll(
 	return schedules, nil
 }
 
-// ListByPlan retrieves non-deleted schedules for one merchant program plan.
-func (m *MerchantProgramFeeScheduleModel) ListByPlan(
-	ctx context.Context,
-	planID uuid.UUID,
-	limit,
-	offset int,
-) ([]*MerchantProgramFeeSchedule, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
-	logger := m.Logger.
-		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("ListMerchantProgramFeeSchedulesByPlan")
-
-	if planID == uuid.Nil {
-		err := errors.New("merchant program plan ID is required")
-		logger.Error("Validation failed", err)
-		return nil, err
-	}
-
-	if err := validateFeeSchedulePagination(limit, offset); err != nil {
-		logger.Error("Validation failed", err)
-		return nil, err
-	}
-
-	query := `
-		SELECT ` + merchantProgramFeeScheduleSelectColumns + `
-		FROM merchant_program_fee_schedules
-		WHERE fee_scope = 'plan'
-		  AND plan_id = $1
-		  AND deleted_at IS NULL
-		ORDER BY
-			fee_type ASC,
-			billing_interval ASC,
-			effective_from DESC,
-			id ASC
-		LIMIT $2 OFFSET $3
-	`
-
-	schedules, err := m.listFeeSchedules(
-		ctx,
-		query,
-		planID,
-		limit,
-		offset,
-	)
-	if err != nil {
-		logger.Error(
-			"List merchant program fee schedules by plan failed",
-			err,
-			"plan_id",
-			planID,
-		)
-		return nil, err
-	}
-
-	logger.Info(
-		"List merchant program fee schedules by plan successful",
-		"plan_id",
-		planID,
-		"count",
-		len(schedules),
-	)
-	return schedules, nil
-}
-
-// ListGlobal retrieves non-deleted global fee schedules.
-func (m *MerchantProgramFeeScheduleModel) ListGlobal(
-	ctx context.Context,
-	limit,
-	offset int,
-) ([]*MerchantProgramFeeSchedule, error) {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
-	logger := m.Logger.
-		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("ListGlobalMerchantProgramFeeSchedules")
-
-	if err := validateFeeSchedulePagination(limit, offset); err != nil {
-		logger.Error("Validation failed", err)
-		return nil, err
-	}
-
-	query := `
-		SELECT ` + merchantProgramFeeScheduleSelectColumns + `
-		FROM merchant_program_fee_schedules
-		WHERE fee_scope = 'global'
-		  AND plan_id IS NULL
-		  AND deleted_at IS NULL
-		ORDER BY
-			fee_type ASC,
-			billing_interval ASC,
-			effective_from DESC,
-			id ASC
-		LIMIT $1 OFFSET $2
-	`
-
-	schedules, err := m.listFeeSchedules(ctx, query, limit, offset)
-	if err != nil {
-		logger.Error("List global merchant program fee schedules failed", err)
-		return nil, err
-	}
-
-	logger.Info(
-		"List global merchant program fee schedules successful",
-		"count",
-		len(schedules),
-	)
-	return schedules, nil
-}
 
 // ListByFeeType retrieves non-deleted schedules for one fee type.
 func (m *MerchantProgramFeeScheduleModel) ListByFeeType(
@@ -984,7 +774,6 @@ func (m *MerchantProgramFeeScheduleModel) ListByFeeType(
 		WHERE fee_type = $1
 		  AND deleted_at IS NULL
 		ORDER BY
-			fee_scope ASC,
 			billing_interval ASC,
 			effective_from DESC,
 			id ASC
@@ -1050,16 +839,15 @@ func (m *MerchantProgramFeeScheduleModel) listFeeSchedules(
 }
 
 // ResolveEffective resolves the applicable active fee schedule at a reference
-// time. A plan-specific schedule takes precedence over a global schedule.
+// time.
 //
 // The method returns nil, nil when no schedule applies. It fails rather than
-// selecting arbitrarily when overlapping rows make a precedence tier
+// selecting arbitrarily when overlapping applicable schedules make resolution
 // ambiguous.
 func (m *MerchantProgramFeeScheduleModel) ResolveEffective(
 	ctx context.Context,
 	feeType MerchantFeeType,
 	billingInterval MerchantBillingInterval,
-	planID *uuid.UUID,
 	asOf time.Time,
 ) (*MerchantProgramFeeSchedule, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
@@ -1097,65 +885,21 @@ func (m *MerchantProgramFeeScheduleModel) ResolveEffective(
 		return nil, err
 	}
 
-	if planID != nil && *planID == uuid.Nil {
-		err := errors.New("plan ID must not be the nil UUID")
-		logger.Error("Validation failed", err)
-		return nil, err
-	}
-
 	if asOf.IsZero() {
 		asOf = time.Now().UTC()
 	} else {
 		asOf = asOf.UTC()
 	}
 
-	if planID != nil {
-		schedule, err := m.resolveEffectiveTier(
-			ctx,
-			MerchantFeeScopePlan,
-			planID,
-			feeType,
-			billingInterval,
-			asOf,
-		)
-		if err != nil {
-			logger.Error(
-				"Resolve effective plan fee schedule failed",
-				err,
-				"plan_id",
-				*planID,
-				"fee_type",
-				feeType,
-				"billing_interval",
-				billingInterval,
-			)
-			return nil, err
-		}
-		if schedule != nil {
-			logger.Info(
-				"Resolve effective merchant program fee schedule successful",
-				"fee_schedule_id",
-				schedule.ID,
-				"fee_scope",
-				MerchantFeeScopePlan,
-				"plan_id",
-				*planID,
-			)
-			return schedule, nil
-		}
-	}
-
-	schedule, err := m.resolveEffectiveTier(
+	schedule, err := m.resolveEffectiveSchedule(
 		ctx,
-		MerchantFeeScopeGlobal,
-		nil,
 		feeType,
 		billingInterval,
 		asOf,
 	)
 	if err != nil {
 		logger.Error(
-			"Resolve effective global fee schedule failed",
+			"Resolve effective merchant program fee schedule failed",
 			err,
 			"fee_type",
 			feeType,
@@ -1180,16 +924,12 @@ func (m *MerchantProgramFeeScheduleModel) ResolveEffective(
 		"Resolve effective merchant program fee schedule successful",
 		"fee_schedule_id",
 		schedule.ID,
-		"fee_scope",
-		MerchantFeeScopeGlobal,
 	)
 	return schedule, nil
 }
 
-func (m *MerchantProgramFeeScheduleModel) resolveEffectiveTier(
+func (m *MerchantProgramFeeScheduleModel) resolveEffectiveSchedule(
 	ctx context.Context,
-	scope MerchantFeeScope,
-	planID *uuid.UUID,
 	feeType MerchantFeeType,
 	billingInterval MerchantBillingInterval,
 	asOf time.Time,
@@ -1197,17 +937,12 @@ func (m *MerchantProgramFeeScheduleModel) resolveEffectiveTier(
 	query := `
 		SELECT ` + merchantProgramFeeScheduleSelectColumns + `
 		FROM merchant_program_fee_schedules
-		WHERE fee_scope = $1
-		  AND fee_type = $2
-		  AND billing_interval = $3
-		  AND (
-				($4::uuid IS NULL AND plan_id IS NULL)
-				OR plan_id = $4
-		  )
+		WHERE fee_type = $1
+		  AND billing_interval = $2
 		  AND is_active = TRUE
 		  AND deleted_at IS NULL
-		  AND effective_from <= $5
-		  AND (effective_to IS NULL OR effective_to > $5)
+		  AND effective_from <= $3
+		  AND (effective_to IS NULL OR effective_to > $3)
 		ORDER BY effective_from DESC, id ASC
 		LIMIT 2
 	`
@@ -1215,10 +950,8 @@ func (m *MerchantProgramFeeScheduleModel) resolveEffectiveTier(
 	rows, err := m.DB.Query(
 		ctx,
 		query,
-		scope,
 		feeType,
 		billingInterval,
-		planID,
 		asOf,
 	)
 	if err != nil {
@@ -1251,8 +984,7 @@ func (m *MerchantProgramFeeScheduleModel) resolveEffectiveTier(
 
 	if matchCount > 1 {
 		return nil, fmt.Errorf(
-			"merchant program fee schedule resolution is ambiguous for scope %s, fee type %s, and billing interval %s",
-			scope,
+			"merchant program fee schedule resolution is ambiguous for fee type %s and billing interval %s",
 			feeType,
 			billingInterval,
 		)
@@ -1422,9 +1154,9 @@ func (m *MerchantProgramFeeScheduleModel) Retire(
 // Replace atomically retires an existing schedule and inserts its effective-
 // dated successor.
 //
-// The incoming schedule must preserve the outgoing schedule's scope, plan,
-// fee type, billing interval, and currency. A replacement may change the
-// calculation method and price terms.
+// The incoming schedule must preserve the outgoing schedule's fee type,
+// billing interval, and currency. A replacement may change the calculation
+// method and price terms.
 func (m *MerchantProgramFeeScheduleModel) Replace(
 	ctx context.Context,
 	outgoingID uuid.UUID,
@@ -1560,8 +1292,6 @@ func (m *MerchantProgramFeeScheduleModel) Replace(
 	const insertQuery = `
 		INSERT INTO merchant_program_fee_schedules (
 			id,
-			fee_scope,
-			plan_id,
 			fee_type,
 			billing_interval,
 			calculation_method,
@@ -1569,8 +1299,6 @@ func (m *MerchantProgramFeeScheduleModel) Replace(
 			percentage_rate,
 			minimum_fee,
 			maximum_fee,
-			included_seats,
-			extra_seat_fee,
 			currency,
 			is_active,
 			effective_from,
@@ -1591,8 +1319,6 @@ func (m *MerchantProgramFeeScheduleModel) Replace(
 		ctx,
 		insertQuery,
 		incoming.ID,
-		incoming.FeeScope,
-		incoming.PlanID,
 		incoming.FeeType,
 		incoming.BillingInterval,
 		incoming.CalculationMethod,
@@ -1600,8 +1326,6 @@ func (m *MerchantProgramFeeScheduleModel) Replace(
 		incoming.PercentageRate,
 		incoming.MinimumFee,
 		incoming.MaximumFee,
-		incoming.IncludedSeats,
-		incoming.ExtraSeatFee,
 		incoming.Currency,
 		incoming.IsActive,
 		incoming.EffectiveFrom,
@@ -1653,14 +1377,6 @@ func validateFeeScheduleReplacementIdentity(
 	outgoing,
 	incoming *MerchantProgramFeeSchedule,
 ) error {
-	if outgoing.FeeScope != incoming.FeeScope {
-		return errors.New("replacement must preserve fee_scope")
-	}
-
-	if !equalOptionalUUID(outgoing.PlanID, incoming.PlanID) {
-		return errors.New("replacement must preserve plan_id")
-	}
-
 	if outgoing.FeeType != incoming.FeeType {
 		return errors.New("replacement must preserve fee_type")
 	}

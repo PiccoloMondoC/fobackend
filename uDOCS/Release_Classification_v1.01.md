@@ -77,8 +77,6 @@ This phase provides the commercial machinery required to operate the Platform, i
 
 #### Program and fee configuration
 
-- [x] `merchant_program_plans.go`
-- [x] `merchant_program_entitlements.go`
 - [x] `merchant_program_fee_schedules.go`
 
 #### FO service and billing periods
@@ -86,7 +84,6 @@ This phase provides the commercial machinery required to operate the Platform, i
 - [x] `merchant_future_offering_service_terms.go`
 - [x] `merchant_future_offering_service_periods.go`
 - [x] `merchant_future_offering_billing_periods.go`
-- [ ] `merchant_future_offering_payment_periods.go`
 
 #### Platform credits and fee eligibility
 
@@ -134,6 +131,20 @@ This phase must enable a merchant to create, configure, submit, and manage the p
 - [ ] `merchant_future_offering_billing_terms.go`
 - [ ] `merchant_future_offerings_events.go`
 - [.] `merchant_future_offering_milestones.go`
+
+
+
+- [.] `.go`
+- [.] `.go`
+- [.] `.go`
+- [.] `user_future_offering_engagements.go`
+- [.] `merchant_future_offering_engagement_action_groups.go`
+- [.] `merchant_future_offering_engagement_options.go`
+- [.] `user_future_offering_engagement_action_selections.go`
+- [.] `user_future_offering_engagement_events.go`
+- [.] `user_future_offering_engagement_submissions.go`
+- [.] `user_future_offering_engagement_submission_items.go`
+
 
 #### Derived capabilities
 
@@ -228,26 +239,6 @@ The corresponding durable domains and Go file boundaries will be designed when t
 - `merchant_funding_sources.go`
 - `merchant_funding_source_provider_links.go`
 - `merchant_withdrawals.go`
-
-### Enterprise Collaboration — post-v1
-
-- `merchant_account_roles.go`
-- `merchant_account_members.go`
-
-### Present Commerce — post-v1
-
-- `merchant_launch_campaigns.go`
-- `merchant_launch_campaign_clicks.go`
-- `merchant_launch_campaign_attribution_events.go`
-
-### Settlement and Reconciliation — post-v1
-
-- `merchant_settlement_batches.go`
-- `merchant_settlement_batch_items.go`
-- `merchant_attribution_matches.go`
-- `merchant_postback_configs.go`
-- `merchant_postback_events.go`
-- `merchant_fee_reversals.go`
 
 ## Maintenance Rule
 

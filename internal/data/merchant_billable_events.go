@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for merchant
 // billable events.
 //
-// sdworkspace/sdbackend/internal/data/merchant_billable_events.go
+// focodebase/fobackend/internal/data/merchant_billable_events.go
 //
 // GTM:
 //

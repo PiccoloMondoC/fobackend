@@ -1,7 +1,7 @@
 // Package main provides API server startup, configuration, dependency wiring,
 // route registration, and HTTP lifecycle management.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/config.go
+// focodebase/fobackend/internal/server/cmd/api/config.go
 //
 // GTM:
 //

@@ -1,7 +1,7 @@
 // Package main owns release-critical API process startup and lifecycle
 // orchestration for the Platform backend.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/main.go
+// focodebase/fobackend/internal/server/cmd/api/main.go
 //
 // GTM:
 //
@@ -32,11 +32,10 @@
 //	Preserve SIGINT/SIGTERM graceful shutdown.
 //	Preserve secret non-disclosure in logs, traces, and errors.
 //	Preserve composition-only notification-service construction: main.go
-//	imports the root notification_services package only, and constructs
-//	notification delivery through notificationservices.NewTestServices (or,
-//	after governed provider selection lands, notificationservices.NewServices,
-//	which does fail fast on incomplete configuration). main.go must never
-//	import notification_services/email or notification_services/sms directly.
+//	imports the dedicated notification runtime composition boundary only.
+//	Concrete email/SMS provider packages remain outside the API startup package.
+//	Runtime notification construction must fail fast when configured dependencies
+//	are incomplete or invalid.
 //	Block deployment if this file breaks startup, database readiness,
 //	authentication construction, SPINE reference-data readiness, HTTP serving,
 //	background-service lifecycle, notification-service construction, or
@@ -60,7 +59,7 @@ import (
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/bootstrap"
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
-	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
+	notificationruntime "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services/runtime"
 	services "github.com/PiccoloMondoC/focodebase/fobackend/internal/services"
 
 	"github.com/google/uuid"
@@ -188,22 +187,17 @@ func main() {
 		logger.Fatal("token service init failed", "error", err)
 	}
 
-	// Construct notification services through the root notification_services
-	// composition boundary only. Today this is the local/test implementation,
-	// which cannot fail. The later evolution is replacing this single call
-	// with:
-	//
-	//   notificationServices, err := notificationservices.NewServices(
-	//       configuredEmailSender,
-	//       configuredSMSSender,
-	//   )
-	//   if err != nil {
-	//       logger.Fatal("notification service initialization failed", "error", err)
-	//   }
-	//
-	// once governed provider selection lands. Handlers never see this
-	// decision — they only see EmailSender / SMSSender.
-	notificationServices := notificationservices.NewTestServices(logger)
+	// Construct notification services through the dedicated runtime composition
+	// boundary. Provider selection and concrete transport construction remain
+	// outside the API package; handlers continue to depend only on the
+	// EmailSender / SMSSender interfaces exposed by the returned container.
+	notificationServices, err := notificationruntime.NewServices(cfg, logger)
+	if err != nil {
+		logger.Fatal(
+			"notification service initialization failed",
+			"error", err,
+		)
+	}
 
 	// Construct the validated internal service container before any readiness-
 	// critical internal workflow executes or HTTP traffic is accepted.
@@ -213,31 +207,18 @@ func main() {
 		logger,
 		&models,
 		&services.Config{
-			DBTimeout: cfg.DBTimeout,
+			DBTimeout:             cfg.DBTimeout,
+			ActivationTokenTTL:    cfg.ActivationTokenTTL,
+			PasswordResetTokenTTL: cfg.PasswordResetTokenTTL,
 		},
 		shutdownChan,
+		tokenService,
 	)
 	if err != nil {
 		logger.Fatal(
 			"internal service initialization failed",
-			"error",
-			err,
+			"error", err,
 		)
-	}
-
-	// Ensure SPINE merchant program plan seed data synchronously before the
-	// application is allowed to accept HTTP traffic. This is readiness-critical
-	// reference data for Future Offering access, subscriptions, entitlements,
-	// billing, and Merchant Center plan selection.
-	if err := svc.EnsureDefaultMerchantProgramPlansInternal(ctx); err != nil {
-		logger.Fatal("merchant program plan bootstrap failed", "error", err)
-	}
-
-	// Ensure SPINE merchant program entitlement seed data after canonical plans
-	// exist and before the application accepts HTTP traffic. This establishes the
-	// capability gates for Launch Campaign and Future Offering workflows.
-	if err := svc.EnsureDefaultMerchantProgramEntitlementsInternal(ctx); err != nil {
-		logger.Fatal("merchant program entitlement bootstrap failed", "error", err)
 	}
 
 	// Ensure SPINE platform settings seed data synchronously before the
@@ -248,9 +229,6 @@ func main() {
 	if err := svc.EnsureDefaultPlatformSettingsInternal(ctx); err != nil {
 		logger.Fatal("platform setting bootstrap failed", "error", err)
 	}
-
-	// Start automation orchestrator after readiness-critical seed data has been ensured.
-	services.StartOfferAutomationOrchestrator(svc)
 
 	// Construct the HTTP application with the same validated internal service
 	// container used for readiness-critical startup work. Handlers invoke domain

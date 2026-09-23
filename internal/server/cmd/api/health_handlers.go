@@ -1,4 +1,4 @@
-// sdworkspace/sdbackend/internal/server/cmd/api/health_handlers
+// focodebase/fobackend/internal/server/cmd/api/health_handlers
 package main
 
 import (

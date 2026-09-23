@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for merchant program fee schedule
 // governance.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_program_fee_schedules.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_program_fee_schedules.go
 //
 // GTM:
 //
@@ -16,14 +16,12 @@
 //
 //	  Fee schedules establish merchant setup fees, subscription pricing,
 //	  Campaign Performance Fees, Future Offering and Launch Intelligence fees,
-//	  adjustments, refunds, reversals, plan-specific pricing, and global
-//	  fallback pricing.
+//	  adjustments, refunds, reversals, and global fallback pricing.
 //
 //	  Commercial identity and price terms are immutable after insertion.
 //	  Pricing changes are represented by new effective-dated rows through the
 //	  atomic replacement contract. Effective resolution remains owned by the
-//	  data layer and preserves deterministic plan-specific-over-global
-//	  precedence.
+//	  data layer.
 //
 // SPINE Rule:
 //
@@ -33,7 +31,6 @@
 //	Preserve effective-dated commercial-policy integrity.
 //	Preserve immutable commercial identity and price terms.
 //	Preserve atomic replacement semantics.
-//	Preserve deterministic plan-specific-over-global resolution.
 //	Preserve privileged authentication and authorization at every boundary.
 //	Preserve centralized governance auditing.
 //	Preserve soft-delete, restore, retire, and hard-delete separation.
@@ -91,8 +88,6 @@ const (
 
 	merchantProgramFeeScheduleMaxLimit = 100
 
-	merchantProgramFeeScheduleDefaultIncludedSeats = 1
-
 	merchantProgramFeeScheduleDefaultCurrency = "USD"
 )
 
@@ -104,10 +99,6 @@ const (
 // Decimal values remain strings so PostgreSQL NUMERIC values never pass
 // through binary floating-point representation.
 type merchantProgramFeeScheduleWriteRequest struct {
-	FeeScope data.MerchantFeeScope `json:"fee_scope"`
-
-	PlanID *uuid.UUID `json:"plan_id,omitempty"`
-
 	FeeType data.MerchantFeeType `json:"fee_type"`
 
 	BillingInterval data.MerchantBillingInterval `json:"billing_interval"`
@@ -121,10 +112,6 @@ type merchantProgramFeeScheduleWriteRequest struct {
 	MinimumFee *string `json:"minimum_fee,omitempty"`
 
 	MaximumFee *string `json:"maximum_fee,omitempty"`
-
-	IncludedSeats *int `json:"included_seats,omitempty"`
-
-	ExtraSeatFee *string `json:"extra_seat_fee,omitempty"`
 
 	Currency string `json:"currency,omitempty"`
 
@@ -141,8 +128,6 @@ type merchantProgramFeeScheduleResolveRequest struct {
 	FeeType data.MerchantFeeType `json:"fee_type"`
 
 	BillingInterval data.MerchantBillingInterval `json:"billing_interval"`
-
-	PlanID *uuid.UUID `json:"plan_id,omitempty"`
 
 	AsOf *string `json:"as_of,omitempty"`
 }
@@ -207,10 +192,6 @@ func merchantProgramFeeScheduleHTTPStatus(
 		strings.Contains(
 			message,
 			"no soft-deleted merchant program fee schedule",
-		),
-		strings.Contains(
-			message,
-			"references an unknown merchant program plan",
 		):
 		return http.StatusNotFound
 
@@ -242,7 +223,7 @@ func merchantProgramFeeScheduleClientError(
 
 	case http.StatusNotFound:
 		return errors.New(
-			"merchant program fee schedule or referenced plan not found",
+			"merchant program fee schedule not found",
 		)
 
 	case http.StatusConflict:
@@ -443,17 +424,6 @@ func buildMerchantProgramFeeSchedule(
 		)
 	}
 
-	feeScope :=
-		data.NormalizeMerchantFeeScope(
-			input.FeeScope,
-		)
-	if !data.IsValidMerchantFeeScope(feeScope) {
-		return nil, fmt.Errorf(
-			"invalid fee_scope: %s",
-			input.FeeScope,
-		)
-	}
-
 	feeType :=
 		data.NormalizeMerchantFeeType(
 			input.FeeType,
@@ -502,13 +472,6 @@ func buildMerchantProgramFeeSchedule(
 		)
 	}
 
-	if input.PlanID != nil &&
-		*input.PlanID == uuid.Nil {
-		return nil, errors.New(
-			"plan_id must not be the nil UUID",
-		)
-	}
-
 	effectiveFrom, err :=
 		parseRequiredMerchantProgramFeeScheduleTime(
 			input.EffectiveFrom,
@@ -527,12 +490,6 @@ func buildMerchantProgramFeeSchedule(
 		return nil, err
 	}
 
-	includedSeats :=
-		merchantProgramFeeScheduleDefaultIncludedSeats
-	if input.IncludedSeats != nil {
-		includedSeats = *input.IncludedSeats
-	}
-
 	isActive := true
 	if input.IsActive != nil {
 		isActive = *input.IsActive
@@ -547,9 +504,6 @@ func buildMerchantProgramFeeSchedule(
 	}
 
 	return &data.MerchantProgramFeeSchedule{
-		FeeScope: feeScope,
-
-		PlanID: input.PlanID,
 
 		FeeType: feeType,
 
@@ -564,10 +518,6 @@ func buildMerchantProgramFeeSchedule(
 		MinimumFee: input.MinimumFee,
 
 		MaximumFee: input.MaximumFee,
-
-		IncludedSeats: includedSeats,
-
-		ExtraSeatFee: input.ExtraSeatFee,
 
 		Currency: currency,
 
@@ -986,229 +936,6 @@ func (app *Application) GetAllMerchantProgramFeeSchedulesHandler(
 	)
 }
 
-// ListMerchantProgramFeeSchedulesByPlanHandler retrieves a bounded page of
-// non-deleted plan-scoped fee schedules.
-func (app *Application) ListMerchantProgramFeeSchedulesByPlanHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName(
-			"ListMerchantProgramFeeSchedulesByPlanHandler",
-		)
-
-	ctx, cancel := context.WithTimeout(
-		r.Context(),
-		cfgTimeout,
-	)
-	defer cancel()
-
-	if !app.HasPermission(
-		ctx,
-		actionListMerchantProgramFeeSchedules,
-	) {
-		app.respondWithError(
-			w,
-			errors.New(
-				"forbidden: insufficient permissions",
-			),
-			http.StatusForbidden,
-		)
-		return
-	}
-
-	userID := app.getUserIDFromContext(ctx)
-	if userID == nil {
-		app.respondWithError(
-			w,
-			errors.New(
-				"user ID not found in context",
-			),
-			http.StatusUnauthorized,
-		)
-		return
-	}
-
-	planID, err :=
-		app.parseMerchantProgramPlanID(r)
-	if err != nil {
-		app.respondWithError(
-			w,
-			err,
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	limit, offset, err :=
-		app.parseMerchantProgramFeeSchedulePagination(
-			ctx,
-		)
-	if err != nil {
-		app.respondWithError(
-			w,
-			err,
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	schedules, err := app.Models.
-		MerchantProgramFeeSchedule.
-		ListByPlan(
-			ctx,
-			planID,
-			limit,
-			offset,
-		)
-	if err != nil {
-		logger.Error(
-			"List merchant program fee schedules by plan failed",
-			"plan_id",
-			planID,
-			"limit",
-			limit,
-			"offset",
-			offset,
-			"error",
-			err,
-		)
-
-		app.respondWithMerchantProgramFeeScheduleModelError(
-			w,
-			err,
-		)
-		return
-	}
-
-	app.auditMerchantProgramFeeScheduleBestEffort(
-		ctx,
-		logger,
-		userID,
-		actionListMerchantProgramFeeSchedules,
-		"List merchant program fee schedules by plan",
-		planID.String(),
-	)
-
-	app.respondWithJSON(
-		w,
-		http.StatusOK,
-		jsonResponse{
-			Error: false,
-
-			Message: "Merchant program fee schedules " +
-				"retrieved successfully",
-
-			Data: schedules,
-		},
-	)
-}
-
-// ListGlobalMerchantProgramFeeSchedulesHandler retrieves a bounded page of
-// non-deleted global fee schedules.
-func (app *Application) ListGlobalMerchantProgramFeeSchedulesHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName(
-			"ListGlobalMerchantProgramFeeSchedulesHandler",
-		)
-
-	ctx, cancel := context.WithTimeout(
-		r.Context(),
-		cfgTimeout,
-	)
-	defer cancel()
-
-	if !app.HasPermission(
-		ctx,
-		actionListMerchantProgramFeeSchedules,
-	) {
-		app.respondWithError(
-			w,
-			errors.New(
-				"forbidden: insufficient permissions",
-			),
-			http.StatusForbidden,
-		)
-		return
-	}
-
-	userID := app.getUserIDFromContext(ctx)
-	if userID == nil {
-		app.respondWithError(
-			w,
-			errors.New(
-				"user ID not found in context",
-			),
-			http.StatusUnauthorized,
-		)
-		return
-	}
-
-	limit, offset, err :=
-		app.parseMerchantProgramFeeSchedulePagination(
-			ctx,
-		)
-	if err != nil {
-		app.respondWithError(
-			w,
-			err,
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	schedules, err := app.Models.
-		MerchantProgramFeeSchedule.
-		ListGlobal(
-			ctx,
-			limit,
-			offset,
-		)
-	if err != nil {
-		logger.Error(
-			"List global merchant program fee schedules failed",
-			"limit",
-			limit,
-			"offset",
-			offset,
-			"error",
-			err,
-		)
-
-		app.respondWithMerchantProgramFeeScheduleModelError(
-			w,
-			err,
-		)
-		return
-	}
-
-	app.auditMerchantProgramFeeScheduleBestEffort(
-		ctx,
-		logger,
-		userID,
-		actionListMerchantProgramFeeSchedules,
-		"List global merchant program fee schedules",
-		"global",
-	)
-
-	app.respondWithJSON(
-		w,
-		http.StatusOK,
-		jsonResponse{
-			Error: false,
-
-			Message: "Global merchant program fee schedules " +
-				"retrieved successfully",
-
-			Data: schedules,
-		},
-	)
-}
 
 // ListMerchantProgramFeeSchedulesByFeeTypeHandler retrieves a bounded page
 // of non-deleted schedules for one canonical fee type.
@@ -1354,7 +1081,7 @@ func (app *Application) ListMerchantProgramFeeSchedulesByFeeTypeHandler(
 // ResolveEffectiveMerchantProgramFeeScheduleHandler resolves the active
 // commercial policy applicable at an optional reference time.
 //
-// Plan-specific-over-global precedence, active-window filtering, and
+// Active-window filtering, and
 // ambiguity detection remain entirely data-owned. This operational lookup is
 // intentionally not audit-logged because billing and fee-calculation flows
 // may invoke it at high frequency.
@@ -1466,18 +1193,6 @@ func (app *Application) ResolveEffectiveMerchantProgramFeeScheduleHandler(
 		return
 	}
 
-	if input.PlanID != nil &&
-		*input.PlanID == uuid.Nil {
-		app.respondWithError(
-			w,
-			errors.New(
-				"plan_id must not be the nil UUID",
-			),
-			http.StatusBadRequest,
-		)
-		return
-	}
-
 	var asOf time.Time
 
 	if input.AsOf != nil {
@@ -1504,7 +1219,6 @@ func (app *Application) ResolveEffectiveMerchantProgramFeeScheduleHandler(
 			ctx,
 			feeType,
 			billingInterval,
-			input.PlanID,
 			asOf,
 		)
 	if err != nil {
@@ -1514,8 +1228,6 @@ func (app *Application) ResolveEffectiveMerchantProgramFeeScheduleHandler(
 			feeType,
 			"billing_interval",
 			billingInterval,
-			"plan_id",
-			input.PlanID,
 			"error",
 			err,
 		)

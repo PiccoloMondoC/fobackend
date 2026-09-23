@@ -1,6 +1,6 @@
 // Package security provides shared authentication and credential-security helpers.
 //
-// sdworkspace/sdbackend/internal/security/password.go
+// focodebase/fobackend/internal/security/password.go
 //
 // GTM:
 //

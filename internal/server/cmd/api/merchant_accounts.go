@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for merchant platform-account lifecycle
 // governance.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_accounts.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_accounts.go
 //
 // GTM:
 //
@@ -18,12 +18,10 @@
 //	Keep compiling.
 //	Keep production-ready.
 //	Preserve exactly one canonical merchant account per merchant.
-//	Preserve merchant ownership immutability.
-//	Preserve pending-only account creation.
+//	Preserve principal ownership immutability.
 //	Preserve explicit account lifecycle operations.
 //	Preserve database-owned lifecycle timestamps.
 //	Preserve onboarded_at as the original onboarding milestone.
-//	Preserve initial_plan_id as historical onboarding context only.
 //	Preserve separation between closure, soft deletion, restoration, and
 //	permanent deletion.
 //	Preserve privileged authorization and audit coverage.
@@ -50,7 +48,6 @@ import (
 const (
 	merchantAccountEntityType = "merchant_account"
 
-	actionCreateMerchantAccount         = "create_merchant_account"
 	actionReadMerchantAccount           = "read_merchant_account"
 	actionReadDeletedMerchantAccount    = "read_deleted_merchant_account"
 	actionReadMerchantAccountByMerchant = "read_merchant_account_by_merchant"
@@ -64,11 +61,6 @@ const (
 	actionRestoreMerchantAccount        = "restore_merchant_account"
 	actionHardDeleteMerchantAccount     = "hard_delete_merchant_account"
 )
-
-type createMerchantAccountInput struct {
-	MerchantID    uuid.UUID  `json:"merchant_id"`
-	InitialPlanID *uuid.UUID `json:"initial_plan_id,omitempty"`
-}
 
 type merchantAccountByMerchantInput struct {
 	MerchantID uuid.UUID `json:"merchant_id"`
@@ -241,158 +233,6 @@ func (app *Application) auditMerchantAccount(
 	}
 
 	return nil
-}
-
-// CreateMerchantAccountHandler creates the canonical pending merchant account
-// for a merchant.
-func (app *Application) CreateMerchantAccountHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName(
-			"CreateMerchantAccountHandler",
-		)
-
-	ctx, cancel := context.WithTimeout(
-		r.Context(),
-		cfgTimeout,
-	)
-	defer cancel()
-
-	if !app.HasPermission(
-		ctx,
-		actionCreateMerchantAccount,
-	) {
-		app.respondWithError(
-			w,
-			errors.New(
-				"forbidden: insufficient permissions",
-			),
-			http.StatusForbidden,
-		)
-		return
-	}
-
-	userID := app.getUserIDFromContext(ctx)
-	if userID == nil {
-		app.respondWithError(
-			w,
-			errors.New(
-				"user ID not found in context",
-			),
-			http.StatusUnauthorized,
-		)
-		return
-	}
-
-	var input createMerchantAccountInput
-
-	if err := app.readJSON(
-		w,
-		r,
-		&input,
-	); err != nil {
-		app.respondWithError(
-			w,
-			fmt.Errorf(
-				"invalid JSON input: %v",
-				err,
-			),
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	if input.MerchantID == uuid.Nil {
-		app.respondWithError(
-			w,
-			errors.New("merchant ID is required"),
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	if input.InitialPlanID != nil &&
-		*input.InitialPlanID == uuid.Nil {
-		app.respondWithError(
-			w,
-			errors.New(
-				"initial merchant program plan ID cannot be nil UUID",
-			),
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	account, err :=
-		app.Models.MerchantAccount.Insert(
-			ctx,
-			input.MerchantID,
-			input.InitialPlanID,
-		)
-	if err != nil {
-		logger.Error(
-			"Create merchant account failed",
-			"merchant_id",
-			input.MerchantID,
-			"error",
-			err,
-		)
-		app.respondWithError(
-			w,
-			err,
-			merchantAccountHTTPStatus(err),
-		)
-		return
-	}
-
-	if err := app.auditMerchantAccount(
-		ctx,
-		userID,
-		actionCreateMerchantAccount,
-		"Create a merchant account",
-		account.ID.String(),
-	); err != nil {
-		logger.Warn(
-			"Audit logging failed",
-			"merchant_account_id",
-			account.ID,
-			"error",
-			err,
-		)
-		app.respondWithJSON(
-			w,
-			http.StatusPartialContent,
-			jsonResponse{
-				Error: false,
-				Message: "Merchant account created, " +
-					"but audit logging failed",
-				Data: account,
-			},
-		)
-		return
-	}
-
-	logger.Info(
-		"Merchant account created",
-		"merchant_account_id",
-		account.ID,
-		"merchant_id",
-		account.MerchantID,
-	)
-
-	app.respondWithJSON(
-		w,
-		http.StatusCreated,
-		jsonResponse{
-			Error: false,
-			Message: "Merchant account created " +
-				"successfully",
-			Data: account,
-		},
-	)
 }
 
 // GetMerchantAccountByIDHandler retrieves a non-deleted merchant account by

@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for merchant
 // billing accounts.
 //
-// sdworkspace/sdbackend/internal/data/merchant_billing_accounts.go
+// focodebase/fobackend/internal/data/merchant_billing_accounts.go
 //
 // GTM:
 //

@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for privileged merchant-invoice-item
 // commercial-history and reconciliation reads.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_invoice_items.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_invoice_items.go
 //
 // GTM:
 //

@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for databases and other entities.
 //
-// sdworkspace/sdbackend/internal/data/database.go
+// focodebase/fobackend/internal/data/database.go
 //
 // GTM:
 //
@@ -33,12 +33,6 @@
 //	Block deployment if this file breaks build, database connectivity,
 //	schema creation, timestamp governance, lifecycle constraints,
 //	or Future Offering v1 persistence integrity.
-//
-// DEFERRED Rule:
-//
-//	DEFERRED schema may remain created and compile-safe, but it must not drive
-//	v1 route work, UI expansion, service expansion, test priority, or release
-//	blocking unless it breaks shared database initialization.
 package data
 
 import (
@@ -241,83 +235,6 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	END;
 	$$ LANGUAGE plpgsql;
 
-
-	-- ===============================================================
-	-- Trend-only editorial metadata enforcement
-	-- CE patch 1: ensure_offer_is_trend now filters deleted_at IS NULL
-	-- and uses the same "does not exist or is deleted" message pattern
-	-- as ensure_offer_type for consistency.
-	-- ===============================================================
-	CREATE OR REPLACE FUNCTION public.ensure_offer_is_trend(p_offer_id UUID)
-	RETURNS VOID AS $$
-	DECLARE
-		v_type TEXT;
-	BEGIN
-		SELECT type INTO v_type
-		FROM public.offers
-		WHERE id = p_offer_id
-		  AND deleted_at IS NULL;
-
-		IF NOT FOUND THEN
-			RAISE EXCEPTION 'offer "%" does not exist or is deleted', p_offer_id;
-		END IF;
-
-		IF v_type <> 'trend' THEN
-			RAISE EXCEPTION 'offer "%" is type "%", but only trend offers may carry this editorial metadata', p_offer_id, v_type;
-		END IF;
-	END;
-	$$ LANGUAGE plpgsql;
-
-	CREATE OR REPLACE FUNCTION public.enforce_trend_only_offer_metadata()
-	RETURNS TRIGGER AS $$
-	BEGIN
-		PERFORM public.ensure_offer_is_trend(NEW.offer_id);
-		RETURN NEW;
-	END;
-	$$ LANGUAGE plpgsql;
-
-	-- ===============================================================
-	-- Offer type enforcement helpers
-	-- ===============================================================
-	CREATE OR REPLACE FUNCTION public.ensure_offer_type(
-		p_offer_id UUID,
-		p_expected_type TEXT
-	)
-	RETURNS VOID AS $$
-	DECLARE
-		v_type TEXT;
-	BEGIN
-		SELECT type INTO v_type
-		FROM public.offers
-		WHERE id = p_offer_id
-		  AND deleted_at IS NULL;
-
-		IF NOT FOUND THEN
-			RAISE EXCEPTION 'offer "%" does not exist or is deleted', p_offer_id;
-		END IF;
-
-		IF v_type <> p_expected_type THEN
-			RAISE EXCEPTION 'offer "%" is type "%", expected "%"', p_offer_id, v_type, p_expected_type;
-		END IF;
-	END;
-	$$ LANGUAGE plpgsql;
-
-	CREATE OR REPLACE FUNCTION public.enforce_deal_offer()
-	RETURNS TRIGGER AS $$
-	BEGIN
-		PERFORM public.ensure_offer_type(NEW.offer_id, 'deal');
-		RETURN NEW;
-	END;
-	$$ LANGUAGE plpgsql;
-
-	CREATE OR REPLACE FUNCTION public.enforce_trend_offer()
-	RETURNS TRIGGER AS $$
-	BEGIN
-		PERFORM public.ensure_offer_type(NEW.offer_id, 'trend');
-		RETURN NEW;
-	END;
-	$$ LANGUAGE plpgsql;
-
 	-- ===============================================================
 	-- User-handle helpers
 	-- ===============================================================
@@ -433,7 +350,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
 		CONSTRAINT chk_global_handles_entity_type
-			CHECK (entity_type IN ('user', 'brand', 'merchant')),
+			CHECK (entity_type IN ('user', 'merchant')),
 
 		CONSTRAINT chk_global_handles_lowercase
 			CHECK (handle = LOWER(TRIM(handle))),
@@ -698,390 +615,27 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 
 	-- ===============================================================
-	-- User wallets
-	-- DEFERRED: Non-v1 wallet/rewards/account-balance infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, handlers, services,
-	-- UI, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS user_wallets (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		wallet_type TEXT NOT NULL CHECK (wallet_type IN ('rewards', 'gift_card', 'cash', 'merchant_balance')),
-		unit_code TEXT NOT NULL DEFAULT 'SAGR_POINTS',
-		balance NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (balance >= 0),
-		lifetime_earned NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (lifetime_earned >= 0),
-		status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive', 'suspended', 'closed')),
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		UNIQUE (user_id, wallet_type, unit_code)
-	);
-
-	CREATE TABLE IF NOT EXISTS wallet_ledger_entries (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		wallet_id UUID NOT NULL REFERENCES user_wallets(id) ON DELETE CASCADE,
-		entry_type TEXT NOT NULL CHECK (entry_type IN (
-			'earn',
-			'redeem',
-			'expire',
-			'reverse',
-			'adjustment',
-			'hold',
-			'release'
-		)),
-		amount NUMERIC(19,4) NOT NULL CHECK (amount > 0),
-		status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
-			'pending',
-			'confirmed',
-			'reversed',
-			'cancelled'
-		)),
-		unit_code TEXT NOT NULL DEFAULT 'SAGR_POINTS',
-		reference_type TEXT,
-		reference_id UUID,
-		description TEXT,
-		available_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_wallet_ledger_entries_wallet_id
-		ON wallet_ledger_entries(wallet_id, created_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_user_wallets_user_type_unit_active
-		ON user_wallets(user_id, wallet_type, unit_code)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_wallets_status_active
-		ON user_wallets(status, updated_at DESC)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_wallet_ledger_entries_status
-		ON wallet_ledger_entries(status, created_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_wallet_ledger_entries_reference
-		ON wallet_ledger_entries(reference_type, reference_id)
-		WHERE reference_type IS NOT NULL AND reference_id IS NOT NULL;
-
-	-- ===============================================================
-	-- DEFERRED: User Dashboards / Dashboard Reports / Dashboard Templates
-	-- Non-v1 consumer dashboard infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS user_dashboards (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		user_type TEXT NOT NULL CHECK (user_type IN ('customer', 'merchant')),
-		name TEXT NOT NULL DEFAULT '',
-		description TEXT,
-		layout JSONB NOT NULL DEFAULT '{}'::jsonb,
-		widgets JSONB NOT NULL DEFAULT '[]'::jsonb,
-		filters JSONB NOT NULL DEFAULT '{}'::jsonb,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE TABLE IF NOT EXISTS user_dashboard_reports (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		report_id UUID NOT NULL,
-		total_dashboards INTEGER NOT NULL CHECK (total_dashboards >= 0),
-		dashboards_with_widgets INTEGER NOT NULL CHECK (dashboards_with_widgets >= 0),
-		user_type TEXT NOT NULL DEFAULT 'admin',
-		generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE TABLE IF NOT EXISTS dashboard_templates (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name TEXT UNIQUE NOT NULL,
-		description TEXT,
-		layout JSONB NOT NULL DEFAULT '{}'::jsonb,
-		widgets JSONB NOT NULL DEFAULT '[]'::jsonb,
-		filters JSONB NOT NULL DEFAULT '{}'::jsonb,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_dashboard_templates_name
-		ON dashboard_templates(name);
-
-	CREATE TABLE IF NOT EXISTS user_dashboard_templates (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		dashboard_template_id UUID NOT NULL REFERENCES dashboard_templates(id) ON DELETE CASCADE,
-		assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		UNIQUE (user_id, dashboard_template_id)
-	);
-
-	-- ===============================================================
-	-- DEFERRED: User Settings
-	-- Non-v1 user preference and notification channel infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS user_settings (
-		user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-		preferred_channel_id UUID NOT NULL REFERENCES notification_channels(id) ON DELETE RESTRICT,
-		marketing_notifications BOOLEAN NOT NULL DEFAULT TRUE,
-		security_notifications BOOLEAN NOT NULL DEFAULT TRUE,
-		privacy_data_sharing BOOLEAN NOT NULL DEFAULT FALSE,
-		preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
-	);
-
-	-- ===============================================================
-	-- DEFERRED: Affiliate Programs
-	-- Non-v1 present-commerce / affiliate-network infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS affiliate_programs (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name CITEXT UNIQUE NOT NULL,
-		website TEXT NOT NULL,
-		api_endpoint TEXT,
-		api_auth_method TEXT NOT NULL DEFAULT 'None'
-			CHECK (api_auth_method IN ('APIKey', 'None')),
-		api_key_encrypted BYTEA,
-		api_key_key_id TEXT,
-		api_key_last_rotated_at TIMESTAMPTZ,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		CONSTRAINT chk_affiliate_programs_api_key_storage
-			CHECK (
-				(api_auth_method = 'APIKey' AND api_key_encrypted IS NOT NULL AND api_key_key_id IS NOT NULL)
-				OR
-				(api_auth_method = 'None' AND api_key_encrypted IS NULL AND api_key_key_id IS NULL AND api_key_last_rotated_at IS NULL)
-			)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_affiliate_programs_active_name
-		ON affiliate_programs(name)
-		WHERE deleted_at IS NULL;
-
-	CREATE TABLE IF NOT EXISTS merchant_types (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name TEXT UNIQUE NOT NULL,
-		description TEXT NOT NULL,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	-- ===============================================================
-	-- DEFERRED: Platforms
-	-- Non-v1 merchant platform taxonomy infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS platforms (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name CITEXT UNIQUE NOT NULL,
-		description TEXT,
-		website TEXT,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	-- ===============================================================
 	-- Merchants
 	-- ===============================================================
+	-- Canonical development/pre-production definitions for the M01 merchant
+	-- onboarding slice. Apply by correcting the canonical CREATE TABLE definitions
+	-- and rebuilding the development database; do not accumulate ALTER TABLE drift.
+
 	CREATE TABLE IF NOT EXISTS merchants (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_type_id UUID NOT NULL REFERENCES merchant_types(id) ON DELETE RESTRICT,
-		name CITEXT UNIQUE NOT NULL,
-		display_name TEXT NOT NULL,
-		slug TEXT UNIQUE NOT NULL,
+
+		name CITEXT NOT NULL,
+		display_name TEXT,
 		logo_url TEXT,
 		website TEXT,
-		platform_id UUID REFERENCES platforms(id) ON DELETE SET NULL,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
 
-	DROP TRIGGER IF EXISTS normalize_merchants_slug_trigger ON public.merchants;
-	CREATE TRIGGER normalize_merchants_slug_trigger
-	BEFORE INSERT OR UPDATE OF slug ON public.merchants
-	FOR EACH ROW EXECUTE FUNCTION public.normalize_slug();
-
-	CREATE INDEX IF NOT EXISTS idx_merchants_active_slug
-		ON merchants(slug)
-		WHERE deleted_at IS NULL;
-
-	-- ===============================================================
-	-- DEFERRED: Merchant Application Status / Merchant Applications
-	-- Non-v1 affiliate program application workflow infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS merchant_application_status (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name TEXT UNIQUE NOT NULL,
-		description TEXT NOT NULL,
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_merchant_application_status_name
-		ON merchant_application_status(name);
-
-	-- CE patch: seed the 'pending' status row inside CreateTables so that
-	-- pending_merchant_app_status_id() is never called on an empty table.
-	-- ON CONFLICT makes this idempotent on repeated startup.
-	INSERT INTO merchant_application_status (
-		name,
-		description,
-		is_active
-	)
-	VALUES (
-		'pending',
-		'Merchant application has been submitted and is awaiting review.',
-		TRUE
-	)
-	ON CONFLICT (name) DO UPDATE
-	SET
-		description = EXCLUDED.description,
-		is_active = TRUE,
-		updated_at = NOW();
-
-	CREATE OR REPLACE FUNCTION public.pending_merchant_app_status_id()
-	RETURNS UUID AS $$
-	DECLARE
-		v UUID;
-	BEGIN
-		SELECT id INTO STRICT v
-		FROM public.merchant_application_status
-		WHERE name = 'pending'
-		  AND is_active = TRUE;
-		RETURN v;
-	END;
-	$$ LANGUAGE plpgsql STABLE;
-
-	CREATE TABLE IF NOT EXISTS merchant_applications (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE RESTRICT,
-		affiliate_program_id UUID NOT NULL REFERENCES affiliate_programs(id) ON DELETE RESTRICT,
-		status_id UUID NOT NULL DEFAULT public.pending_merchant_app_status_id()
-			REFERENCES merchant_application_status(id) ON DELETE RESTRICT,
-		deleted_at TIMESTAMPTZ,
-		applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		CONSTRAINT chk_merchant_applications_deleted_after_applied
-			CHECK (deleted_at IS NULL OR deleted_at >= applied_at)
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_merchant_applications_active_merchant_program
-		ON merchant_applications(merchant_id, affiliate_program_id)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_applications_active_status_applied_at
-		ON merchant_applications(status_id, applied_at DESC)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_applications_merchant_id
-		ON merchant_applications(merchant_id);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_applications_affiliate_program_id
-		ON merchant_applications(affiliate_program_id);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_applications_deleted_at
-		ON merchant_applications(deleted_at);
-
-	-- ===============================================================
-	-- DEFERRED: Merchant Affiliate Programs
-	-- Non-v1 affiliate program membership infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS merchant_affiliate_programs (
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		affiliate_program_id UUID NOT NULL REFERENCES affiliate_programs(id) ON DELETE CASCADE,
 		deleted_at TIMESTAMPTZ,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		PRIMARY KEY (merchant_id, affiliate_program_id)
+
+		CONSTRAINT ux_merchants_name UNIQUE (name)
 	);
 
-	-- ===============================================================
-	-- DEFERRED: User Merchant Follows
-	-- Non-v1 merchant follow/unfollow consumer relationship infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS user_merchant_follows (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		followed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		unfollowed_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_user_merchant_follows_unfollowed_deleted_pair
-			CHECK (
-				(deleted_at IS NULL AND unfollowed_at IS NULL)
-				OR
-				(deleted_at IS NOT NULL AND unfollowed_at IS NOT NULL)
-			),
-
-		CONSTRAINT chk_user_merchant_follows_unfollowed_after_followed
-			CHECK (
-				unfollowed_at IS NULL
-				OR unfollowed_at >= followed_at
-			)
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_user_merchant_follows_active_user_merchant
-		ON user_merchant_follows(user_id, merchant_id)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_merchant_follows_user_active
-		ON user_merchant_follows(user_id, followed_at DESC)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_merchant_follows_merchant_active
-		ON user_merchant_follows(merchant_id, followed_at DESC)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_merchant_follows_unfollowed
-		ON user_merchant_follows(unfollowed_at DESC)
-		WHERE deleted_at IS NOT NULL;
-
-	-- ===============================================================
-	-- Brands
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS brands (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name CITEXT UNIQUE NOT NULL,
-		brand_handle CITEXT UNIQUE,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	-- ===============================================================
-	-- DEFERRED: Market Segments
-	-- Non-v1 product market classification infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS market_segments (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name CITEXT NOT NULL UNIQUE,
-		description TEXT,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
 
 	CREATE TABLE IF NOT EXISTS departments (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1124,593 +678,170 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE INDEX IF NOT EXISTS idx_categories_department_id ON categories(department_id);
 	CREATE INDEX IF NOT EXISTS idx_categories_deleted_at ON categories(deleted_at);
 
-	-- ===============================================================
-	-- DEFERRED: Products / Merchant Products
-	-- Non-v1 product catalog and merchant product linkage infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS products (
+
+	-- Merchant Future Offerings
+	CREATE TABLE IF NOT EXISTS merchant_future_offerings (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name CITEXT NOT NULL,
-		brand_id UUID REFERENCES brands(id) ON DELETE SET NULL,
-		market_segment_id UUID REFERENCES market_segments(id) ON DELETE SET NULL,
-		category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
-		upc TEXT UNIQUE,
-		sku TEXT,
-		description TEXT,
-		product_line TEXT,
-		is_comparable BOOLEAN NOT NULL DEFAULT FALSE,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
 
-	CREATE INDEX IF NOT EXISTS idx_products_sku
-		ON products(sku);
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-	CREATE TABLE IF NOT EXISTS merchant_products (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		merchant_sku TEXT,
-		merchant_product_url TEXT,
-		merchant_title TEXT,
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		UNIQUE (merchant_id, product_id),
-		UNIQUE (merchant_id, merchant_sku)
-	);
+		/*
+		* Merchant-owned project identity.
+		*
+		* project_name is required from creation because every Future Offering
+		* is a merchant project and must have enough identity to be resumed.
+		*/
+		project_name TEXT NOT NULL
+			CHECK (btrim(project_name) <> ''),
 
-	-- ===============================================================
-	-- DEFERRED: Coupon Statuses / Offer Statuses
-	-- Non-v1 present-commerce status vocabulary infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS coupon_statuses (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name TEXT UNIQUE NOT NULL,
-		description TEXT NOT NULL,
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE TABLE IF NOT EXISTS offer_statuses (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name TEXT UNIQUE NOT NULL,
-		description TEXT NOT NULL,
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	-- ===============================================================
-	-- Offers
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS offers (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_key TEXT NOT NULL UNIQUE,
-
-		type TEXT NOT NULL CHECK (type IN ('deal', 'trend')),
-
-		title CITEXT NOT NULL,
-		description TEXT,
-		image_url TEXT CHECK (image_url IS NULL OR image_url ~* '^https?://'),
-
-		-- Canonical public destination for this offer.
-		-- For Deals this may resolve to outbound commerce.
-		-- For Trends this should normally resolve to the Platform Trend page/action flow.
-		destination_url TEXT NOT NULL CHECK (destination_url ~* '^https?://'),
-
-		price NUMERIC(19,4),
-		starting_price NUMERIC(19,4)
-			CHECK (starting_price IS NULL OR starting_price >= 0),
-		list_price NUMERIC(19,4),
-		currency CHAR(3) NOT NULL DEFAULT 'USD' CHECK (currency ~ '^[A-Z]{3}$'),
-		discount_percent NUMERIC(5,2)
-			CHECK (discount_percent IS NULL OR discount_percent BETWEEN 0 AND 100),
-
-		coupon_code TEXT,
-
-		product_id UUID REFERENCES products(id) ON DELETE SET NULL,
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		category_id UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
-
-		avg_rating NUMERIC(3,2) NOT NULL DEFAULT 0 CHECK (avg_rating BETWEEN 0 AND 5),
-		is_editorial_approved BOOLEAN NOT NULL DEFAULT FALSE,
-		status_id UUID REFERENCES offer_statuses(id) ON DELETE RESTRICT,
-
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		deleted_at TIMESTAMPTZ,
-		expires_at TIMESTAMPTZ,
-		published_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT chk_offers_price_non_negative
-			CHECK (price IS NULL OR price >= 0),
-
-		CONSTRAINT chk_offers_list_price_non_negative
-			CHECK (list_price IS NULL OR list_price >= 0),
-
-		CONSTRAINT chk_offers_price_order
+		/*
+		* Authoritative Future Offering facts.
+		*
+		* These may be incomplete while status = 'draft'. Submission readiness
+		* is therefore not expressed by unconditional NOT NULL constraints here.
+		*/
+		title TEXT
 			CHECK (
-				price IS NULL OR
-				list_price IS NULL OR
-				list_price >= price
-			)
-	);
+				title IS NULL
+					OR btrim(title) <> ''
+			),
 
-	CREATE INDEX IF NOT EXISTS idx_offers_merchant_id
-		ON offers(merchant_id);
+		summary TEXT NOT NULL DEFAULT '',
 
-	CREATE INDEX IF NOT EXISTS idx_offers_type
-		ON offers(type);
-
-	CREATE INDEX IF NOT EXISTS idx_offers_category_id
-		ON offers(category_id);
-
-	CREATE INDEX IF NOT EXISTS idx_offers_active_visible
-		ON offers(is_active)
-		WHERE is_active = TRUE AND deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_offers_expires_at
-		ON offers(expires_at);
-
-	CREATE OR REPLACE FUNCTION public.normalize_offer_key()
-	RETURNS TRIGGER AS $$
-	BEGIN
-		NEW.offer_key := LOWER(
-			REGEXP_REPLACE(
-				REGEXP_REPLACE(TRIM(NEW.offer_key), '\s+', '-', 'g'),
-				'[^a-z0-9\-]', '', 'g'
-			)
-		);
-		RETURN NEW;
-	END;
-	$$ LANGUAGE plpgsql;
-
-	DROP TRIGGER IF EXISTS normalize_offer_key_trigger ON public.offers;
-	CREATE TRIGGER normalize_offer_key_trigger
-	BEFORE INSERT OR UPDATE OF offer_key ON public.offers
-	FOR EACH ROW EXECUTE FUNCTION public.normalize_offer_key();
-
-
-	CREATE TABLE IF NOT EXISTS value_tags (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		slug CITEXT NOT NULL UNIQUE,
-		name CITEXT NOT NULL UNIQUE,
-		description TEXT DEFAULT '',
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT chk_value_tags_slug_not_blank
-			CHECK (btrim(slug::text) <> ''),
-		CONSTRAINT chk_value_tags_name_not_blank
-			CHECK (btrim(name::text) <> ''),
-		CONSTRAINT chk_value_tags_slug_format
-			CHECK (slug::text ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_value_tags_is_active
-		ON value_tags(is_active);
-
-	CREATE TABLE IF NOT EXISTS audiences (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		slug CITEXT NOT NULL UNIQUE,
-		name CITEXT NOT NULL UNIQUE,
-		description TEXT DEFAULT '',
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT chk_audiences_slug_not_blank
-			CHECK (btrim(slug::text) <> ''),
-		CONSTRAINT chk_audiences_name_not_blank
-			CHECK (btrim(name::text) <> ''),
-		CONSTRAINT chk_audiences_slug_format
-			CHECK (slug::text ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_audiences_is_active
-		ON audiences(is_active);
-
-	-- ===============================================================
-	-- DEFERRED: Seasonal Relevances
-	-- Non-v1 editorial seasonal labeling vocabulary infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS seasonal_relevances (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		-- Stable machine-safe identifier used in code, URLs, filtering, and API payloads.
-		slug CITEXT NOT NULL UNIQUE,
-
-		-- Human-readable label shown in UI/admin tools.
-		name CITEXT NOT NULL UNIQUE,
-
-		-- Optional explanation for editors/admins.
 		description TEXT,
 
-		-- Allows soft-retiring a vocabulary item without deleting history.
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
+		category_id UUID
+			REFERENCES categories(id)
+			ON DELETE RESTRICT,
 
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		offering_type TEXT
+			CHECK (
+				offering_type IS NULL
+					OR offering_type IN (
+						'product',
+						'service',
+						'event',
+						'venue',
+						'development',
+						'experience'
+					)
+			),
 
-		CONSTRAINT chk_seasonal_relevances_slug_not_blank
-			CHECK (btrim(slug::text) <> ''),
-		CONSTRAINT chk_seasonal_relevances_name_not_blank
-			CHECK (btrim(name::text) <> ''),
-		CONSTRAINT chk_seasonal_relevances_slug_format
-			CHECK (slug::text ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')
-	);
+		/*
+		* How the Future Offering is intended to become available.
+		*
+		* This is deliberately separate from:
+		*   - engagement options such as waitlist or preorder intent; and
+		*   - access policy such as invite-only.
+		*/
+		release_strategy TEXT
+			CHECK (
+				release_strategy IS NULL
+					OR release_strategy IN (
+						'drop',
+						'scheduled',
+						'rolling',
+						'limited_quantity'
+					)
+			),
 
-	CREATE INDEX IF NOT EXISTS idx_seasonal_relevances_is_active
-		ON seasonal_relevances(is_active);
+		/*
+		* Who may participate in the Future Offering.
+		*
+		* Access policy is distinct from release strategy and engagement
+		* capabilities.
+		*/
+		access_policy TEXT
+			CHECK (
+				access_policy IS NULL
+					OR access_policy IN (
+						'public',
+						'invite_only',
+						'approval_required'
+					)
+			),
 
-	CREATE TABLE IF NOT EXISTS offer_videos (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		video_url TEXT NOT NULL CHECK (video_url ~* '^https?://'),
-		caption TEXT,
-		sort_order INT NOT NULL DEFAULT 0,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
+		status TEXT NOT NULL DEFAULT 'draft'
+			CHECK (
+				status IN (
+					'draft',
+					'submitted',
+					'trust_review',
+					'changes_requested',
+					'approved',
+					'published',
+					'paused',
+					'expired',
+					'rejected',
+					'unpublished',
+					'archived'
+				)
+			),
 
-	CREATE TABLE IF NOT EXISTS offer_value_tags (
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		value_tag_id UUID NOT NULL REFERENCES value_tags(id) ON DELETE CASCADE,
-		assigned_by_type TEXT
-			CHECK (assigned_by_type IS NULL OR assigned_by_type IN ('editor', 'merchant', 'automation')),
-		assigned_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
-		confidence_score NUMERIC(5,4)
-			CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1)),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		PRIMARY KEY (offer_id, value_tag_id),
-		CONSTRAINT chk_offer_value_tags_confidence_requires_automation
-			CHECK (confidence_score IS NULL OR assigned_by_type = 'automation')
-	);
+		/*
+		* Planned availability.
+		*
+		* NULL is valid while the Future Offering is incomplete or where the
+		* merchant has not yet established an authoritative launch time.
+		*/
+		launch_at TIMESTAMPTZ,
 
-	CREATE TABLE IF NOT EXISTS offer_target_audiences (
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		audience_id UUID NOT NULL REFERENCES audiences(id) ON DELETE CASCADE,
-		assigned_by_type TEXT
-			CHECK (assigned_by_type IS NULL OR assigned_by_type IN ('editor', 'merchant', 'automation')),
-		assigned_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
-		confidence_score NUMERIC(5,4)
-			CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1)),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		PRIMARY KEY (offer_id, audience_id),
-		CONSTRAINT chk_offer_target_audiences_confidence_requires_automation
-			CHECK (confidence_score IS NULL OR assigned_by_type = 'automation')
-	);
+		/*
+		* Lifecycle occurrence timestamps.
+		*
+		* These record facts that have occurred. They are not substitutes for
+		* the corresponding Future Offering event/history records.
+		*/
+		submitted_at TIMESTAMPTZ,
+		approved_at TIMESTAMPTZ,
+		published_at TIMESTAMPTZ,
+		rejected_at TIMESTAMPTZ,
+		unpublished_at TIMESTAMPTZ,
+		archived_at TIMESTAMPTZ,
 
-	CREATE TABLE IF NOT EXISTS offer_seasonal_relevances (
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		seasonal_relevance_id UUID NOT NULL REFERENCES seasonal_relevances(id) ON DELETE CASCADE,
-		assigned_by_type TEXT
-			CHECK (assigned_by_type IS NULL OR assigned_by_type IN ('editor', 'merchant', 'automation')),
-		assigned_by_id UUID REFERENCES users(id) ON DELETE SET NULL,
-		confidence_score NUMERIC(5,4)
-			CHECK (confidence_score IS NULL OR (confidence_score >= 0 AND confidence_score <= 1)),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		PRIMARY KEY (offer_id, seasonal_relevance_id),
-		CONSTRAINT chk_offer_seasonal_relevances_confidence_requires_automation
-			CHECK (confidence_score IS NULL OR assigned_by_type = 'automation')
-	);
-
-	DROP TRIGGER IF EXISTS normalize_value_tags_slug_trigger ON public.value_tags;
-	CREATE TRIGGER normalize_value_tags_slug_trigger
-	BEFORE INSERT OR UPDATE OF slug ON public.value_tags
-	FOR EACH ROW EXECUTE FUNCTION public.normalize_slug();
-
-	DROP TRIGGER IF EXISTS normalize_audiences_slug_trigger ON public.audiences;
-	CREATE TRIGGER normalize_audiences_slug_trigger
-	BEFORE INSERT OR UPDATE OF slug ON public.audiences
-	FOR EACH ROW EXECUTE FUNCTION public.normalize_slug();
-
-	DROP TRIGGER IF EXISTS normalize_seasonal_relevances_slug_trigger ON public.seasonal_relevances;
-	CREATE TRIGGER normalize_seasonal_relevances_slug_trigger
-	BEFORE INSERT OR UPDATE OF slug ON public.seasonal_relevances
-	FOR EACH ROW EXECUTE FUNCTION public.normalize_slug();
-
-	DROP TRIGGER IF EXISTS enforce_trend_only_offer_videos ON public.offer_videos;
-	CREATE TRIGGER enforce_trend_only_offer_videos
-	BEFORE INSERT OR UPDATE OF offer_id ON public.offer_videos
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_trend_only_offer_metadata();
-
-	DROP TRIGGER IF EXISTS enforce_trend_only_offer_value_tags ON public.offer_value_tags;
-	CREATE TRIGGER enforce_trend_only_offer_value_tags
-	BEFORE INSERT OR UPDATE OF offer_id ON public.offer_value_tags
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_trend_only_offer_metadata();
-
-	DROP TRIGGER IF EXISTS enforce_trend_only_offer_target_audiences ON public.offer_target_audiences;
-	CREATE TRIGGER enforce_trend_only_offer_target_audiences
-	BEFORE INSERT OR UPDATE OF offer_id ON public.offer_target_audiences
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_trend_only_offer_metadata();
-
-	DROP TRIGGER IF EXISTS enforce_trend_only_offer_seasonal_relevances ON public.offer_seasonal_relevances;
-	CREATE TRIGGER enforce_trend_only_offer_seasonal_relevances
-	BEFORE INSERT OR UPDATE OF offer_id ON public.offer_seasonal_relevances
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_trend_only_offer_metadata();
-
-	-- ===============================================================
-	-- DEFERRED: Coupons / Coupon Flags / Coupon Usages
-	-- Non-v1 present-commerce coupon lifecycle infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS coupons (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID REFERENCES offers(id) ON DELETE CASCADE,
-		coupon_status_id UUID REFERENCES coupon_statuses(id) ON DELETE SET NULL,
-		code TEXT NOT NULL,
-		discount_type TEXT NOT NULL CHECK (discount_type IN ('percentage', 'fixed', 'rebate')),
-		discount_value NUMERIC(19,4) NOT NULL CHECK (discount_value > 0),
-		min_purchase_amount NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (min_purchase_amount >= 0),
-		start_date TIMESTAMPTZ NOT NULL,
-		end_date TIMESTAMPTZ,
-		affiliate_url TEXT,
-		rejection_reason TEXT,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		CONSTRAINT chk_coupons_dates CHECK (end_date IS NULL OR end_date > start_date)
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_coupons_active_code_offer
-		ON coupons(offer_id, code)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_coupons_active_offer_id_created_at
-		ON coupons(offer_id, created_at DESC)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_coupons_active_status_start_end
-		ON coupons(coupon_status_id, start_date, end_date)
-		WHERE deleted_at IS NULL;
-
-	DROP TRIGGER IF EXISTS enforce_coupons_deal_offer ON public.coupons;
-	CREATE TRIGGER enforce_coupons_deal_offer
-	BEFORE INSERT OR UPDATE OF offer_id ON public.coupons
-	FOR EACH ROW
-	WHEN (NEW.offer_id IS NOT NULL)
-	EXECUTE FUNCTION public.enforce_deal_offer();
-
-	CREATE TABLE IF NOT EXISTS coupon_flags (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
-		reason TEXT NOT NULL,
-		flagged_by UUID REFERENCES users(id) ON DELETE SET NULL,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		resolved_at TIMESTAMPTZ,
-		resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
-		resolution_notes TEXT,
-		resolution_status TEXT CHECK (resolution_status IS NULL OR resolution_status IN ('pending', 'resolved', 'dismissed'))
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_coupon_flags_coupon_id ON coupon_flags(coupon_id);
-
-	CREATE TABLE IF NOT EXISTS coupon_usages (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		coupon_id UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
-		action TEXT NOT NULL CHECK (action IN ('clicked', 'redeemed')),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_coupon_usages_coupon_id ON coupon_usages(coupon_id);
-	CREATE INDEX IF NOT EXISTS idx_coupon_usages_user_id ON coupon_usages(user_id);
-
-	-- ===============================================================
-	-- DEFERRED: Offer Clicks / Offer Conversions
-	-- Non-v1 present-commerce click and conversion tracking infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS offer_clicks (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-		ip_address TEXT,
-		user_agent TEXT,
-		referrer TEXT,
-		clicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_offer_clicks_offer_time ON offer_clicks(offer_id, clicked_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_offer_clicks_time ON offer_clicks(clicked_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_offer_clicks_user_id ON offer_clicks(user_id);
-
-	CREATE TABLE IF NOT EXISTS offer_conversions (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		ip_address TEXT,
-		user_agent TEXT,
-		referrer TEXT,
-		converted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_offer_conversions_offer_time ON offer_conversions(offer_id, converted_at DESC);
-	CREATE INDEX IF NOT EXISTS idx_offer_conversions_time ON offer_conversions(converted_at DESC);
-
-	-- ===============================================================
-	-- DEFERRED: Price Drop Subscriptions
-	-- Non-v1 deal price alert subscription infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS price_drop_subscriptions (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		threshold NUMERIC(19,4) NOT NULL CHECK (threshold > 0),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		UNIQUE (user_id, offer_id)
-	);
-
-	DROP TRIGGER IF EXISTS enforce_price_drop_subscriptions_deal_offer ON public.price_drop_subscriptions;
-	CREATE TRIGGER enforce_price_drop_subscriptions_deal_offer
-	BEFORE INSERT OR UPDATE OF offer_id ON public.price_drop_subscriptions
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_deal_offer();
-
-	-- ===============================================================
-	-- DEFERRED: Offer Flags
-	-- Non-v1 offer moderation and flagging infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS offer_flags (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		reason TEXT NOT NULL,
-		flagged_by UUID REFERENCES users(id) ON DELETE SET NULL,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		resolved_at TIMESTAMPTZ,
-		resolved_by UUID REFERENCES users(id) ON DELETE SET NULL,
-		resolution_notes TEXT,
-		resolution_status TEXT CHECK (resolution_status IS NULL OR resolution_status IN ('pending', 'resolved', 'dismissed'))
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_offer_flags_offer_id ON offer_flags(offer_id);
-
-	-- ===============================================================
-	-- DEFERRED: Offer Price History
-	-- Non-v1 deal price tracking and history infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS offer_price_history (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		price NUMERIC(19,4) NOT NULL CHECK (price >= 0),
-		recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	-- CE patch 2: corrected index — was missing column specification entirely.
-	CREATE INDEX IF NOT EXISTS idx_offer_price_history_offer_id
-		ON offer_price_history(offer_id, recorded_at DESC);
-
-
-	-- ===============================================================
-	-- DEFERRED: User Wishlists / User Favorites
-	-- Non-v1 consumer deal and offer affinity infrastructure.
-	-- user_wishlists: deal offers only (purchase intent).
-	-- user_favorites: unrestricted by offer type (affinity, not commerce).
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS user_wishlists (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		list_name TEXT NOT NULL DEFAULT 'default',
-		notes TEXT,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-		UNIQUE (user_id, offer_id, list_name)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_user_wishlists_user_active
-		ON user_wishlists(user_id, created_at DESC)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_wishlists_offer_active
-		ON user_wishlists(offer_id)
-		WHERE deleted_at IS NULL;
-
-	DROP TRIGGER IF EXISTS enforce_user_wishlists_deal_offer
-		ON public.user_wishlists;
-
-	CREATE TRIGGER enforce_user_wishlists_deal_offer
-	BEFORE INSERT OR UPDATE OF offer_id ON public.user_wishlists
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_deal_offer();
-
-
-	CREATE TABLE IF NOT EXISTS user_favorites (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		deleted_at TIMESTAMPTZ,
-		favorited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_user_favorites_active_user_offer
-		ON user_favorites(user_id, offer_id)
-		WHERE deleted_at IS NULL;
-
-	-- ===============================================================
-	-- Merchant Program Plans / Entitlements 
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS merchant_program_plans (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		code TEXT UNIQUE NOT NULL CHECK (code IN (
-			'standard',
-			'premium',
-			'enterprise'
-		)),
-		name TEXT NOT NULL,
-		description TEXT NOT NULL DEFAULT '',
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		deleted_at TIMESTAMPTZ
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_program_plans_active
-		ON merchant_program_plans(code)
-		WHERE deleted_at IS NULL AND is_active = TRUE;
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_merchant_status_updated
+	ON merchant_future_offerings (
+		merchant_id,
+		status,
+		updated_at DESC,
+		id DESC
+	)
+	WHERE deleted_at IS NULL;
 
-	
-	-- Merchant Program Entitlements
-	CREATE TABLE IF NOT EXISTS merchant_program_entitlements (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		plan_id UUID NOT NULL REFERENCES merchant_program_plans(id) ON DELETE CASCADE,
-		entitlement_code TEXT NOT NULL CHECK (entitlement_code IN (
-			'launch_campaign_access',
-			'future_offering_access'
-		)),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		UNIQUE (plan_id, entitlement_code)
-	);
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_merchant_updated
+	ON merchant_future_offerings (
+		merchant_id,
+		updated_at DESC,
+		id DESC
+	)
+	WHERE deleted_at IS NULL;
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_program_entitlements_plan
-		ON merchant_program_entitlements(plan_id);
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_category_status
+	ON merchant_future_offerings (
+		category_id,
+		status,
+		launch_at
+	)
+	WHERE deleted_at IS NULL
+		AND category_id IS NOT NULL;
 
-	CREATE OR REPLACE FUNCTION public.ensure_future_offering_includes_campaign()
-	RETURNS TRIGGER AS $$
-	BEGIN
-		IF NEW.entitlement_code = 'future_offering_access' THEN
-			INSERT INTO public.merchant_program_entitlements (
-				plan_id,
-				entitlement_code
-			)
-			VALUES (
-				NEW.plan_id,
-				'launch_campaign_access'
-			)
-			ON CONFLICT (plan_id, entitlement_code) DO NOTHING;
-		END IF;
-
-		RETURN NEW;
-	END;
-	$$ LANGUAGE plpgsql;
-
-	DROP TRIGGER IF EXISTS ensure_future_offering_includes_campaign_trigger
-		ON public.merchant_program_entitlements;
-
-	CREATE TRIGGER ensure_future_offering_includes_campaign_trigger
-	AFTER INSERT ON public.merchant_program_entitlements
-	FOR EACH ROW EXECUTE FUNCTION public.ensure_future_offering_includes_campaign();
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offerings_published
+	ON merchant_future_offerings (
+		published_at DESC
+	)
+	WHERE deleted_at IS NULL
+		AND status = 'published';
 
 
 	-- Merchant Future Offering Service Terms
@@ -2536,32 +1667,8 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	EXECUTE FUNCTION
 		merchant_future_offering_billing_periods_enforce_immutability();
 
-
-	-- =====================================================================
-	-- Merchant Future Offering Payment Periods
-	-- =====================================================================
-	--
-	-- One row represents one authoritative Payment Period within the
-	-- settlement schedule established for a specific Future Offering
-	-- Billing Period.
-	--
-	-- A Payment Period:
-	--   * does not establish the amount owed;
-	--   * is not a payment transaction;
-	--   * is not an invoice;
-	--   * is not a payment method;
-	--   * does not encode provider state;
-	--   * does not inherently mean "installment";
-	--   * may occur before, during, or after the associated Billing Period
-	--     where the governing commercial arrangement permits it.
-	--
-	-- The current non-superseded rows for a Billing Period constitute that
-	-- Billing Period's authoritative Payment Period schedule.
-	-- =====================================================================
-
-
 	-- ===============================================================
-	-- DEFERRED: Merchant Platform Credits / Merchant Platform Credit Eligible Fee Types
+	-- Merchant Platform Credits / Merchant Platform Credit Eligible Fee Types
 	-- Non-v1 merchant credit account and eligibility infrastructure.
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
@@ -2764,178 +1871,12 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
-	-- ===============================================================
-	-- Future-commerce anticipation infrastructure.
-	-- Watchable by consumers.
-	-- ===============================================================
 
-	CREATE TABLE IF NOT EXISTS merchant_future_offerings (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID NOT NULL
-			REFERENCES merchants(id)
-			ON DELETE CASCADE,
-
-		/*
-		* Merchant-owned project identity.
-		*
-		* project_name is required from creation because every Future Offering
-		* is a merchant project and must have enough identity to be resumed.
-		*/
-		project_name TEXT NOT NULL
-			CHECK (btrim(project_name) <> ''),
-
-		/*
-		* Authoritative Future Offering facts.
-		*
-		* These may be incomplete while status = 'draft'. Submission readiness
-		* is therefore not expressed by unconditional NOT NULL constraints here.
-		*/
-		title TEXT
-			CHECK (
-				title IS NULL
-					OR btrim(title) <> ''
-			),
-
-		summary TEXT NOT NULL DEFAULT '',
-
-		description TEXT,
-
-		category_id UUID
-			REFERENCES categories(id)
-			ON DELETE RESTRICT,
-
-		offering_type TEXT
-			CHECK (
-				offering_type IS NULL
-					OR offering_type IN (
-						'product',
-						'service',
-						'event',
-						'venue',
-						'development',
-						'experience'
-					)
-			),
-
-		/*
-		* How the Future Offering is intended to become available.
-		*
-		* This is deliberately separate from:
-		*   - engagement options such as waitlist or preorder intent; and
-		*   - access policy such as invite-only.
-		*/
-		release_strategy TEXT
-			CHECK (
-				release_strategy IS NULL
-					OR release_strategy IN (
-						'drop',
-						'scheduled',
-						'rolling',
-						'limited_quantity'
-					)
-			),
-
-		/*
-		* Who may participate in the Future Offering.
-		*
-		* Access policy is distinct from release strategy and engagement
-		* capabilities.
-		*/
-		access_policy TEXT
-			CHECK (
-				access_policy IS NULL
-					OR access_policy IN (
-						'public',
-						'invite_only',
-						'approval_required'
-					)
-			),
-
-		status TEXT NOT NULL DEFAULT 'draft'
-			CHECK (
-				status IN (
-					'draft',
-					'submitted',
-					'trust_review',
-					'changes_requested',
-					'approved',
-					'published',
-					'paused',
-					'expired',
-					'rejected',
-					'unpublished',
-					'archived'
-				)
-			),
-
-		/*
-		* Planned availability.
-		*
-		* NULL is valid while the Future Offering is incomplete or where the
-		* merchant has not yet established an authoritative launch time.
-		*/
-		launch_at TIMESTAMPTZ,
-
-		/*
-		* Lifecycle occurrence timestamps.
-		*
-		* These record facts that have occurred. They are not substitutes for
-		* the corresponding Future Offering event/history records.
-		*/
-		submitted_at TIMESTAMPTZ,
-		approved_at TIMESTAMPTZ,
-		published_at TIMESTAMPTZ,
-		rejected_at TIMESTAMPTZ,
-		unpublished_at TIMESTAMPTZ,
-		archived_at TIMESTAMPTZ,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
-	);
-
-	CREATE INDEX IF NOT EXISTS
-		idx_merchant_future_offerings_merchant_status_updated
-	ON merchant_future_offerings (
-		merchant_id,
-		status,
-		updated_at DESC,
-		id DESC
-	)
-	WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS
-		idx_merchant_future_offerings_merchant_updated
-	ON merchant_future_offerings (
-		merchant_id,
-		updated_at DESC,
-		id DESC
-	)
-	WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS
-		idx_merchant_future_offerings_category_status
-	ON merchant_future_offerings (
-		category_id,
-		status,
-		launch_at
-	)
-	WHERE deleted_at IS NULL
-		AND category_id IS NOT NULL;
-
-	CREATE INDEX IF NOT EXISTS
-		idx_merchant_future_offerings_published
-	ON merchant_future_offerings (
-		published_at DESC
-	)
-	WHERE deleted_at IS NULL
-		AND status = 'published';
-
-
+	-- Merchant Future Offerings Assets
 	-- CE patch 3: merchant_future_offerings_assets — added updated_at column,
 	-- fixed index to target this table (not the parent), renamed index suffix
 	-- from _launch to _future_offering for clarity.
+
 	CREATE TABLE IF NOT EXISTS merchant_future_offerings_assets (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		future_offering_id UUID NOT NULL REFERENCES merchant_future_offerings(id) ON DELETE CASCADE,
@@ -2958,43 +1899,180 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	CREATE INDEX IF NOT EXISTS idx_merchant_future_offerings_assets_future_offering
 		ON merchant_future_offerings_assets(future_offering_id, display_order);
 
-		
-	CREATE TABLE IF NOT EXISTS merchant_future_offering_engagement_options (
+
+	-- =====================================================================
+	-- Merchant Future Offering Engagement Action Groups
+	-- =====================================================================
+	-- Defines the consumer-selection groups through which a merchant organizes
+	-- the merchant-controlled Engagement Actions available for a Future Offering.
+	--
+	-- Every Future Offering that makes merchant Engagement Actions available
+	-- uses at least one Engagement Action Group. Each available merchant
+	-- Engagement Action belongs to exactly one group.
+	--
+	-- A merchant may use a single group containing all available Engagement
+	-- Actions or multiple groups containing different Engagement Actions.
+	--
+	-- Each group establishes the maximum number of Engagement Actions that a
+	-- consumer may select from that group. A NULL max_selections permits the
+	-- consumer to select any number of the available actions in the group.
+	--
+	-- Group participation is always voluntary. A consumer may bypass any group
+	-- without making a selection; max_selections limits participation where the
+	-- consumer chooses to participate and does not establish a minimum.
+	--
+	-- Quantity does not belong to the group. Quantity capability and permitted
+	-- quantity boundaries belong to the individual Engagement Action.
+	-- =====================================================================
+
+	CREATE TABLE IF NOT EXISTS merchant_future_offering_engagement_action_groups (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
 		future_offering_id UUID NOT NULL
-			REFERENCES merchant_future_offerings(id) ON DELETE CASCADE,
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE CASCADE,
 
-		action_type TEXT NOT NULL CHECK (action_type IN (
-			'watch',
-			'waitlist',
-			'early_access',
-			'preorder'
-		)),
+		name TEXT,
 
-		fulfillment_mode TEXT NOT NULL DEFAULT 'platform_hosted'
-			CHECK (fulfillment_mode IN (
-				'platform_hosted',
-				'merchant_hosted',
-				'disabled'
-			)),
+		display_order INTEGER NOT NULL DEFAULT 0
+			CHECK (display_order >= 0),
 
-		action_url TEXT NOT NULL CHECK (action_url ~* '^https?://'),
+		max_selections INTEGER
+			CHECK (
+				max_selections IS NULL
+				OR max_selections >= 1
+			),
 
-		is_primary BOOLEAN NOT NULL DEFAULT FALSE,
 		is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
-		UNIQUE (future_offering_id, action_type)
+		CONSTRAINT uq_merchant_future_offering_engagement_action_groups_identity
+			UNIQUE (
+				id,
+				future_offering_id
+			)
 	);
 
-	-- CE patch 4: renamed index suffix from _launch to _active.
-	CREATE INDEX IF NOT EXISTS idx_merchant_future_offering_engagement_options_active
-		ON merchant_future_offering_engagement_options(future_offering_id)
-		WHERE is_active = TRUE;
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offering_engagement_action_groups_active
+	ON merchant_future_offering_engagement_action_groups (
+		future_offering_id,
+		display_order,
+		id
+	)
+	WHERE is_active = TRUE;
 
+
+	-- =====================================================================
+	-- Merchant Future Offering Engagement Options
+	-- =====================================================================
+	-- Defines the merchant-controlled Engagement Actions made available for
+	-- a Future Offering.
+	--
+	-- Watch is Platform-owned and is intentionally absent from this table.
+	--
+	-- Every available merchant Engagement Action belongs to exactly one
+	-- Engagement Action Group. The group and Engagement Action must belong
+	-- to the same Future Offering.
+	--
+	-- The merchant determines which Engagement Actions are available and
+	-- which group contains each action. Group-level selection ceilings are
+	-- owned by merchant_future_offering_engagement_action_groups.
+	--
+	-- Where quantity is meaningful to an Engagement Action, the merchant may
+	-- enable quantity and establish the permitted minimum and maximum quantity
+	-- that one participant may indicate for that action.
+	--
+	-- Quantity boundaries govern consumer-indicated anticipated demand only.
+	-- They do not represent inventory, allocation, guaranteed future
+	-- availability, or a merchant commitment to fulfill the indicated quantity.
+	--
+	-- Engineering enforces Future Offering ownership, grouping, quantity
+	-- configuration, and structural integrity. Merchant-facing configuration
+	-- exposes understandable participation choices rather than persistence
+	-- machinery.
+	-- =====================================================================
+
+	CREATE TABLE IF NOT EXISTS merchant_future_offering_engagement_options (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		future_offering_id UUID NOT NULL
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE CASCADE,
+
+		engagement_action_group_id UUID NOT NULL,
+
+		action_type TEXT NOT NULL
+			CHECK (action_type IN (
+				'waitlist',
+				'early_access_request',
+				'beta',
+				'reservation_interest',
+				'preorder_intent'
+			)),
+
+		quantity_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+
+		min_quantity INTEGER,
+
+		max_quantity INTEGER,
+
+		display_order INTEGER NOT NULL DEFAULT 0
+			CHECK (display_order >= 0),
+
+		is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT ux_merchant_future_offering_engagement_options_action
+			UNIQUE (
+				future_offering_id,
+				action_type
+			),
+
+		CONSTRAINT chk_merchant_future_offering_engagement_options_quantity
+			CHECK (
+				(
+					quantity_enabled = FALSE
+					AND min_quantity IS NULL
+					AND max_quantity IS NULL
+				)
+				OR
+				(
+					quantity_enabled = TRUE
+					AND min_quantity IS NOT NULL
+					AND min_quantity >= 1
+					AND (
+						max_quantity IS NULL
+						OR max_quantity >= min_quantity
+					)
+				)
+			),
+
+		CONSTRAINT fk_merchant_future_offering_engagement_options_group
+			FOREIGN KEY (
+				engagement_action_group_id,
+				future_offering_id
+			)
+			REFERENCES merchant_future_offering_engagement_action_groups (
+				id,
+				future_offering_id
+			)
+			ON DELETE RESTRICT
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_merchant_future_offering_engagement_options_active
+	ON merchant_future_offering_engagement_options (
+		future_offering_id,
+		engagement_action_group_id,
+		display_order,
+		id
+	)
+	WHERE is_active = TRUE;
 
 	-- Merchant Future Offerings Events
 	CREATE TABLE IF NOT EXISTS merchant_future_offerings_events (
@@ -3041,131 +2119,513 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 
 	-- =====================================================================
-	-- DEFERRED: Merchant Program Benefits / Founding Merchant Incentives
+	-- User Future Offering Engagements
+	-- =====================================================================
+	-- Represents the durable anticipation relationship between one consumer
+	-- and one Future Offering.
 	--
-	-- Purpose:
-	--   Preserves the architecture for Founding Merchant benefits, waivers,
-	--   credits, free months, and future fee incentives.
+	-- Watch is Platform-owned and is intentionally represented at the FO
+	-- relationship level rather than as a merchant Engagement Action.
 	--
-	-- Release status:
-	--   DEFERRED. Not routed, not serviced, not release-blocking for v1.
+	-- A relationship may originate through an explicit Watch or through the
+	-- consumer's first merchant Engagement Action. In the latter case the
+	-- Platform may establish background Watch state without treating that
+	-- Watch as an explicit consumer selection.
 	-- =====================================================================
 
-	-- Merchant Program Benefits
-CREATE TABLE IF NOT EXISTS merchant_program_benefits (
-	id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-	code TEXT NOT NULL UNIQUE
-		CHECK (
-			btrim(code) <> ''
-		),
-
-	name TEXT NOT NULL
-		CHECK (
-			btrim(name) <> ''
-		),
-
-	description TEXT NOT NULL DEFAULT '',
-
-	benefit_type TEXT NOT NULL
-		CHECK (
-			benefit_type IN (
-				'fee_waiver',
-				'fee_discount',
-				'fee_credit'
-			)
-		),
-
-	value_json JSONB NOT NULL DEFAULT '{}'::jsonb
-		CHECK (
-			jsonb_typeof(value_json) = 'object'
-		),
-
-	is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-	created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-	deleted_at TIMESTAMPTZ,
-
-	CONSTRAINT chk_merchant_program_benefits_code_format
-		CHECK (
-			code ~ '^[a-z][a-z0-9_]*$'
-		)
-);
-
-	CREATE TABLE IF NOT EXISTS merchant_program_plan_benefits (
+	CREATE TABLE IF NOT EXISTS user_future_offering_engagements (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		plan_id UUID NOT NULL REFERENCES merchant_program_plans(id) ON DELETE CASCADE,
-		benefit_id UUID NOT NULL REFERENCES merchant_program_benefits(id) ON DELETE RESTRICT,
-
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT merchant_program_plan_benefits_unique
-			UNIQUE (plan_id, benefit_id)
-	);
-
-	CREATE TABLE IF NOT EXISTS merchant_benefit_grants (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		benefit_id UUID NOT NULL REFERENCES merchant_program_benefits(id) ON DELETE RESTRICT,
-
-		grant_reason TEXT NOT NULL DEFAULT '',
-		starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		ends_at TIMESTAMPTZ,
-
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-		created_by UUID REFERENCES users(id) ON DELETE SET NULL,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT merchant_benefit_grants_unique_active_window
-			UNIQUE (merchant_id, benefit_id, starts_at)
-	);
-
-
-	-- Merchant Fee Credits
-	CREATE TABLE IF NOT EXISTS merchant_fee_credits (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID NOT NULL
-			REFERENCES merchants(id)
+		user_id UUID NOT NULL
+			REFERENCES users(id)
 			ON DELETE CASCADE,
 
-		benefit_grant_id UUID
-			REFERENCES merchant_benefit_grants(id)
-			ON DELETE SET NULL,
+		future_offering_id UUID NOT NULL
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE CASCADE,
 
-		fee_type_id UUID NOT NULL
-			REFERENCES merchant_fee_types(id)
-			ON DELETE RESTRICT,
+		engagement_status TEXT NOT NULL DEFAULT 'active'
+			CHECK (engagement_status IN (
+				'active',
+				'muted',
+				'removed'
+			)),
 
-		amount NUMERIC(19,4) NOT NULL
-			CHECK (amount >= 0),
+		watch_state TEXT NOT NULL
+			CHECK (watch_state IN (
+				'explicit',
+				'background'
+			)),
 
-		currency CHAR(3) NOT NULL DEFAULT 'USD'
-			CHECK (currency ~ '^[A-Z]{3}$'),
+		notification_enabled BOOLEAN NOT NULL DEFAULT TRUE,
 
-		remaining_amount NUMERIC(19,4) NOT NULL
-			CHECK (remaining_amount >= 0),
+		source_surface TEXT NOT NULL DEFAULT 'direct'
+			CHECK (source_surface IN (
+				'notification',
+				'direct'
+			)),
 
-		expires_at TIMESTAMPTZ,
-
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
+		first_engaged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
+		deleted_at TIMESTAMPTZ
+	);
 
-		CONSTRAINT chk_merchant_fee_credits_remaining_not_greater_than_amount
-			CHECK (remaining_amount <= amount)
+	CREATE UNIQUE INDEX IF NOT EXISTS
+		ux_user_future_offering_engagements_active_user_fo
+	ON user_future_offering_engagements (
+		user_id,
+		future_offering_id
+	)
+	WHERE deleted_at IS NULL;
+
+	CREATE INDEX IF NOT EXISTS
+		idx_user_future_offering_engagements_user_active
+	ON user_future_offering_engagements (
+		user_id,
+		last_activity_at DESC
+	)
+	WHERE deleted_at IS NULL;
+
+	CREATE INDEX IF NOT EXISTS
+		idx_user_future_offering_engagements_fo_active
+	ON user_future_offering_engagements (
+		future_offering_id
+	)
+	WHERE deleted_at IS NULL
+	AND engagement_status IN ('active', 'muted');
+
+
+	-- =====================================================================
+	-- User Future Offering Engagement Action Selections
+	-- =====================================================================
+	-- Represents merchant Engagement Actions currently selected by a consumer
+	-- for a Future Offering.
+	--
+	-- Watch is intentionally absent. It is Platform-owned and represented by
+	-- user_future_offering_engagements.
+	--
+	-- Each selection must belong to the same Future Offering as its owning
+	-- consumer engagement.
+	--
+	-- Where the selected Engagement Action has quantity enabled, quantity
+	-- records the consumer's indicated anticipated demand for that action.
+	-- Where quantity is disabled, quantity must be absent.
+	--
+	-- Quantity is not an order, inventory allocation, reservation guarantee,
+	-- statement of future availability, or merchant fulfillment commitment.
+	--
+	-- Selection validity is protected at the database boundary against the
+	-- merchant's current Engagement Action configuration, including Future
+	-- Offering ownership, active availability, quantity configuration, and
+	-- Engagement Action Group selection ceilings. The service layer must
+	-- enforce the same rules before persistence as defense in depth.
+	-- =====================================================================
+
+	CREATE TABLE IF NOT EXISTS user_future_offering_engagement_action_selections (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		engagement_id UUID NOT NULL
+			REFERENCES user_future_offering_engagements(id)
+			ON DELETE CASCADE,
+
+		engagement_option_id UUID NOT NULL
+			REFERENCES merchant_future_offering_engagement_options(id)
+			ON DELETE RESTRICT,
+
+		quantity INTEGER
+			CHECK (
+				quantity IS NULL
+				OR quantity >= 1
+			),
+
+		selected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT ux_user_future_offering_engagement_action_selection
+			UNIQUE (
+				engagement_id,
+				engagement_option_id
+			)
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_user_future_offering_engagement_action_selections_option
+	ON user_future_offering_engagement_action_selections (
+		engagement_option_id,
+		selected_at DESC
+	);
+
+	CREATE OR REPLACE FUNCTION
+		public.enforce_user_engagement_action_selection_integrity()
+	RETURNS TRIGGER AS $$
+	DECLARE
+		v_engagement_future_offering_id UUID;
+		v_option_future_offering_id UUID;
+		v_group_id UUID;
+		v_quantity_enabled BOOLEAN;
+		v_min_quantity INTEGER;
+		v_max_quantity INTEGER;
+		v_option_is_active BOOLEAN;
+		v_group_is_active BOOLEAN;
+		v_group_max_selections INTEGER;
+		v_group_selection_count INTEGER;
+	BEGIN
+		/*
+		* Lock the owning consumer engagement so concurrent selection changes
+		* for the same engagement serialize through one durable row.
+		*/
+		SELECT future_offering_id
+		INTO v_engagement_future_offering_id
+		FROM user_future_offering_engagements
+		WHERE id = NEW.engagement_id
+		FOR UPDATE;
+
+		IF NOT FOUND THEN
+			RAISE EXCEPTION
+				'consumer engagement % does not exist',
+				NEW.engagement_id
+				USING ERRCODE = '23503';
+		END IF;
+
+		/*
+		* Resolve the authoritative merchant Engagement Action configuration.
+		*/
+		SELECT
+			future_offering_id,
+			engagement_action_group_id,
+			quantity_enabled,
+			min_quantity,
+			max_quantity,
+			is_active
+		INTO
+			v_option_future_offering_id,
+			v_group_id,
+			v_quantity_enabled,
+			v_min_quantity,
+			v_max_quantity,
+			v_option_is_active
+		FROM merchant_future_offering_engagement_options
+		WHERE id = NEW.engagement_option_id;
+
+		IF NOT FOUND THEN
+			RAISE EXCEPTION
+				'engagement option % does not exist',
+				NEW.engagement_option_id
+				USING ERRCODE = '23503';
+		END IF;
+
+		IF v_engagement_future_offering_id
+			IS DISTINCT FROM v_option_future_offering_id THEN
+			RAISE EXCEPTION
+				'consumer engagement and engagement option must belong to the same future offering'
+				USING ERRCODE = '23514';
+		END IF;
+
+		IF v_option_is_active = FALSE THEN
+			RAISE EXCEPTION
+				'consumer cannot select an inactive engagement option'
+				USING ERRCODE = '23514';
+		END IF;
+
+		/*
+		* Quantity must agree with the merchant's authoritative configuration.
+		*/
+		IF v_quantity_enabled = FALSE THEN
+			IF NEW.quantity IS NOT NULL THEN
+				RAISE EXCEPTION
+					'quantity must be absent when quantity is disabled for the engagement option'
+					USING ERRCODE = '23514';
+			END IF;
+		ELSE
+			IF NEW.quantity IS NULL THEN
+				RAISE EXCEPTION
+					'quantity is required when quantity is enabled for the engagement option'
+					USING ERRCODE = '23514';
+			END IF;
+
+			IF NEW.quantity < v_min_quantity THEN
+				RAISE EXCEPTION
+					'quantity is below the permitted minimum for the engagement option'
+					USING ERRCODE = '23514';
+			END IF;
+
+			IF v_max_quantity IS NOT NULL
+				AND NEW.quantity > v_max_quantity THEN
+				RAISE EXCEPTION
+					'quantity exceeds the permitted maximum for the engagement option'
+					USING ERRCODE = '23514';
+			END IF;
+		END IF;
+
+		/*
+		* Resolve the owning group and its current selection ceiling.
+		*/
+		SELECT
+			max_selections,
+			is_active
+		INTO
+			v_group_max_selections,
+			v_group_is_active
+		FROM merchant_future_offering_engagement_action_groups
+		WHERE id = v_group_id
+			AND future_offering_id = v_option_future_offering_id;
+
+		IF NOT FOUND THEN
+			RAISE EXCEPTION
+				'engagement option does not have a valid engagement action group'
+				USING ERRCODE = '23514';
+		END IF;
+
+		IF v_group_is_active = FALSE THEN
+			RAISE EXCEPTION
+				'consumer cannot select an engagement action from an inactive group'
+				USING ERRCODE = '23514';
+		END IF;
+
+		/*
+		* NULL means that every available action in the group may be selected.
+		* Otherwise enforce the merchant-configured ceiling.
+		*/
+		IF v_group_max_selections IS NOT NULL THEN
+			SELECT COUNT(*)
+			INTO v_group_selection_count
+			FROM user_future_offering_engagement_action_selections AS selection
+			JOIN merchant_future_offering_engagement_options AS option
+				ON option.id = selection.engagement_option_id
+			WHERE selection.engagement_id = NEW.engagement_id
+				AND option.engagement_action_group_id = v_group_id
+				AND (
+					TG_OP <> 'UPDATE'
+					OR selection.id <> OLD.id
+				);
+
+			IF v_group_selection_count >= v_group_max_selections THEN
+				RAISE EXCEPTION
+					'engagement action group selection maximum has been reached'
+					USING ERRCODE = '23514';
+			END IF;
+		END IF;
+
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS
+		enforce_user_engagement_action_selection_ownership
+		ON user_future_offering_engagement_action_selections;
+
+	DROP TRIGGER IF EXISTS
+		enforce_user_engagement_action_selection_integrity
+		ON user_future_offering_engagement_action_selections;
+
+	CREATE TRIGGER
+		enforce_user_engagement_action_selection_integrity
+	BEFORE INSERT OR UPDATE OF
+		engagement_id,
+		engagement_option_id,
+		quantity
+	ON user_future_offering_engagement_action_selections
+	FOR EACH ROW
+	EXECUTE FUNCTION
+		public.enforce_user_engagement_action_selection_integrity();
+
+		
+
+	-- User Future Offering Engagement Events
+	CREATE TABLE IF NOT EXISTS user_future_offering_engagement_events (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		engagement_id UUID NOT NULL
+			REFERENCES user_future_offering_engagements(id)
+			ON DELETE CASCADE,
+
+		event_type TEXT NOT NULL
+			CHECK (event_type IN (
+				'watched',
+				'muted',
+				'unmuted',
+				'unwatched',
+				'notification_enabled',
+				'notification_disabled',
+
+				'waitlisted',
+				'early_access_requested',
+				'beta_joined',
+				'reservation_interest_recorded',
+				'preorder_intent_recorded',
+
+				'engagement_removed',
+				'expired'
+			)),
+
+		source_surface TEXT
+			CHECK (
+				source_surface IS NULL
+				OR source_surface IN (
+					'notification',
+					'direct'
+				)
+			),
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_user_future_offering_engagement_events_engagement
+		ON user_future_offering_engagement_events (
+			engagement_id,
+			created_at DESC
+		);
+
+
+	-- =====================================================================
+	-- User Future Offering Engagement Submissions
+	-- =====================================================================
+	-- Represents a consumer's deliberate submission of engagement interests
+	-- for a Future Offering.
+	--
+	-- A consumer engagement may have multiple independent submissions.
+	-- Each submission has its own lifecycle and may independently become
+	-- eligible for cancellation or QR tokenization.
+	--
+	-- Submission contents are stored separately as immutable submission
+	-- items. QR issuance may tokenize one or more qualifying submissions.
+	-- Successful tokenization completes only the submissions actually
+	-- tokenized; it does not complete the consumer's overall FO engagement.
+	-- =====================================================================
+
+	CREATE TABLE IF NOT EXISTS user_future_offering_engagement_submissions (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		engagement_id UUID NOT NULL
+			REFERENCES user_future_offering_engagements(id)
+			ON DELETE CASCADE,
+
+		status TEXT NOT NULL DEFAULT 'submitted'
+			CHECK (
+				status IN (
+					'submitted',
+					'cancelled',
+					'completed'
+				)
+			),
+
+		submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		cancelled_at TIMESTAMPTZ,
+
+		completed_at TIMESTAMPTZ,
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT chk_user_future_offering_engagement_submissions_lifecycle
+			CHECK (
+				(
+					status = 'submitted'
+					AND cancelled_at IS NULL
+					AND completed_at IS NULL
+				)
+				OR
+				(
+					status = 'cancelled'
+					AND cancelled_at IS NOT NULL
+					AND completed_at IS NULL
+				)
+				OR
+				(
+					status = 'completed'
+					AND cancelled_at IS NULL
+					AND completed_at IS NOT NULL
+				)
+			),
+
+		CONSTRAINT chk_user_future_offering_engagement_submissions_cancelled_time
+			CHECK (
+				cancelled_at IS NULL
+					OR cancelled_at >= submitted_at
+			),
+
+		CONSTRAINT chk_user_future_offering_engagement_submissions_completed_time
+			CHECK (
+				completed_at IS NULL
+					OR completed_at >= submitted_at
+			)
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_user_future_offering_engagement_submissions_engagement
+	ON user_future_offering_engagement_submissions (
+		engagement_id,
+		submitted_at DESC,
+		id
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_user_future_offering_engagement_submissions_pending
+	ON user_future_offering_engagement_submissions (
+		engagement_id,
+		submitted_at,
+		id
+	)
+	WHERE status = 'submitted';
+
+
+	-- =====================================================================
+	-- User Future Offering Engagement Submission Items
+	-- =====================================================================
+	-- Stores the immutable merchant Engagement Actions and applicable
+	-- quantities captured by a consumer submission.
+	--
+	-- Each row represents one Engagement Action contained in one submission.
+	-- A submission may contain multiple Engagement Actions, while the same
+	-- Engagement Action may legitimately appear in separate submissions.
+	--
+	-- These rows are authoritative submitted participation state. They are
+	-- not reconstructed from current selections or engagement event history.
+	-- =====================================================================
+
+	CREATE TABLE IF NOT EXISTS user_future_offering_engagement_submission_items (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		submission_id UUID NOT NULL
+			REFERENCES user_future_offering_engagement_submissions(id)
+			ON DELETE CASCADE,
+
+		engagement_option_id UUID NOT NULL
+			REFERENCES merchant_future_offering_engagement_options(id)
+			ON DELETE RESTRICT,
+
+		quantity INTEGER
+			CHECK (
+				quantity IS NULL
+					OR quantity >= 1
+			),
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT uq_user_future_offering_engagement_submission_items_option
+			UNIQUE (
+				submission_id,
+				engagement_option_id
+			)
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_user_future_offering_engagement_submission_items_submission
+	ON user_future_offering_engagement_submission_items (
+		submission_id,
+		id
+	);
+
+	CREATE INDEX IF NOT EXISTS
+		idx_user_future_offering_engagement_submission_items_option
+	ON user_future_offering_engagement_submission_items (
+		engagement_option_id,
+		submission_id
 	);
 
 
@@ -3176,10 +2636,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		merchant_id UUID NOT NULL
 			REFERENCES merchants(id)
 			ON DELETE CASCADE,
-
-		benefit_grant_id UUID
-			REFERENCES merchant_benefit_grants(id)
-			ON DELETE SET NULL,
 
 		fee_type_id UUID NOT NULL
 			REFERENCES merchant_fee_types(id)
@@ -3193,7 +2649,13 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 			)),
 
 		waiver_value NUMERIC(19,4) NOT NULL DEFAULT 0
-			CHECK (waiver_value >= 0),
+			CHECK (
+				waiver_value >= 0
+				AND (
+					waiver_type <> 'percentage'
+					OR waiver_value <= 100
+				)
+			),
 
 		currency CHAR(3) NOT NULL DEFAULT 'USD'
 			CHECK (currency ~ '^[A-Z]{3}$'),
@@ -3227,301 +2689,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 
 
 	-- ===============================================================
-	-- User Trend Engagements (My Radar)
-	-- Every future-commerce consumer action begins from, or implies, a watch.
-	-- Notification is a watch setting, not a separate intent type.
-	-- trend offers only — enforced by trigger.
-	-- ===============================================================
-
-	CREATE TABLE IF NOT EXISTS user_trend_engagements (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-
-		engagement_status TEXT NOT NULL DEFAULT 'active'
-			CHECK (engagement_status IN ('active', 'muted', 'removed')),
-
-		is_watching BOOLEAN NOT NULL DEFAULT TRUE,
-		notification_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-
-		watched_at TIMESTAMPTZ,
-		waitlisted_at TIMESTAMPTZ,
-		early_access_requested_at TIMESTAMPTZ,
-		preorder_interest_at TIMESTAMPTZ,
-
-		source_surface TEXT NOT NULL DEFAULT 'direct'
-			CHECK (source_surface IN (
-				'trend_card',
-				'trend_detail',
-				'notification',
-				'direct'
-			)),
-
-		first_engaged_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		last_activity_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_user_trend_engagements_has_action
-			CHECK (
-				is_watching = TRUE
-				OR waitlisted_at IS NOT NULL
-				OR early_access_requested_at IS NOT NULL
-				OR preorder_interest_at IS NOT NULL
-			)
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_user_trend_engagements_active_user_offer
-		ON user_trend_engagements(user_id, offer_id)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_trend_engagements_user_active
-		ON user_trend_engagements(user_id, last_activity_at DESC)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_trend_engagements_offer_active
-		ON user_trend_engagements(offer_id)
-		WHERE deleted_at IS NULL AND engagement_status IN ('active', 'muted');
-
-	CREATE INDEX IF NOT EXISTS idx_user_trend_engagements_waitlisted
-		ON user_trend_engagements(offer_id, waitlisted_at DESC)
-		WHERE waitlisted_at IS NOT NULL AND deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_trend_engagements_early_access
-		ON user_trend_engagements(offer_id, early_access_requested_at DESC)
-		WHERE early_access_requested_at IS NOT NULL AND deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_user_trend_engagements_preorder
-		ON user_trend_engagements(offer_id, preorder_interest_at DESC)
-		WHERE preorder_interest_at IS NOT NULL AND deleted_at IS NULL;
-
-	DROP TRIGGER IF EXISTS enforce_user_trend_engagements_trend_offer
-		ON public.user_trend_engagements;
-
-	CREATE TRIGGER enforce_user_trend_engagements_trend_offer
-	BEFORE INSERT OR UPDATE OF offer_id ON public.user_trend_engagements
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_trend_offer();
-
-
-	-- User Trend Engagement Events
-	CREATE TABLE IF NOT EXISTS user_trend_engagement_events (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		engagement_id UUID NOT NULL
-			REFERENCES user_trend_engagements(id)
-			ON DELETE CASCADE,
-
-		event_type TEXT NOT NULL
-			CHECK (event_type IN (
-				'watched',
-				'muted',
-				'unmuted',
-				'unwatched',
-				'notification_enabled',
-				'notification_disabled',
-
-				'waitlisted',
-				'early_access_requested',
-				'beta_joined',
-				'reservation_interest_recorded',
-				'preorder_intent_recorded',
-
-				'engagement_removed',
-				'expired'
-			)),
-
-		source_surface TEXT
-			CHECK (
-				source_surface IS NULL
-				OR source_surface IN (
-					'trend_card',
-					'trend_detail',
-					'notification',
-					'direct'
-				)
-			),
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_user_trend_engagement_events_engagement
-		ON user_trend_engagement_events (
-			engagement_id,
-			created_at DESC
-		);
-
-
-	-- ===============================================================
-	-- DEFERRED: Merchant Launch Campaigns / Campaign Clicks / Campaign Attribution Events
-	-- Non-v1 merchant-direct affiliate/performance campaign infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS merchant_launch_campaigns (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		offer_id UUID REFERENCES offers(id) ON DELETE SET NULL,
-		category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
-		
-		title TEXT NOT NULL CHECK (btrim(title) <> ''),
-		summary TEXT NOT NULL DEFAULT '',
-		description TEXT,
-
-		campaign_kind TEXT NOT NULL DEFAULT 'promotion'
-			CHECK (campaign_kind IN (
-				'promotion',
-				'seasonal_sale',
-				'limited_time_offer',
-				'bundle',
-				'featured_offer',
-				'merchant_push',
-				'launch_period_campaign'
-			)),
-
-		status TEXT NOT NULL DEFAULT 'draft'
-			CHECK (status IN (
-				'draft',
-				'submitted',
-				'approved',
-				'active',
-				'paused',
-				'ended',
-				'rejected',
-				'archived'
-			)),
-
-		destination_url TEXT NOT NULL CHECK (destination_url ~* '^https?://'),
-
-		tracking_method TEXT NOT NULL DEFAULT 'route_token'
-			CHECK (tracking_method IN (
-				'route_token',
-				'utm',
-				'coupon_code',
-				'postback',
-				'merchant_reported'
-			)),
-
-		economics_type TEXT NOT NULL DEFAULT 'campaign_fee'
-			CHECK (economics_type IN (
-				'campaign_fee',
-				'merchant_direct_commission',
-				'affiliate_commission',
-				'flat_fee',
-				'none'
-			)),
-
-		starts_at TIMESTAMPTZ,
-		ends_at TIMESTAMPTZ,
-
-		submitted_at TIMESTAMPTZ,
-		approved_at TIMESTAMPTZ,
-		activated_at TIMESTAMPTZ,
-		ended_at TIMESTAMPTZ,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_merchant_launch_campaigns_dates
-			CHECK (
-				starts_at IS NULL
-				OR ends_at IS NULL
-				OR ends_at > starts_at
-			)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_launch_campaigns_merchant_status
-		ON merchant_launch_campaigns(merchant_id, status)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_launch_campaigns_active_window
-		ON merchant_launch_campaigns(starts_at, ends_at)
-		WHERE deleted_at IS NULL AND status = 'active';
-
-	DROP TRIGGER IF EXISTS enforce_merchant_launch_campaign_deal_offer
-		ON public.merchant_launch_campaigns;
-
-	CREATE TRIGGER enforce_merchant_launch_campaign_deal_offer
-	BEFORE INSERT OR UPDATE OF offer_id ON public.merchant_launch_campaigns
-	FOR EACH ROW
-	WHEN (NEW.offer_id IS NOT NULL)
-	EXECUTE FUNCTION public.enforce_deal_offer();
-
-	-- DEFERRED Merchant Launch Campaign Clicks
-	CREATE TABLE IF NOT EXISTS merchant_launch_campaign_clicks (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		campaign_id UUID NOT NULL REFERENCES merchant_launch_campaigns(id) ON DELETE CASCADE,
-		user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-
-		route_token_hash TEXT NOT NULL,
-		session_id TEXT,
-		source_surface TEXT CHECK (source_surface IS NULL OR source_surface IN (
-			'campaign_card',
-			'campaign_detail',
-			'deal_card',
-			'deal_detail',
-			'merchant_page',
-			'notification',
-			'direct'
-		)),
-
-		ip_hash TEXT,
-		user_agent_hash TEXT,
-		referrer TEXT,
-		clicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_launch_campaign_clicks_campaign_time
-		ON merchant_launch_campaign_clicks(campaign_id, clicked_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_launch_campaign_clicks_user_time
-		ON merchant_launch_campaign_clicks(user_id, clicked_at DESC)
-		WHERE user_id IS NOT NULL;
-
-
-	-- merchant_launch_campaign_attribution_events Merchant Launch Campaign Attribution Events
-	CREATE TABLE IF NOT EXISTS merchant_launch_campaign_attribution_events (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		campaign_id UUID NOT NULL REFERENCES merchant_launch_campaigns(id) ON DELETE CASCADE,
-		click_id UUID REFERENCES merchant_launch_campaign_clicks(id) ON DELETE SET NULL,
-		user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-
-		event_type TEXT NOT NULL CHECK (event_type IN (
-			'merchant_reported_conversion',
-			'postback_conversion',
-			'coupon_reported_conversion',
-			'commission_approved',
-			'commission_rejected',
-			'commission_reversed'
-		)),
-
-		external_event_id TEXT,
-		order_reference_hash TEXT,
-		amount NUMERIC(19,4) CHECK (amount IS NULL OR amount >= 0),
-		currency CHAR(3) CHECK (currency IS NULL OR currency ~ '^[A-Z]{3}$'),
-		commission_amount NUMERIC(19,4) CHECK (commission_amount IS NULL OR commission_amount >= 0),
-
-		metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-		occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_launch_campaign_attribution_campaign_time
-		ON merchant_launch_campaign_attribution_events(campaign_id, occurred_at DESC);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_merchant_launch_campaign_attribution_external_event
-		ON merchant_launch_campaign_attribution_events(campaign_id, external_event_id)
-		WHERE external_event_id IS NOT NULL;
-
-
-	-- ===============================================================
-	-- Launch Intelligence Trust Review
+	-- Future Offering Trust Review and Risk
 	-- ===============================================================
 
 	CREATE TABLE IF NOT EXISTS future_offering_trust_reviews (
@@ -3570,36 +2738,29 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		ON future_offering_risk_flags(future_offering_id)
 		WHERE resolved_at IS NULL;
 
+
 	-- ===============================================================
-	-- DEFERRED: Commerce Routing / Attribution Bridge / Commerce Route Events / Merchant Direct Attribution Configs
-	-- Non-v1 deal routing, click tracking, and attribution infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
+	-- Commerce Routes
+	-- FO-native consumer discovery and routing infrastructure.
+	-- A route belongs directly to a Future Offering and its owning merchant.
+	-- Deals, Launch Campaigns, affiliate attribution, and downstream commerce
+	-- monetization are outside the Future Offering domain.
 	-- ===============================================================
 	CREATE TABLE IF NOT EXISTS commerce_routes (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
+		future_offering_id UUID NOT NULL
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE CASCADE,
 
-		route_domain TEXT NOT NULL DEFAULT 'deal'
-			CHECK (route_domain IN ('deal')),
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id)
+			ON DELETE CASCADE,
 
-		destination_url TEXT NOT NULL CHECK (destination_url ~* '^https?://'),
+		destination_url TEXT NOT NULL
+			CHECK (destination_url ~* '^https?://'),
+
 		route_token_hash TEXT NOT NULL UNIQUE,
-
-		route_type TEXT NOT NULL CHECK (route_type IN (
-			'deal_click',
-			'coupon_click',
-			'launch_campaign_click'
-		)),
-
-		economics_type TEXT NOT NULL CHECK (economics_type IN (
-			'affiliate_commission',
-			'campaign_fee',
-			'merchant_direct_commission',
-			'none'
-		)),
 
 		is_active BOOLEAN NOT NULL DEFAULT TRUE,
 		expires_at TIMESTAMPTZ,
@@ -3609,114 +2770,122 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		deleted_at TIMESTAMPTZ
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_commerce_routes_offer
-		ON commerce_routes(offer_id)
+	CREATE INDEX IF NOT EXISTS idx_commerce_routes_future_offering
+		ON commerce_routes(future_offering_id)
 		WHERE deleted_at IS NULL;
 
-	CREATE INDEX IF NOT EXISTS idx_commerce_routes_domain_offer
-		ON commerce_routes(route_domain, offer_id)
+	CREATE INDEX IF NOT EXISTS idx_commerce_routes_merchant
+		ON commerce_routes(merchant_id, future_offering_id)
 		WHERE deleted_at IS NULL;
 
-	CREATE INDEX IF NOT EXISTS idx_commerce_routes_domain_economics
-		ON commerce_routes(route_domain, economics_type)
-		WHERE deleted_at IS NULL;
 
-	DROP TRIGGER IF EXISTS enforce_commerce_routes_deal_offer
-		ON public.commerce_routes;
-
-	CREATE TRIGGER enforce_commerce_routes_deal_offer
-	BEFORE INSERT OR UPDATE OF offer_id ON public.commerce_routes
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_deal_offer();
-
-	CREATE OR REPLACE FUNCTION public.enforce_commerce_route_offer_domain()
+	CREATE OR REPLACE FUNCTION public.enforce_commerce_route_future_offering_ownership()
 	RETURNS TRIGGER AS $$
 	DECLARE
-		v_offer_type TEXT;
 		v_merchant_id UUID;
 	BEGIN
-		SELECT type, merchant_id
-		INTO v_offer_type, v_merchant_id
-		FROM public.offers
-		WHERE id = NEW.offer_id
-		  AND deleted_at IS NULL;
+		SELECT merchant_id
+		INTO v_merchant_id
+		FROM public.merchant_future_offerings
+		WHERE id = NEW.future_offering_id
+		AND deleted_at IS NULL;
 
 		IF NOT FOUND THEN
-			RAISE EXCEPTION 'offer "%" does not exist or is deleted', NEW.offer_id;
-		END IF;
-
-		IF NEW.route_domain <> v_offer_type THEN
-			RAISE EXCEPTION 'commerce route domain "%" does not match offer type "%"', NEW.route_domain, v_offer_type;
+			RAISE EXCEPTION
+				'future offering "%" does not exist or is deleted',
+				NEW.future_offering_id;
 		END IF;
 
 		IF NEW.merchant_id <> v_merchant_id THEN
-			RAISE EXCEPTION 'commerce route merchant "%" does not match offer merchant "%"', NEW.merchant_id, v_merchant_id;
+			RAISE EXCEPTION
+				'commerce route merchant "%" does not match future offering merchant "%"',
+				NEW.merchant_id,
+				v_merchant_id;
 		END IF;
 
 		RETURN NEW;
 	END;
 	$$ LANGUAGE plpgsql;
 
-	DROP TRIGGER IF EXISTS enforce_commerce_route_offer_domain
+	DROP TRIGGER IF EXISTS enforce_commerce_route_future_offering_ownership
 		ON public.commerce_routes;
 
-	CREATE TRIGGER enforce_commerce_route_offer_domain
-	BEFORE INSERT OR UPDATE OF offer_id, merchant_id, route_domain
+	CREATE TRIGGER enforce_commerce_route_future_offering_ownership
+	BEFORE INSERT OR UPDATE OF future_offering_id, merchant_id
 	ON public.commerce_routes
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_commerce_route_offer_domain();
+	FOR EACH ROW
+	EXECUTE FUNCTION public.enforce_commerce_route_future_offering_ownership();
 
+
+	-- ===============================================================
+	-- Commerce Route Events
+	-- FO-native route observability infrastructure.
+	-- Records traversal of a Commerce Route for a Future Offering.
+	-- ===============================================================
 	CREATE TABLE IF NOT EXISTS commerce_route_events (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		route_id UUID NOT NULL REFERENCES commerce_routes(id) ON DELETE CASCADE,
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+		route_id UUID NOT NULL
+			REFERENCES commerce_routes(id)
+			ON DELETE CASCADE,
+
+		future_offering_id UUID NOT NULL
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE CASCADE,
+
+		user_id UUID
+			REFERENCES users(id)
+			ON DELETE SET NULL,
 
 		session_id TEXT,
 
-		source_surface TEXT CHECK (source_surface IS NULL OR source_surface IN (
-			'deal_card',
-			'deal_detail',
-			'notification',
-			'direct'
-		)),
+		source_surface TEXT CHECK (
+			source_surface IS NULL
+			OR source_surface IN (
+				'notification',
+				'direct'
+			)
+		),
 
 		ip_hash TEXT,
 		user_agent_hash TEXT,
+
 		clicked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_commerce_route_events_route_clicked
 		ON commerce_route_events(route_id, clicked_at DESC);
 
-	CREATE INDEX IF NOT EXISTS idx_commerce_route_events_offer_clicked
-		ON commerce_route_events(offer_id, clicked_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_commerce_route_events_future_offering_clicked
+		ON commerce_route_events(future_offering_id, clicked_at DESC);
 
-	-- CE patch 6: commerce route event integrity trigger.
-	-- Enforces that (a) the route exists and is active, (b) the event's
-	-- offer_id matches the route's offer_id, and (c) the offer is a deal.
-	-- Stronger than a plain enforce_deal_offer trigger because it also
-	-- validates route/offer consistency in a single function.
+
+	-- A route event must reference an active Commerce Route and the
+	-- event's Future Offering must match the route's Future Offering.
 	CREATE OR REPLACE FUNCTION public.enforce_commerce_route_event_integrity()
 	RETURNS TRIGGER AS $$
 	DECLARE
-		v_route_offer_id UUID;
+		v_route_future_offering_id UUID;
 	BEGIN
-		SELECT offer_id
-		INTO v_route_offer_id
+		SELECT future_offering_id
+		INTO v_route_future_offering_id
 		FROM public.commerce_routes
 		WHERE id = NEW.route_id
-		  AND deleted_at IS NULL
-		  AND is_active = TRUE;
+		AND deleted_at IS NULL
+		AND is_active = TRUE;
 
 		IF NOT FOUND THEN
-			RAISE EXCEPTION 'commerce route "%" does not exist, is deleted, or is inactive', NEW.route_id;
+			RAISE EXCEPTION
+				'commerce route "%" does not exist, is deleted, or is inactive',
+				NEW.route_id;
 		END IF;
 
-		IF NEW.offer_id <> v_route_offer_id THEN
-			RAISE EXCEPTION 'commerce route event offer "%" does not match route offer "%"', NEW.offer_id, v_route_offer_id;
+		IF NEW.future_offering_id <> v_route_future_offering_id THEN
+			RAISE EXCEPTION
+				'commerce route event future offering "%" does not match route future offering "%"',
+				NEW.future_offering_id,
+				v_route_future_offering_id;
 		END IF;
-
-		PERFORM public.ensure_offer_type(NEW.offer_id, 'deal');
 
 		RETURN NEW;
 	END;
@@ -3726,97 +2895,11 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		ON public.commerce_route_events;
 
 	CREATE TRIGGER enforce_commerce_route_event_integrity
-	BEFORE INSERT OR UPDATE OF route_id, offer_id
+	BEFORE INSERT OR UPDATE OF route_id, future_offering_id
 	ON public.commerce_route_events
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_commerce_route_event_integrity();
+	FOR EACH ROW
+	EXECUTE FUNCTION public.enforce_commerce_route_event_integrity();
 
-	CREATE TABLE IF NOT EXISTS merchant_direct_attribution_configs (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		attribution_method TEXT NOT NULL CHECK (attribution_method IN (
-			'route_token',
-			'utm',
-			'merchant_reported',
-			'postback',
-			'coupon_code'
-		)),
-		attribution_window_days INTEGER NOT NULL DEFAULT 30 CHECK (attribution_window_days > 0),
-		config JSONB NOT NULL DEFAULT '{}'::jsonb,
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
-	);
-
-	-- ===============================================================
-	-- DEFERRED: Future Offering Watch Density Snapshots
-	-- Non-v1 launch watch density proof metric infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS future_offering_watch_density_snapshots (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		future_offering_id UUID NOT NULL REFERENCES merchant_future_offerings(id) ON DELETE CASCADE,
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-
-		watch_count INTEGER NOT NULL DEFAULT 0 CHECK (watch_count >= 0),
-		active_watch_count INTEGER NOT NULL DEFAULT 0 CHECK (active_watch_count >= 0),
-		muted_watch_count INTEGER NOT NULL DEFAULT 0 CHECK (muted_watch_count >= 0),
-
-		snapshot_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT chk_future_offering_watch_density_counts
-			CHECK (watch_count >= active_watch_count AND watch_count >= muted_watch_count)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_future_offering_watch_density_future_offering
-		ON future_offering_watch_density_snapshots(future_offering_id, snapshot_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_future_offering_watch_density_merchant
-		ON future_offering_watch_density_snapshots(merchant_id, snapshot_at DESC);
-
-	-- ===============================================================
-	-- DEFERRED: Offer Ratings
-	-- Non-v1 offer review and rating infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS offer_ratings (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
-		review TEXT,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_offer_ratings_active_user_offer
-		ON offer_ratings(user_id, offer_id)
-		WHERE deleted_at IS NULL;
-
-	-- ===============================================================
-	-- DEFERRED: Affiliate Performance
-	-- Non-v1 aggregate affiliate click and revenue tracking infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS affiliate_performance (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID NOT NULL UNIQUE REFERENCES offers(id) ON DELETE CASCADE,
-		total_clicks INT NOT NULL DEFAULT 0 CHECK (total_clicks >= 0),
-		estimated_revenue NUMERIC(19,4) NOT NULL DEFAULT 0.00 CHECK (estimated_revenue >= 0),
-		conversion_rate NUMERIC(7,4) NOT NULL DEFAULT 0 CHECK (conversion_rate >= 0),
-		avg_order_value NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (avg_order_value >= 0),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_affiliate_performance_updated_at
-		ON affiliate_performance(updated_at DESC);
 
 	-- ===============================================================
 	-- Audit
@@ -3836,6 +2919,10 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
+	-- Audit log partitioning review: Existing yearly partitioning predates 
+	-- production operation and currently lacks a demonstrated v1 scaling 
+	-- requirement. Preserve during M01 cleanup; reassess when the 
+	-- audit/governance vertical is deliberately reviewed.
 	CREATE TABLE IF NOT EXISTS audit_logs (
 		id UUID NOT NULL DEFAULT gen_random_uuid(),
 		user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -3868,7 +2955,9 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	CREATE TABLE IF NOT EXISTS user_notifications (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		offer_id UUID REFERENCES offers(id) ON DELETE SET NULL,
+		future_offering_id UUID
+			REFERENCES merchant_future_offerings(id)
+			ON DELETE SET NULL,
 		notification_type_id UUID NOT NULL REFERENCES notification_types(id) ON DELETE RESTRICT,
 		sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		deleted_at TIMESTAMPTZ,
@@ -3887,350 +2976,71 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		ON user_notifications(user_id)
 		WHERE deleted_at IS NULL;
 
-	CREATE INDEX IF NOT EXISTS idx_user_notifications_offer_id
-		ON user_notifications(offer_id)
-		WHERE deleted_at IS NULL AND offer_id IS NOT NULL;
+	CREATE INDEX IF NOT EXISTS idx_user_notifications_future_offering_id
+		ON user_notifications(future_offering_id)
+		WHERE deleted_at IS NULL AND future_offering_id IS NOT NULL;
 
 	CREATE INDEX IF NOT EXISTS idx_user_notifications_type_id
 		ON user_notifications(notification_type_id)
 		WHERE deleted_at IS NULL;
 
-	CREATE TABLE IF NOT EXISTS audit_logs_archive (
-		id UUID PRIMARY KEY,
-		user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-		action_id UUID NOT NULL REFERENCES actions(id) ON DELETE RESTRICT,
-		entity_type_id UUID NOT NULL REFERENCES entity_types(id) ON DELETE RESTRICT,
-		entity_id TEXT NOT NULL,
-		occurred_at TIMESTAMPTZ NOT NULL,
-		archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		CONSTRAINT audit_logs_archive_entity_composite_key UNIQUE (entity_type_id, entity_id, action_id, occurred_at)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_audit_logs_archive_entity ON audit_logs_archive(entity_type_id, entity_id);
-	CREATE INDEX IF NOT EXISTS idx_audit_logs_archive_user ON audit_logs_archive(user_id);
-	CREATE INDEX IF NOT EXISTS idx_audit_logs_archive_timestamp ON audit_logs_archive(occurred_at DESC, entity_type_id);
-	CREATE INDEX IF NOT EXISTS idx_audit_logs_archive_archived_at ON audit_logs_archive(archived_at);
 
 	-- ===============================================================
-	-- DEFERRED: Sponsorships / Promotions
-	-- Non-v1 offer sponsorship, bidding, and merchant promotion infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS sponsorship_bid_types (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		code TEXT NOT NULL UNIQUE CHECK (code IN ('CPD','CPC','CPI')),
-		name TEXT NOT NULL,
-		description TEXT NOT NULL,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE TABLE IF NOT EXISTS offer_sponsorships (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		start_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		end_date TIMESTAMPTZ NOT NULL,
-		sponsorship_bid_type_id UUID NOT NULL REFERENCES sponsorship_bid_types(id) ON DELETE RESTRICT,
-		bid_amount NUMERIC(19,4) NOT NULL CHECK (bid_amount > 0),
-		max_budget NUMERIC(19,4),
-		budget_spent NUMERIC(19,4) NOT NULL DEFAULT 0.00 CHECK (budget_spent >= 0),
-		impressions_served INT NOT NULL DEFAULT 0 CHECK (impressions_served >= 0),
-		clicks_served INT NOT NULL DEFAULT 0 CHECK (clicks_served >= 0),
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		CONSTRAINT chk_offer_sponsorship_dates CHECK (end_date > start_date),
-		CONSTRAINT chk_offer_sponsorship_budget CHECK (max_budget IS NULL OR max_budget >= 0),
-		CONSTRAINT chk_offer_sponsorship_budget_spent CHECK (max_budget IS NULL OR budget_spent <= max_budget)
-	);
-
-	CREATE TABLE IF NOT EXISTS sponsorship_bid_minimums (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		bid_type_id UUID NOT NULL UNIQUE REFERENCES sponsorship_bid_types(id) ON DELETE CASCADE,
-		min_bid_amount NUMERIC(19,4) NOT NULL CHECK (min_bid_amount > 0),
-		min_max_budget NUMERIC(19,4) NOT NULL CHECK (min_max_budget > 0),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_offer_sponsorships_active_id
-		ON offer_sponsorships(id)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_offer_sponsorships_offer_id_created_at
-		ON offer_sponsorships(offer_id, created_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_offer_sponsorships_merchant_id_created_at
-		ON offer_sponsorships(merchant_id, created_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_offer_sponsorships_bid_type_offer_dates
-		ON offer_sponsorships(sponsorship_bid_type_id, offer_id, start_date, end_date);
-
-	CREATE OR REPLACE FUNCTION public.enforce_offer_sponsorship_integrity()
-	RETURNS TRIGGER AS $$
-	DECLARE
-		v_offer_type TEXT;
-		v_offer_merchant_id UUID;
-	BEGIN
-		SELECT type, merchant_id
-		INTO v_offer_type, v_offer_merchant_id
-		FROM public.offers
-		WHERE id = NEW.offer_id
-		  AND deleted_at IS NULL;
-
-		IF NOT FOUND THEN
-			RAISE EXCEPTION 'offer "%" does not exist or is deleted', NEW.offer_id;
-		END IF;
-
-		IF v_offer_type <> 'deal' THEN
-			RAISE EXCEPTION 'offer "%" is type "%", expected "deal"', NEW.offer_id, v_offer_type;
-		END IF;
-
-		IF NEW.merchant_id <> v_offer_merchant_id THEN
-			RAISE EXCEPTION 'offer sponsorship merchant "%" does not match offer merchant "%"', NEW.merchant_id, v_offer_merchant_id;
-		END IF;
-
-		RETURN NEW;
-	END;
-	$$ LANGUAGE plpgsql;
-
-	DROP TRIGGER IF EXISTS enforce_offer_sponsorship_integrity ON public.offer_sponsorships;
-	CREATE TRIGGER enforce_offer_sponsorship_integrity
-	BEFORE INSERT OR UPDATE OF offer_id, merchant_id
-	ON public.offer_sponsorships
-	FOR EACH ROW EXECUTE FUNCTION public.enforce_offer_sponsorship_integrity();
-
-	CREATE TABLE IF NOT EXISTS promotions (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name TEXT NOT NULL UNIQUE,
-		description TEXT NOT NULL,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE TABLE IF NOT EXISTS merchant_promotions (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-		promotion_id UUID NOT NULL REFERENCES promotions(id) ON DELETE RESTRICT,
-		storewide BOOLEAN NOT NULL DEFAULT FALSE,
-		start_date TIMESTAMPTZ NOT NULL,
-		end_date TIMESTAMPTZ NOT NULL,
-		deleted_at TIMESTAMPTZ,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		CONSTRAINT chk_merchant_promotions_dates CHECK (end_date > start_date)
-	);
-
-	CREATE TABLE IF NOT EXISTS merchant_promotion_offers (
-		merchant_promotion_id UUID NOT NULL REFERENCES merchant_promotions(id) ON DELETE CASCADE,
-		offer_id UUID NOT NULL REFERENCES offers(id) ON DELETE CASCADE,
-		PRIMARY KEY (merchant_promotion_id, offer_id)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_promotions_active_merchant_dates
-		ON merchant_promotions(merchant_id, start_date, end_date)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_promotions_active_promotion_dates
-		ON merchant_promotions(promotion_id, start_date, end_date)
-		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_promotions_active_storewide_dates
-		ON merchant_promotions(merchant_id, start_date, end_date)
-		WHERE deleted_at IS NULL AND storewide = TRUE;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_promotion_offers_offer_id
-		ON merchant_promotion_offers(offer_id);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_promotion_offers_promotion_id
-		ON merchant_promotion_offers(merchant_promotion_id);
-
-	CREATE TABLE IF NOT EXISTS reasons (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		name TEXT NOT NULL UNIQUE,
-		description TEXT NOT NULL DEFAULT '',
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	-- ===============================================================
-	-- Auth / OAuth
+	-- Auth
 	-- ===============================================================
 	CREATE TABLE IF NOT EXISTS password_resets (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-		reset_token_hash TEXT UNIQUE NOT NULL,
-		expires_at TIMESTAMPTZ NOT NULL,
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	-- ===============================================================
-	-- DEFERRED: OAuth Clients / Authorization Codes / User Consent
-	-- Non-v1 Platform-as-OAuth-provider infrastructure (Layer 2.2.b).
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS oauth_clients (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		client_id TEXT NOT NULL UNIQUE,
-		client_secret_hash TEXT NOT NULL,
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-		allowed_redirect_uris TEXT[] NOT NULL DEFAULT '{}',
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_clients_client_id
-		ON oauth_clients(client_id);
-
-	CREATE INDEX IF NOT EXISTS idx_oauth_clients_redirect_uris_gin
-		ON oauth_clients USING GIN (allowed_redirect_uris);
-
-	CREATE TABLE IF NOT EXISTS oauth_authorization_codes (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		client_id UUID NOT NULL REFERENCES oauth_clients(id) ON DELETE CASCADE,
 		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		code_hash CHAR(64) NOT NULL,
-		redirect_uri TEXT NOT NULL,
+		token_hash TEXT NOT NULL,
 		expires_at TIMESTAMPTZ NOT NULL,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		revoked_at TIMESTAMPTZ NULL
+		CONSTRAINT ux_password_resets_user_id UNIQUE (user_id)
 	);
 
-	CREATE UNIQUE INDEX IF NOT EXISTS uniq_oauth_code_hash
-		ON oauth_authorization_codes(code_hash);
+	CREATE UNIQUE INDEX IF NOT EXISTS ux_password_resets_token_hash
+		ON password_resets (token_hash);
 
-	CREATE TABLE IF NOT EXISTS oauth_user_consent (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		client_id UUID NOT NULL REFERENCES oauth_clients(id) ON DELETE CASCADE,
-		scopes TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		expires_at TIMESTAMPTZ NOT NULL,
-		revoked BOOLEAN NOT NULL DEFAULT FALSE,
-		revoked_at TIMESTAMPTZ NULL,
-		CONSTRAINT chk_oauth_user_consent_expiry CHECK (expires_at > created_at)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_oauth_user_consent_user_id ON oauth_user_consent(user_id);
-	CREATE INDEX IF NOT EXISTS idx_oauth_user_consent_client_id ON oauth_user_consent(client_id);
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_oauth_user_consent_active
-		ON oauth_user_consent(user_id, client_id)
-		WHERE revoked = FALSE;
+	CREATE INDEX IF NOT EXISTS idx_password_resets_expires_at
+		ON password_resets (expires_at);
 
 
 	-- ===============================================================
-	-- Merchant Accounts / Solo & Multi-User Merchant Access
+	-- Merchant Accounts
 	-- ===============================================================
 	CREATE TABLE IF NOT EXISTS merchant_accounts (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL UNIQUE REFERENCES merchants(id) ON DELETE CASCADE,
+		merchant_id UUID NOT NULL
+			REFERENCES merchants(id) ON DELETE CASCADE,
+
+		-- capability and is not represented through this column.
+		principal_user_id UUID NOT NULL
+			REFERENCES users(id) ON DELETE RESTRICT,
 
 		account_status TEXT NOT NULL DEFAULT 'pending'
 			CHECK (account_status IN ('pending', 'active', 'suspended', 'closed')),
 
 		onboarded_at TIMESTAMPTZ,
-		initial_plan_id UUID REFERENCES merchant_program_plans(id) ON DELETE SET NULL,
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
+		deleted_at TIMESTAMPTZ,
+
+		CONSTRAINT ux_merchant_accounts_merchant_id UNIQUE (merchant_id),
+		CONSTRAINT ux_merchant_accounts_principal_user_id UNIQUE (principal_user_id)
 	);
 
-	CREATE TABLE IF NOT EXISTS merchant_account_roles (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		code TEXT UNIQUE NOT NULL CHECK (code IN (
-			'owner',
-			'admin',
-			'billing',
-			'campaign_manager',
-			'viewer'
-		)),
-		name TEXT NOT NULL,
-		description TEXT NOT NULL DEFAULT '',
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
+	CREATE INDEX IF NOT EXISTS idx_merchant_accounts_principal_active
+		ON merchant_accounts(principal_user_id, created_at, id)
+		WHERE deleted_at IS NULL AND account_status = 'active';
 
-	CREATE TABLE IF NOT EXISTS merchant_account_members (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_account_id UUID NOT NULL REFERENCES merchant_accounts(id) ON DELETE CASCADE,
-		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-		role_id UUID NOT NULL REFERENCES merchant_account_roles(id) ON DELETE RESTRICT,
-
-		relationship_type TEXT NOT NULL DEFAULT 'employee'
-			CHECK (relationship_type IN ('owner', 'employee', 'external_agent')),
-
-		status TEXT NOT NULL DEFAULT 'active'
-			CHECK (status IN ('invited', 'active', 'suspended', 'removed')),
-
-		invited_by UUID REFERENCES users(id) ON DELETE SET NULL,
-		invited_at TIMESTAMPTZ,
-
-		joined_at TIMESTAMPTZ,
-
-		removed_by UUID REFERENCES users(id) ON DELETE SET NULL,
-		removed_at TIMESTAMPTZ,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		UNIQUE (merchant_account_id, user_id),
-
-		CONSTRAINT chk_merchant_account_members_removed_state
-			CHECK (
-				(status = 'removed' AND removed_at IS NOT NULL)
-				OR
-				(status <> 'removed' AND removed_at IS NULL AND removed_by IS NULL)
-			),
-
-		CONSTRAINT chk_merchant_account_members_joined_at
-			CHECK (
-				status = 'invited'
-				OR joined_at IS NOT NULL
-			),
-
-		CONSTRAINT chk_merchant_account_members_invited_state
-			CHECK (
-				(status = 'invited' AND invited_at IS NOT NULL)
-				OR
-				(status <> 'invited')
-			),
-
-		CONSTRAINT chk_merchant_account_members_owner_relationship
-			CHECK (
-				relationship_type <> 'owner'
-				OR status <> 'invited'
-			)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_account_members_user_status
-		ON merchant_account_members(user_id, status);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_account_members_account_status
-		ON merchant_account_members(merchant_account_id, status);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_account_members_relationship_type
-		ON merchant_account_members(merchant_account_id, relationship_type);
 
 	-- ===============================================================
-	-- Program Fee Schedules
-	-- CE patch 8: added missing comma after chk_fee_schedule_hybrid_requires_both,
-	-- and tightened chk_fee_schedule_type_interval so adjustment_fee/refund/reversal
-	-- are constrained to billing_interval = 'event'.
+	-- Merchant Program Fee Schedules
 	-- ===============================================================
 
 	-- Merchant Program Fee Schedules
 	CREATE TABLE IF NOT EXISTS merchant_program_fee_schedules (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		fee_scope TEXT NOT NULL DEFAULT 'plan'
-			CHECK (fee_scope IN ('global', 'plan')),
-
-		plan_id UUID
-			REFERENCES merchant_program_plans(id)
-			ON DELETE RESTRICT,
 
 		fee_type_id UUID NOT NULL
 			REFERENCES merchant_fee_types(id)
@@ -4276,15 +3086,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 				OR maximum_fee >= 0
 			),
 
-		included_seats INTEGER NOT NULL DEFAULT 1
-			CHECK (included_seats >= 1),
-
-		extra_seat_fee NUMERIC(19,4)
-			CHECK (
-				extra_seat_fee IS NULL
-				OR extra_seat_fee >= 0
-			),
-
 		currency CHAR(3) NOT NULL DEFAULT 'USD'
 			CHECK (currency ~ '^[A-Z]{3}$'),
 
@@ -4296,19 +3097,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_fee_schedule_scope_plan
-			CHECK (
-				(
-					fee_scope = 'global'
-					AND plan_id IS NULL
-				)
-				OR
-				(
-					fee_scope = 'plan'
-					AND plan_id IS NOT NULL
-				)
-			),
 
 		CONSTRAINT chk_fee_schedule_effective_window
 			CHECK (
@@ -4346,15 +3134,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 
 		CONSTRAINT excl_merchant_program_fee_schedules_active_window
 			EXCLUDE USING gist (
-				fee_scope WITH =,
-
-				(
-					COALESCE(
-						plan_id,
-						'00000000-0000-0000-0000-000000000000'::uuid
-					)
-				) WITH =,
-
 				fee_type_id WITH =,
 
 				billing_interval WITH =,
@@ -4373,33 +3152,16 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 			)
 	);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_plan
-		ON merchant_program_fee_schedules (
-			plan_id,
-			fee_type_id,
-			billing_interval,
-			effective_from DESC
-		)
-		WHERE (
-			fee_scope = 'plan'
-			AND deleted_at IS NULL
-		);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_global
+	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_lookup
 		ON merchant_program_fee_schedules (
 			fee_type_id,
 			billing_interval,
 			effective_from DESC
 		)
-		WHERE (
-			fee_scope = 'global'
-			AND plan_id IS NULL
-			AND deleted_at IS NULL
-		);
+		WHERE deleted_at IS NULL;
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_effective
 		ON merchant_program_fee_schedules (
-			fee_scope,
 			fee_type_id,
 			billing_interval,
 			effective_from,
@@ -4520,7 +3282,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 
 		engagement_event_id UUID
 			CONSTRAINT fk_merchant_billable_events_engagement_event
-			REFERENCES user_trend_engagement_events(id)
+			REFERENCES user_future_offering_engagement_events(id)
 			ON DELETE RESTRICT,
 
 		billable_event_type TEXT NOT NULL
@@ -4602,7 +3364,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 						'watch',
 						'waitlist',
 						'early_access_request',
-					billable_event	'beta',
+						'beta',
 						'reservation_interest',
 						'preorder_intent'
 					)
@@ -4762,11 +3524,11 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 			INTO
 				v_merchant_id,
 				v_future_offering_id
-			FROM user_trend_engagement_events AS utee
-			JOIN user_trend_engagements AS ute
+			FROM user_future_offering_engagement_events AS utee
+			JOIN user_future_offering_engagements AS ute
 				ON ute.id = utee.engagement_id
 			JOIN merchant_future_offerings AS mfo
-				ON mfo.offer_id = ute.offer_id
+				ON mfo.future_offering_id = ute.future_offering_id
 			WHERE utee.id = NEW.engagement_event_id;
 
 		ELSE
@@ -5098,47 +3860,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		);
 
 
-	-- ===============================================================
-	-- DEFERRED: Settlement
-	-- Non-v1 merchant fee settlement batch and invoice item infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS merchant_settlement_batches (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
 
-		settlement_status TEXT NOT NULL DEFAULT 'pending'
-			CHECK (settlement_status IN ('pending', 'invoiced', 'settled', 'disputed', 'cancelled')),
-
-		-- Snapshot total preserved for invoice/settlement integrity.
-		total_fee_amount NUMERIC(19,4) NOT NULL DEFAULT 0 CHECK (total_fee_amount >= 0),
-
-		currency CHAR(3) NOT NULL DEFAULT 'USD'
-			CHECK (currency ~ '^[A-Z]{3}$'),
-
-		period_start TIMESTAMPTZ NOT NULL,
-		period_end TIMESTAMPTZ NOT NULL,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		settled_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_merchant_settlement_period
-			CHECK (period_end > period_start),
-
-		CONSTRAINT chk_merchant_settlement_batches_settled_at
-			CHECK (
-				settlement_status <> 'settled'
-				OR settled_at IS NOT NULL
-			)
-	);
-
-	CREATE TABLE IF NOT EXISTS merchant_settlement_batch_items (
-		settlement_batch_id UUID NOT NULL REFERENCES merchant_settlement_batches(id) ON DELETE CASCADE,
-		fee_calculation_id UUID NOT NULL REFERENCES merchant_fee_calculations(id) ON DELETE RESTRICT,
-		PRIMARY KEY (settlement_batch_id, fee_calculation_id)
-	);
 
 	-- ===============================================================
 	-- Billing Indexes
@@ -5147,16 +3869,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	CREATE INDEX IF NOT EXISTS idx_merchant_accounts_status
 		ON merchant_accounts(account_status)
 		WHERE deleted_at IS NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_plan_fee
-		ON merchant_program_fee_schedules(plan_id, fee_type, billing_interval)
-		WHERE deleted_at IS NULL AND is_active = TRUE;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_program_fee_schedules_global_fee
-		ON merchant_program_fee_schedules(fee_type, billing_interval)
-		WHERE deleted_at IS NULL
-		  AND is_active = TRUE
-		  AND fee_scope = 'global';
 
 	CREATE INDEX IF NOT EXISTS idx_merchant_billing_ledger_entries_merchant
 		ON merchant_billing_ledger_entries(merchant_id, created_at DESC);
@@ -5168,194 +3880,12 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	CREATE INDEX IF NOT EXISTS idx_merchant_billable_events_merchant_status
 		ON merchant_billable_events(merchant_id, status, created_at DESC);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_billable_events_route_event
-		ON merchant_billable_events(commerce_route_event_id)
-		WHERE commerce_route_event_id IS NOT NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_billable_events_coupon_usage
-		ON merchant_billable_events(coupon_usage_id)
-		WHERE coupon_usage_id IS NOT NULL;
-
 	CREATE INDEX IF NOT EXISTS idx_merchant_fee_calculations_merchant_status
 		ON merchant_fee_calculations(merchant_id, status, calculated_at DESC);
 
-	CREATE INDEX IF NOT EXISTS idx_merchant_settlement_batches_merchant_status
-		ON merchant_settlement_batches(merchant_id, settlement_status, created_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_settlement_batch_items_fee_calculation
-		ON merchant_settlement_batch_items(fee_calculation_id);
 
 	-- ===============================================================
-	-- DEFERRED: Merchant Attribution Matches
-	-- Non-v1 proprietary attribution proof and conflict resolution infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS merchant_attribution_matches (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-
-		commerce_route_event_id UUID
-			REFERENCES commerce_route_events(id) ON DELETE RESTRICT,
-
-		billable_event_id UUID NOT NULL
-			REFERENCES merchant_billable_events(id) ON DELETE CASCADE,
-
-		attribution_config_id UUID
-			REFERENCES merchant_direct_attribution_configs(id) ON DELETE SET NULL,
-
-		coupon_usage_id UUID
-			REFERENCES coupon_usages(id) ON DELETE SET NULL,
-
-		attribution_method TEXT NOT NULL CHECK (attribution_method IN (
-			'route_token',
-			'utm',
-			'coupon_code',
-			'postback',
-			'merchant_reported'
-		)),
-
-		attribution_window_days INTEGER NOT NULL CHECK (attribution_window_days >= 0),
-		days_to_conversion INTEGER NOT NULL CHECK (days_to_conversion >= 0),
-
-		match_confidence NUMERIC(5,2)
-			CHECK (
-				match_confidence IS NULL
-				OR (match_confidence >= 0 AND match_confidence <= 100)
-			),
-
-		conflict_resolution_reason TEXT,
-		is_primary BOOLEAN NOT NULL DEFAULT TRUE,
-
-		matched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT chk_attribution_match_route_event_required
-			CHECK (
-				attribution_method = 'merchant_reported'
-				OR commerce_route_event_id IS NOT NULL
-			),
-
-		CONSTRAINT chk_attribution_match_within_window
-			CHECK (days_to_conversion <= attribution_window_days),
-
-		CONSTRAINT chk_attribution_match_coupon_usage_method
-			CHECK (
-				attribution_method <> 'coupon_code'
-				OR coupon_usage_id IS NOT NULL
-			),
-
-		CONSTRAINT chk_attribution_match_conflict_reason
-			CHECK (
-				is_primary = TRUE
-				OR conflict_resolution_reason IS NOT NULL
-			)
-	);
-
-	CREATE UNIQUE INDEX IF NOT EXISTS ux_merchant_attribution_matches_primary
-		ON merchant_attribution_matches(billable_event_id)
-		WHERE is_primary = TRUE;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_attribution_matches_merchant
-		ON merchant_attribution_matches(merchant_id);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_attribution_matches_route_event
-		ON merchant_attribution_matches(commerce_route_event_id)
-		WHERE commerce_route_event_id IS NOT NULL;
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_attribution_matches_billable_event
-		ON merchant_attribution_matches(billable_event_id);
-
-
-	-- ===============================================================
-	-- DEFERRED: Merchant Postback Infrastructure
-	-- Non-v1 merchant postback config and event validation infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS merchant_postback_configs (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-
-		endpoint_url TEXT NOT NULL CHECK (endpoint_url ~* '^https?://'),
-
-		authentication_method TEXT NOT NULL CHECK (authentication_method IN (
-			'secret_token',
-			'api_key',
-			'hmac_signature',
-			'none'
-		)),
-
-		secret_hash TEXT,
-
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_postback_config_secret_required
-			CHECK (
-				authentication_method = 'none'
-				OR secret_hash IS NOT NULL
-			)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_postback_configs_merchant
-		ON merchant_postback_configs(merchant_id)
-		WHERE is_active = TRUE
-		  AND deleted_at IS NULL;
-
-
-	CREATE TABLE IF NOT EXISTS merchant_postback_events (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID NOT NULL REFERENCES merchants(id) ON DELETE CASCADE,
-
-		postback_config_id UUID
-			REFERENCES merchant_postback_configs(id) ON DELETE SET NULL,
-
-		commerce_route_event_id UUID
-			REFERENCES commerce_route_events(id) ON DELETE SET NULL,
-
-		payload JSONB NOT NULL,
-
-		validation_status TEXT NOT NULL DEFAULT 'pending'
-			CHECK (validation_status IN ('pending', 'accepted', 'rejected')),
-
-		validated_at TIMESTAMPTZ,
-		rejection_reason TEXT,
-
-		received_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT chk_postback_event_validated_at
-			CHECK (
-				validation_status = 'pending'
-				OR validated_at IS NOT NULL
-			),
-
-		CONSTRAINT chk_postback_event_rejection_reason
-			CHECK (
-				validation_status <> 'rejected'
-				OR rejection_reason IS NOT NULL
-			)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_postback_events_merchant
-		ON merchant_postback_events(merchant_id, received_at DESC);
-
-	CREATE INDEX IF NOT EXISTS idx_merchant_postback_events_route_event
-		ON merchant_postback_events(commerce_route_event_id)
-		WHERE commerce_route_event_id IS NOT NULL;
-
-
-	-- ===============================================================
-	-- DEFERRED: Fee Reversal Causality
+	-- Merchant Fee Reversal
 	-- Non-v1 fee reversal linkage and audit trail infrastructure.
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
@@ -5386,7 +3916,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 		ON merchant_fee_reversals(original_fee_calculation_id);
 
 	-- ===============================================================
-	-- DEFERRED: Merchant Payment Methods
+	-- Merchant Payment Methods
 	-- Non-v1 merchant payment instrument storage infrastructure.
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
@@ -5465,7 +3995,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 
 
 	-- ===============================================================
-	-- DEFERRED: Merchant Invoices / Invoice Items
+	-- Merchant Invoices / Invoice Items
 	-- Non-v1 merchant invoice generation and line item infrastructure.
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
@@ -5669,7 +4199,7 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 
 
 	-- ===============================================================
-	-- DEFERRED: Merchant Payments / Receipts
+	-- Merchant Payments / Receipts
 	-- Non-v1 merchant payment transaction and receipt infrastructure.
 	-- Keep schema compile-safe, but do not expand routes, services, UI,
 	-- handlers, or tests for Future Offering v1.
@@ -5741,165 +4271,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	CREATE INDEX IF NOT EXISTS idx_merchant_payments_invoice
 		ON merchant_payments(invoice_id)
 		WHERE invoice_id IS NOT NULL;
-
-
-	-- ===============================================================
-	-- DEFERRED: Affiliate Feed Sources
-	-- Non-v1 deals ingestion and affiliate feed source infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS affiliate_feed_sources (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		merchant_id UUID
-			REFERENCES merchants(id)
-			ON DELETE SET NULL,
-
-		source_name TEXT NOT NULL,
-
-		source_type TEXT NOT NULL CHECK (source_type IN (
-			'amazon_associates',
-			'csv',
-			'json',
-			'xml',
-			'rss',
-			'api'
-		)),
-
-		feed_url TEXT
-			CHECK (
-				feed_url IS NULL
-				OR feed_url ~* '^https?://'
-			),
-
-		auth_method TEXT NOT NULL DEFAULT 'none'
-			CHECK (auth_method IN (
-				'none',
-				'api_key',
-				'oauth',
-				'basic_auth',
-				'bearer_token'
-			)),
-
-		credentials_encrypted BYTEA,
-		credentials_key_id TEXT,
-		credentials_last_rotated_at TIMESTAMPTZ,
-
-		mapping_config JSONB NOT NULL DEFAULT '{}'::jsonb,
-
-		sync_frequency_minutes INTEGER NOT NULL DEFAULT 1440
-			CHECK (sync_frequency_minutes > 0),
-
-		last_synced_at TIMESTAMPTZ,
-		is_active BOOLEAN NOT NULL DEFAULT TRUE,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ,
-
-		CONSTRAINT chk_feed_source_credentials
-			CHECK (
-				auth_method = 'none'
-				OR
-				(
-					credentials_encrypted IS NOT NULL
-					AND credentials_key_id IS NOT NULL
-				)
-			),
-
-		CONSTRAINT chk_feed_source_credentials_none
-			CHECK (
-				auth_method <> 'none'
-				OR
-				(
-					credentials_encrypted IS NULL
-					AND credentials_key_id IS NULL
-					AND credentials_last_rotated_at IS NULL
-				)
-			)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_affiliate_feed_sources_active
-		ON affiliate_feed_sources(source_type, is_active)
-		WHERE deleted_at IS NULL;
-
-
-	-- ===============================================================
-	-- DEFERRED: Affiliate Feed Imports
-	-- Non-v1 affiliate feed import run tracking infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS affiliate_feed_imports (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		source_id UUID NOT NULL
-			REFERENCES affiliate_feed_sources(id)
-			ON DELETE CASCADE,
-
-		import_status TEXT NOT NULL DEFAULT 'pending'
-			CHECK (import_status IN (
-				'pending',
-				'running',
-				'completed',
-				'partial_success',
-				'failed'
-			)),
-
-		records_received INTEGER NOT NULL DEFAULT 0
-			CHECK (records_received >= 0),
-
-		offers_created INTEGER NOT NULL DEFAULT 0
-			CHECK (offers_created >= 0),
-
-		offers_updated INTEGER NOT NULL DEFAULT 0
-			CHECK (offers_updated >= 0),
-
-		offers_failed INTEGER NOT NULL DEFAULT 0
-			CHECK (offers_failed >= 0),
-
-		started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		completed_at TIMESTAMPTZ,
-		error_summary TEXT,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-		CONSTRAINT chk_affiliate_feed_import_completion
-			CHECK (
-				import_status IN ('pending', 'running')
-				OR completed_at IS NOT NULL
-			)
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_affiliate_feed_imports_source
-		ON affiliate_feed_imports(source_id, started_at DESC);
-
-
-	-- ===============================================================
-	-- DEFERRED: Affiliate Feed Import Errors
-	-- Non-v1 affiliate feed import error capture infrastructure.
-	-- Keep schema compile-safe, but do not expand routes, services, UI,
-	-- handlers, or tests for Future Offering v1.
-	-- ===============================================================
-	CREATE TABLE IF NOT EXISTS affiliate_feed_import_errors (
-		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-		import_id UUID NOT NULL
-			REFERENCES affiliate_feed_imports(id)
-			ON DELETE CASCADE,
-
-		source_record_reference TEXT,
-		error_message TEXT NOT NULL,
-
-		raw_payload JSONB,
-
-		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-	);
-
-	CREATE INDEX IF NOT EXISTS idx_affiliate_feed_import_errors_import
-		ON affiliate_feed_import_errors(import_id);
 
 
 	-- Outbox Events
@@ -5988,11 +4359,8 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 
 
 	-- ===============================================================
-	-- updated_at triggers
-	-- CE patches 9 & 10: all inline duplicate triggers removed from
-	-- their table sections above. Only this canonical consolidated
-	-- section fires set_updated_at on each table.
-	-- merchant_future_offerings_assets added (patch 10).
+	-- updated_at Triggers
+	-- Canonical consolidated set_updated_at trigger registrations.
 	-- ===============================================================
 	DROP TRIGGER IF EXISTS set_updated_at_roles ON roles;
 	CREATE TRIGGER set_updated_at_roles
@@ -6044,79 +4412,9 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	BEFORE UPDATE ON permissions
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-	DROP TRIGGER IF EXISTS set_updated_at_user_wallets ON user_wallets;
-	CREATE TRIGGER set_updated_at_user_wallets
-	BEFORE UPDATE ON user_wallets
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_user_dashboards ON user_dashboards;
-	CREATE TRIGGER set_updated_at_user_dashboards
-	BEFORE UPDATE ON user_dashboards
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_user_favorites ON user_favorites;
-	CREATE TRIGGER set_updated_at_user_favorites
-	BEFORE UPDATE ON user_favorites
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_user_dashboard_reports ON user_dashboard_reports;
-	CREATE TRIGGER set_updated_at_user_dashboard_reports
-	BEFORE UPDATE ON user_dashboard_reports
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_dashboard_templates ON dashboard_templates;
-	CREATE TRIGGER set_updated_at_dashboard_templates
-	BEFORE UPDATE ON dashboard_templates
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_user_settings ON user_settings;
-	CREATE TRIGGER set_updated_at_user_settings
-	BEFORE UPDATE ON user_settings
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_affiliate_programs ON affiliate_programs;
-	CREATE TRIGGER set_updated_at_affiliate_programs
-	BEFORE UPDATE ON affiliate_programs
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_affiliate_performance ON affiliate_performance;
-	CREATE TRIGGER set_updated_at_affiliate_performance
-	BEFORE UPDATE ON affiliate_performance
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_types ON merchant_types;
-	CREATE TRIGGER set_updated_at_merchant_types
-	BEFORE UPDATE ON merchant_types
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_platforms ON platforms;
-	CREATE TRIGGER set_updated_at_platforms
-	BEFORE UPDATE ON platforms
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
 	DROP TRIGGER IF EXISTS set_updated_at_merchants ON merchants;
 	CREATE TRIGGER set_updated_at_merchants
 	BEFORE UPDATE ON merchants
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_application_status ON merchant_application_status;
-	CREATE TRIGGER set_updated_at_merchant_application_status
-	BEFORE UPDATE ON merchant_application_status
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_applications ON merchant_applications;
-	CREATE TRIGGER set_updated_at_merchant_applications
-	BEFORE UPDATE ON merchant_applications
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_affiliate_programs ON merchant_affiliate_programs;
-	CREATE TRIGGER set_updated_at_merchant_affiliate_programs
-	BEFORE UPDATE ON merchant_affiliate_programs
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_program_plans ON merchant_program_plans;
-	CREATE TRIGGER set_updated_at_merchant_program_plans
-	BEFORE UPDATE ON merchant_program_plans
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_trust_profiles ON merchant_trust_profiles;
@@ -6154,14 +4452,9 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	BEFORE UPDATE ON merchant_future_offering_engagement_options
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-	DROP TRIGGER IF EXISTS set_updated_at_user_trend_engagements ON user_trend_engagements;
-	CREATE TRIGGER set_updated_at_user_trend_engagements
-	BEFORE UPDATE ON user_trend_engagements
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_launch_campaigns ON merchant_launch_campaigns;
-	CREATE TRIGGER set_updated_at_merchant_launch_campaigns
-	BEFORE UPDATE ON merchant_launch_campaigns
+	DROP TRIGGER IF EXISTS set_updated_at_user_future_offering_engagements ON user_future_offering_engagements;
+	CREATE TRIGGER set_updated_at_user_future_offering_engagements
+	BEFORE UPDATE ON user_future_offering_engagements
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_future_offering_trust_reviews ON future_offering_trust_reviews;
@@ -6174,26 +4467,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	BEFORE UPDATE ON commerce_routes
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_direct_attribution_configs ON merchant_direct_attribution_configs;
-	CREATE TRIGGER set_updated_at_merchant_direct_attribution_configs
-	BEFORE UPDATE ON merchant_direct_attribution_configs
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_promotions ON merchant_promotions;
-	CREATE TRIGGER set_updated_at_merchant_promotions
-	BEFORE UPDATE ON merchant_promotions
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_brands ON brands;
-	CREATE TRIGGER set_updated_at_brands
-	BEFORE UPDATE ON brands
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_market_segments ON market_segments;
-	CREATE TRIGGER set_updated_at_market_segments
-	BEFORE UPDATE ON market_segments
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
 	DROP TRIGGER IF EXISTS set_updated_at_departments ON departments;
 	CREATE TRIGGER set_updated_at_departments
 	BEFORE UPDATE ON departments
@@ -6204,89 +4477,9 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	BEFORE UPDATE ON categories
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-	DROP TRIGGER IF EXISTS set_updated_at_products ON products;
-	CREATE TRIGGER set_updated_at_products
-	BEFORE UPDATE ON products
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_products ON merchant_products;
-	CREATE TRIGGER set_updated_at_merchant_products
-	BEFORE UPDATE ON merchant_products
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_coupon_statuses ON coupon_statuses;
-	CREATE TRIGGER set_updated_at_coupon_statuses
-	BEFORE UPDATE ON coupon_statuses
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_offer_statuses ON offer_statuses;
-	CREATE TRIGGER set_updated_at_offer_statuses
-	BEFORE UPDATE ON offer_statuses
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_offers ON offers;
-	CREATE TRIGGER set_updated_at_offers
-	BEFORE UPDATE ON offers
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_value_tags ON value_tags;
-	CREATE TRIGGER set_updated_at_value_tags
-	BEFORE UPDATE ON value_tags
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_audiences ON audiences;
-	CREATE TRIGGER set_updated_at_audiences
-	BEFORE UPDATE ON audiences
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_seasonal_relevances ON seasonal_relevances;
-	CREATE TRIGGER set_updated_at_seasonal_relevances
-	BEFORE UPDATE ON seasonal_relevances
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_offer_videos ON offer_videos;
-	CREATE TRIGGER set_updated_at_offer_videos
-	BEFORE UPDATE ON offer_videos
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_offer_ratings ON offer_ratings;
-	CREATE TRIGGER set_updated_at_offer_ratings
-	BEFORE UPDATE ON offer_ratings
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_coupons ON coupons;
-	CREATE TRIGGER set_updated_at_coupons
-	BEFORE UPDATE ON coupons
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
 	DROP TRIGGER IF EXISTS set_updated_at_actions ON actions;
 	CREATE TRIGGER set_updated_at_actions
 	BEFORE UPDATE ON actions
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_offer_sponsorships ON offer_sponsorships;
-	CREATE TRIGGER set_updated_at_offer_sponsorships
-	BEFORE UPDATE ON offer_sponsorships
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_sponsorship_bid_minimums ON sponsorship_bid_minimums;
-	CREATE TRIGGER set_updated_at_sponsorship_bid_minimums
-	BEFORE UPDATE ON sponsorship_bid_minimums
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_promotions ON promotions;
-	CREATE TRIGGER set_updated_at_promotions
-	BEFORE UPDATE ON promotions
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_reasons ON reasons;
-	CREATE TRIGGER set_updated_at_reasons
-	BEFORE UPDATE ON reasons
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_oauth_clients ON oauth_clients;
-	CREATE TRIGGER set_updated_at_oauth_clients
-	BEFORE UPDATE ON oauth_clients
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_activation_tokens ON activation_tokens;
@@ -6307,16 +4500,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_accounts ON merchant_accounts;
 	CREATE TRIGGER set_updated_at_merchant_accounts
 	BEFORE UPDATE ON merchant_accounts
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_account_roles ON merchant_account_roles;
-	CREATE TRIGGER set_updated_at_merchant_account_roles
-	BEFORE UPDATE ON merchant_account_roles
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_account_members ON merchant_account_members;
-	CREATE TRIGGER set_updated_at_merchant_account_members
-	BEFORE UPDATE ON merchant_account_members
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_program_fee_schedules ON merchant_program_fee_schedules;
@@ -6344,26 +4527,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	BEFORE UPDATE ON merchant_fee_calculations
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_settlement_batches ON merchant_settlement_batches;
-	CREATE TRIGGER set_updated_at_merchant_settlement_batches
-	BEFORE UPDATE ON merchant_settlement_batches
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_attribution_matches ON merchant_attribution_matches;
-	CREATE TRIGGER set_updated_at_merchant_attribution_matches
-	BEFORE UPDATE ON merchant_attribution_matches
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_postback_configs ON merchant_postback_configs;
-	CREATE TRIGGER set_updated_at_merchant_postback_configs
-	BEFORE UPDATE ON merchant_postback_configs
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_merchant_postback_events ON merchant_postback_events;
-	CREATE TRIGGER set_updated_at_merchant_postback_events
-	BEFORE UPDATE ON merchant_postback_events
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_payment_methods ON merchant_payment_methods;
 	CREATE TRIGGER set_updated_at_merchant_payment_methods
 	BEFORE UPDATE ON merchant_payment_methods
@@ -6377,26 +4540,6 @@ CREATE TABLE IF NOT EXISTS merchant_program_benefits (
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_payments ON merchant_payments;
 	CREATE TRIGGER set_updated_at_merchant_payments
 	BEFORE UPDATE ON merchant_payments
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_affiliate_feed_sources ON affiliate_feed_sources;
-	CREATE TRIGGER set_updated_at_affiliate_feed_sources
-	BEFORE UPDATE ON affiliate_feed_sources
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_affiliate_feed_imports ON affiliate_feed_imports;
-	CREATE TRIGGER set_updated_at_affiliate_feed_imports
-	BEFORE UPDATE ON affiliate_feed_imports
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_user_wishlists ON user_wishlists;
-	CREATE TRIGGER set_updated_at_user_wishlists
-	BEFORE UPDATE ON user_wishlists
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
-
-	DROP TRIGGER IF EXISTS set_updated_at_user_merchant_follows ON user_merchant_follows;
-	CREATE TRIGGER set_updated_at_user_merchant_follows
-	BEFORE UPDATE ON user_merchant_follows
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_user_external_identities ON user_external_identities;

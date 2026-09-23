@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for external user identities.
 //
-// sdworkspace/sdbackend/internal/data/user_external_identity.go
+// focodebase/fobackend/internal/data/user_external_identity.go
 //
 // GTM:
 //

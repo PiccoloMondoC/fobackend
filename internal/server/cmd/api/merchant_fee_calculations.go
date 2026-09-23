@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for privileged merchant fee-calculation
 // commercial-history and reconciliation reads.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_fee_calculations.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_fee_calculations.go
 //
 // GTM:
 //

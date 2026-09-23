@@ -1,7 +1,7 @@
 // Package services contains trusted internal service composition,
 // automation support, moderation helpers, and shared internal workflow logic.
 //
-// sdworkspace/sdbackend/internal/services/merchant_future_offerings_internal.go
+// focodebase/fobackend/internal/services/merchant_future_offerings_internal.go
 //
 // GTM:
 //

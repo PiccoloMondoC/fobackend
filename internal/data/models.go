@@ -1,7 +1,7 @@
 // Package data provides the centralized database model aggregate for the
 // Platform backend.
 //
-// File: sdworkspace/sdbackend/internal/data/models.go
+// File: focodebase/fobackend/internal/data/models.go
 //
 // GTM:
 //
@@ -90,11 +90,6 @@ type Models struct {
 	UserExternalIdentity UserExternalIdentityModel // SPINE: minimal foundation — external identity/account linking
 	OauthLoginState      OAuthLoginStateModel      // SPINE: minimal foundation — external-login state/nonce tracking
 
-	// Layer 2.2.b — OAuth Provider Domain
-	OauthClient            OauthClientModel            // DEFERRED: OAuth2 client registry
-	OauthAuthorizationCode OauthAuthorizationCodeModel // DEFERRED: OAuth2 authorization-code lifecycle
-	OauthUserConsent       OauthUserConsentModel       // DEFERRED: OAuth2 user-consent lifecycle
-
 	// Layer 2.3 — Consumer Domain
 	UserProfile UserProfileModel // SPINE: minimal foundation — user profile
 	//UserTrendEngagement UserTrendEngagementModel // SPINE: Future Offering v1 — consumer future-offering engagement / My Radar
@@ -102,23 +97,11 @@ type Models struct {
 	NotificationChannel NotificationChannelModel // SPINE: minimal foundation — notification channel lookup
 	NotificationType    NotificationTypeModel    // SPINE: minimal foundation — notification type lookup
 
-	UserFavorite        UserFavoriteModel        // DEFERRED: affinity / adoration / virality signal
-	UserWishlist        UserWishlistModel        // DEFERRED: present-commerce buying-intent saved-offer record
-	UserMerchantFollow  UserMerchantFollowModel  // DEFERRED: generic user-to-merchant follow record
-	UserSettings        UserSettingsModel        // DEFERRED: user preference settings
-	UserWallet          UserWalletModel          // DEFERRED: user wallet/account balance
-	UserDashboard       UserDashboardModel       // DEFERRED: user dashboard
-	UserDashboardReport UserDashboardReportModel // DEFERRED: dashboard reporting
-	DashboardTemplate   DashboardTemplateModel   // DEFERRED: dashboard templates
-
 	// Layer 2.4 — Merchant / Future Offering Domain
 	Merchant                              MerchantModel                              // SPINE: Future Offering v1 — merchant identity
 	MerchantAccount                       MerchantAccountModel                       // SPINE: merchant platform-account lifecycle
 	MerchantPaymentMethod                 MerchantPaymentMethodModel                 // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
-	MerchantType                          MerchantTypeModel                          // SPINE: minimal foundation — merchant classification lookup
-	MerchantProgramPlan                   MerchantProgramPlanModel                   // SPINE: Future Offering v1 — merchant program plan reference table
 	MerchantProgramFeeSchedule            MerchantProgramFeeScheduleModel            // SPINE: Future Offering v1 — effective-dated merchant monetization policy
-	MerchantProgramEntitlement            MerchantProgramEntitlementModel            // SPINE: Future Offering v1 — merchant program entitlement/capability gate
 	MerchantFutureOfferingServiceTerm     MerchantFutureOfferingServiceTermModel     // SPINE: Future Offering — overall agreed FO service duration
 	MerchantFutureOfferingServicePeriod   MerchantFutureOfferingServicePeriodModel   // SPINE: Future Offering — bounded performance windows within a Service Term
 	MerchantFutureOfferingBillingPeriod   MerchantFutureOfferingBillingPeriodModel   // SPINE: Future Offering — immutable monthly accounting/consumption windows within a Service Term
@@ -135,40 +118,9 @@ type Models struct {
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
-	// Layer 2.4.a — Merchant / Affiliate Domain
-	MerchantAffiliateProgram MerchantAffiliateProgramModel // DEFERRED: merchant affiliate-program mapping
-	AffiliateProgram         AffiliateProgramModel         // DEFERRED: affiliate program catalog
-	AffiliatePerformance     AffiliatePerformanceModel     // DEFERRED: affiliate performance reporting
-
-	MerchantApplication       MerchantApplicationModel       // DEFERRED: merchant application workflow
-	MerchantApplicationStatus MerchantApplicationStatusModel // DEFERRED: merchant application status lookup
-
 	// Layer 2.5 — Minimal Catalog / Future Offering Classification
-	Brand      BrandModel      // SPINE: minimal foundation — brand identity
 	Department DepartmentModel // SPINE: minimal foundation — top-level taxonomy
 	Category   CategoryModel   // SPINE: minimal foundation — future-offering taxonomy
-	Product    ProductModel    // DEFERRED: present-commerce product catalog record
-	Platform   PlatformModel   // DEFERRED: platform/source lookup
-
-	// Layer 2.5.a — Present Commerce / Offers Domain
-	Offer             OfferModel             // DEFERRED: present-commerce offer record
-	OfferClick        OfferClickModel        // DEFERRED: present-commerce offer click tracking
-	OfferFlag         OfferFlagModel         // DEFERRED: present-commerce offer moderation flag
-	OfferPriceHistory OfferPriceHistoryModel // DEFERRED: present-commerce offer price-history record
-	OfferStatus       OfferStatusModel       // DEFERRED: present-commerce offer status lookup
-
-	ProductMerchant        ProductMerchantModel        // DEFERRED: merchant-product mapping
-	Coupon                 CouponModel                 // DEFERRED: coupon record
-	CouponStatus           CouponStatusModel           // DEFERRED: coupon status lookup
-	CouponUsage            CouponUsageModel            // DEFERRED: coupon usage tracking
-	CouponPerformanceStats CouponPerformanceStatsModel // DEFERRED: coupon performance reporting
-	OfferConversion        OfferConversionModel        // DEFERRED: offer conversion record
-	//Promotion              PromotionModel              // DEFERRED: promotion record
-	MerchantPromotion     MerchantPromotionModel     // DEFERRED: merchant promotion record
-	OfferRating           OfferRatingModel           // DEFERRED: offer rating record
-	OfferSponsorship      OfferSponsorshipModel      // DEFERRED: offer sponsorship record
-	SponsorshipBidType    SponsorshipBidTypeModel    // DEFERRED: sponsorship bid-type lookup
-	SponsorshipBidMinimum SponsorshipBidMinimumModel // DEFERRED: sponsorship bid minimum
 }
 
 // New creates an initialized Models aggregate.
@@ -207,26 +159,12 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		UserExternalIdentity: UserExternalIdentityModel{DB: dbPool, Logger: logger}, // SPINE
 		OauthLoginState:      OAuthLoginStateModel{DB: dbPool, Logger: logger},      // SPINE
 
-		// Layer 2.2.b — OAuth Provider Domain
-		OauthClient:            OauthClientModel{DB: dbPool, Logger: logger},            // DEFERRED
-		OauthAuthorizationCode: OauthAuthorizationCodeModel{DB: dbPool, Logger: logger}, // DEFERRED
-		OauthUserConsent:       OauthUserConsentModel{DB: dbPool, Logger: logger},       // DEFERRED
-
 		// Layer 2.3 — Consumer Domain
 		UserProfile: UserProfileModel{DB: dbPool, Logger: logger}, // SPINE: minimal foundation
 		//UserTrendEngagement: UserTrendEngagementModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		UserNotification:    UserNotificationModel{DB: dbPool, Logger: logger},    // SPINE: minimal foundation
 		NotificationChannel: NotificationChannelModel{DB: dbPool, Logger: logger}, // SPINE: minimal foundation
 		NotificationType:    NotificationTypeModel{DB: dbPool, Logger: logger},    // SPINE: minimal foundation
-
-		UserFavorite:        UserFavoriteModel{DB: dbPool, Logger: logger},        // DEFERRED
-		UserWishlist:        UserWishlistModel{DB: dbPool, Logger: logger},        // DEFERRED
-		UserMerchantFollow:  UserMerchantFollowModel{DB: dbPool, Logger: logger},  // DEFERRED
-		UserSettings:        UserSettingsModel{DB: dbPool, Logger: logger},        // DEFERRED
-		UserWallet:          UserWalletModel{DB: dbPool, Logger: logger},          // DEFERRED
-		UserDashboard:       UserDashboardModel{DB: dbPool, Logger: logger},       // DEFERRED
-		UserDashboardReport: UserDashboardReportModel{DB: dbPool, Logger: logger}, // DEFERRED
-		DashboardTemplate:   DashboardTemplateModel{DB: dbPool, Logger: logger},   // DEFERRED
 
 		// Layer 2.4 — Merchant / Future Offering Domain
 		Merchant:        MerchantModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
@@ -235,10 +173,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 			DB:     dbPool,
 			Logger: logger,
 		}, // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
-		MerchantType:                          MerchantTypeModel{DB: dbPool, Logger: logger},                        // SPINE: minimal foundation
-		MerchantProgramPlan:                   MerchantProgramPlanModel{DB: dbPool, Logger: logger},                 // SPINE: Future Offering v1
 		MerchantProgramFeeSchedule:            MerchantProgramFeeScheduleModel{DB: dbPool, Logger: logger},          // SPINE: Future Offering v1
-		MerchantProgramEntitlement:            MerchantProgramEntitlementModel{DB: dbPool, Logger: logger},          // SPINE: Future Offering v1
 		MerchantFutureOfferingServiceTerm:     MerchantFutureOfferingServiceTermModel{DB: dbPool, Logger: logger},   // SPINE: Future Offering — overall agreed FO service duration
 		MerchantFutureOfferingServicePeriod:   MerchantFutureOfferingServicePeriodModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering — bounded performance windows within a Service Term
 		MerchantFutureOfferingBillingPeriod:   MerchantFutureOfferingBillingPeriodModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering — immutable monthly accounting/consumption windows within a Service Term
@@ -256,38 +191,8 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 
 		// Layer 2.4.a — Merchant / Affiliate Domain
-		MerchantAffiliateProgram: MerchantAffiliateProgramModel{DB: dbPool, Logger: logger}, // DEFERRED
-		AffiliateProgram:         AffiliateProgramModel{DB: dbPool, Logger: logger},         // DEFERRED
-		AffiliatePerformance:     AffiliatePerformanceModel{DB: dbPool, Logger: logger},     // DEFERRED
-
-		MerchantApplication:       MerchantApplicationModel{DB: dbPool, Logger: logger},       // DEFERRED
-		MerchantApplicationStatus: MerchantApplicationStatusModel{DB: dbPool, Logger: logger}, // DEFERRED
-
 		// Layer 2.5 — Minimal Catalog / Future Offering Classification
-		Brand:      BrandModel{DB: dbPool, Logger: logger},      // SPINE: minimal foundation
 		Department: DepartmentModel{DB: dbPool, Logger: logger}, // SPINE: minimal foundation
 		Category:   CategoryModel{DB: dbPool, Logger: logger},   // SPINE: minimal foundation
-		Product:    ProductModel{DB: dbPool, Logger: logger},    // DEFERRED
-		Platform:   PlatformModel{DB: dbPool, Logger: logger},   // DEFERRED
-
-		// Layer 2.5.a — Present Commerce / Offers Domain
-		Offer:             OfferModel{DB: dbPool, Logger: logger},             // DEFERRED: present-commerce offer record
-		OfferClick:        OfferClickModel{DB: dbPool, Logger: logger},        // DEFERRED: present-commerce offer click tracking
-		OfferFlag:         OfferFlagModel{DB: dbPool, Logger: logger},         // DEFERRED: present-commerce offer moderation flag
-		OfferPriceHistory: OfferPriceHistoryModel{DB: dbPool, Logger: logger}, // DEFERRED: present-commerce offer price-history record
-		OfferStatus:       OfferStatusModel{DB: dbPool, Logger: logger},       // DEFERRED: present-commerce offer status lookup
-
-		ProductMerchant:        ProductMerchantModel{DB: dbPool, Logger: logger},        // DEFERRED
-		Coupon:                 CouponModel{DB: dbPool, Logger: logger},                 // DEFERRED
-		CouponStatus:           CouponStatusModel{DB: dbPool, Logger: logger},           // DEFERRED
-		CouponUsage:            CouponUsageModel{DB: dbPool, Logger: logger},            // DEFERRED
-		CouponPerformanceStats: CouponPerformanceStatsModel{DB: dbPool, Logger: logger}, // DEFERRED
-		OfferConversion:        OfferConversionModel{DB: dbPool, Logger: logger},        // DEFERRED
-		//Promotion:              PromotionModel{DB: dbPool, Logger: logger},              // DEFERRED
-		MerchantPromotion:     MerchantPromotionModel{DB: dbPool, Logger: logger},     // DEFERRED
-		OfferRating:           OfferRatingModel{DB: dbPool, Logger: logger},           // DEFERRED
-		OfferSponsorship:      OfferSponsorshipModel{DB: dbPool, Logger: logger},      // DEFERRED
-		SponsorshipBidType:    SponsorshipBidTypeModel{DB: dbPool, Logger: logger},    // DEFERRED
-		SponsorshipBidMinimum: SponsorshipBidMinimumModel{DB: dbPool, Logger: logger}, // DEFERRED
 	}
 }

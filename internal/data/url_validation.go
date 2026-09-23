@@ -1,6 +1,6 @@
 // Package data provides shared data-layer validation helpers.
 //
-// sdworkspace/sdbackend/internal/data/url_validation.go
+// focodebase/fobackend/internal/data/url_validation.go
 //
 // GTM:
 //

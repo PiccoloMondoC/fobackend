@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for privileged historical review of
 // platform setting value transitions.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/platform_setting_history.go
+// focodebase/fobackend/internal/server/cmd/api/platform_setting_history.go
 //
 // GTM:
 //

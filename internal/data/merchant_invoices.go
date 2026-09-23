@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for merchant invoices.
 //
-// sdworkspace/sdbackend/internal/data/merchant_invoices.go
+// focodebase/fobackend/internal/data/merchant_invoices.go
 //
 // GTM:
 //

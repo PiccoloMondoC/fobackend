@@ -1,6 +1,6 @@
 // Package services provides async wrappers for platform setting internal workflows.
 //
-// sdworkspace/sdbackend/internal/services/platform_settings_async.go
+// focodebase/fobackend/internal/services/platform_settings_async.go
 //
 // GTM:
 //

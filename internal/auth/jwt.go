@@ -2,7 +2,7 @@
 // access tokens, issuing persisted refresh tokens, and validating third-party
 // identity-provider tokens.
 //
-// sdworkspace/sdbackend/internal/auth/jwt.go
+// focodebase/fobackend/internal/auth/jwt.go
 //
 // GTM:
 //
@@ -12,9 +12,9 @@
 //	  JWT and refresh-token orchestration are release-critical authentication
 //	  infrastructure. This file issues EdDSA/Ed25519 signed access tokens,
 //	  creates persisted refresh-token records for revocation and rotation,
-//	  validates configured issuer/audience boundaries, supports public-key
-//	  verification for distributed service trust, and verifies external
-//	  identity-provider tokens used during authentication.
+//	  validates configured issuer/audience boundaries, enforces persistence-backed
+//	  access-token revocation, supports public-key verification for distributed
+//	  service trust, and verifies external identity-provider tokens.
 //
 // SPINE Rule:
 //
@@ -25,6 +25,7 @@
 //	Preserve explicit rejection of non-EdDSA JWT algorithms.
 //	Preserve mandatory refresh-token persistence.
 //	Preserve issuer/audience validation.
+//	Preserve persistence-backed JTI revocation enforcement for bearer authentication.
 //	Preserve UTC token expiry handling.
 //	Preserve protected token lifecycle semantics.
 //	Preserve third-party identity-token verification boundaries.
@@ -224,7 +225,10 @@ func (ts *TokenService) GenerateRefreshToken(
 	return refreshToken, nil
 }
 
-// ParseToken validates an EdDSA JWT and returns canonical Platform claims.
+// ParseToken performs canonical EdDSA cryptographic and claims validation and
+// returns trusted Platform claims. It does not perform persistence-backed
+// revocation lookup. Callers authenticating an incoming bearer token must use
+// AuthenticateAccessToken so revocation enforcement cannot be bypassed.
 func (ts *TokenService) ParseToken(tokenStr string) (*jwtutil.Claims, error) {
 	if err := ts.validateTokenService(false, false); err != nil {
 		return nil, err
@@ -252,10 +256,77 @@ func (ts *TokenService) ParseToken(tokenStr string) (*jwtutil.Claims, error) {
 	)
 }
 
-// ValidateToken reports whether tokenStr is a valid Platform access token.
-func (ts *TokenService) ValidateToken(tokenStr string) bool {
-	_, err := ts.ParseToken(tokenStr)
-	return err == nil
+// InspectAccessToken performs the canonical complete access-token trust check:
+// EdDSA cryptographic/claims validation followed by persistence-backed JTI
+// revocation enforcement. It returns trusted claims only for callers whose
+// protocol contract genuinely requires claims, such as OAuth token introspection.
+func (ts *TokenService) InspectAccessToken(ctx context.Context, tokenStr string) (*jwtutil.Claims, error) {
+	ctx, span := ts.startSpan(ctx, "auth.InspectAccessToken")
+	defer span.End()
+
+	claims, err := ts.ParseToken(tokenStr)
+	if err != nil {
+		ts.logError(ctx, "InspectAccessToken", "access token validation failed", err)
+		return nil, err
+	}
+
+	if ts.TokenModel == nil {
+		err := wrapMisconfigured("token model is required for access-token revocation enforcement")
+		ts.logError(ctx, "InspectAccessToken", "token service misconfigured", err)
+		return nil, err
+	}
+
+	revoked, err := ts.TokenModel.IsAccessTokenRevoked(ctx, claims.ID)
+	if err != nil {
+		ts.logError(ctx, "InspectAccessToken", "access-token revocation lookup failed", err, "jti", claims.ID)
+		return nil, fmt.Errorf("check access token revocation: %w", err)
+	}
+	if revoked {
+		ts.logInfo(ctx, "InspectAccessToken", "access token rejected: revoked", "jti", claims.ID, "user_id", claims.UserID)
+		return nil, data.ErrAccessTokenRevoked
+	}
+
+	return claims, nil
+}
+
+// AuthenticateAccessToken is the canonical bearer-authentication boundary for
+// HTTP and authorization callers. It returns only authenticated user identity,
+// preventing those layers from depending on JWT claim representation.
+func (ts *TokenService) AuthenticateAccessToken(ctx context.Context, tokenStr string) (uuid.UUID, error) {
+	claims, err := ts.InspectAccessToken(ctx, tokenStr)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	ts.logInfo(ctx, "AuthenticateAccessToken", "access token accepted", "jti", claims.ID, "user_id", claims.UserID)
+	return claims.UserID, nil
+}
+
+// RevokeAccessToken validates rawToken through the canonical EdDSA boundary and
+// persists its trusted JTI/user identity as an access-token revocation fact.
+func (ts *TokenService) RevokeAccessToken(ctx context.Context, rawToken string) error {
+	ctx, span := ts.startSpan(ctx, "auth.RevokeAccessToken")
+	defer span.End()
+
+	claims, err := ts.ParseToken(rawToken)
+	if err != nil {
+		ts.logError(ctx, "RevokeAccessToken", "access token validation failed", err)
+		return err
+	}
+
+	if ts.TokenModel == nil {
+		err := wrapMisconfigured("token model is required for access-token revocation")
+		ts.logError(ctx, "RevokeAccessToken", "token service misconfigured", err)
+		return err
+	}
+
+	if err := ts.TokenModel.RevokeAccessTokenJTI(ctx, claims.ID, claims.UserID); err != nil {
+		ts.logError(ctx, "RevokeAccessToken", "access-token revocation persistence failed", err, "jti", claims.ID)
+		return err
+	}
+
+	ts.logInfo(ctx, "RevokeAccessToken", "access token revoked", "jti", claims.ID, "user_id", claims.UserID)
+	return nil
 }
 
 // GoogleIDTokenInfo models the Google tokeninfo response used for ID-token validation.

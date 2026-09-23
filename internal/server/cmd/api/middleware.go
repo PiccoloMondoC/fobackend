@@ -1,7 +1,7 @@
 // Package main provides HTTP middleware for authentication, authorization,
 // trusted request context, rate limiting, and other cross-cutting API controls.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/middleware.go
+// focodebase/fobackend/internal/server/cmd/api/middleware.go
 //
 // GTM:
 //
@@ -39,6 +39,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"golang.org/x/time/rate"
@@ -50,36 +52,14 @@ type ctxKey string
 
 const ctxActionID ctxKey = "actionID"
 const ctxAdminID ctxKey = "adminID"
-const ctxAffiliatePerformanceID ctxKey = "affiliatePerformanceID"
-const ctxAffiliateProgramID ctxKey = "affiliateProgramID"
 
 // const ctxArchivedTimeRange ctxKey = "archivedTimeRange"
 const ctxAuditLogID ctxKey = "auditLogID"
-const ctxBrandID ctxKey = "brandID"
-const ctxBrandName ctxKey = "brandName"
 const ctxCategoryID ctxKey = "categoryID"
-const ctxCouponID ctxKey = "couponID"
 const ctxClientID ctxKey = "clientID"
-const ctxDashboardTemplateID ctxKey = "dashboardTemplateID"
-const ctxOfferID ctxKey = "offerID"
-const ctxOfferAlertID ctxKey = "offerAlertID"
-const ctxOfferIDs ctxKey = "offerIDs"
-const ctxOfferPriceHistoryID ctxKey = "offerPriceHistoryID"
-const ctxOfferRatingID ctxKey = "offerRatingID"
-const ctxOfferSponsorshipID ctxKey = "offerSponsorshipID"
-const ctxOfferShareID ctxKey = "offerShareID"
-const ctxOfferStatusID ctxKey = "offerStatusID"
 const ctxEntityID ctxKey = "entityID"
 const ctxEntityTypeID ctxKey = "entityTypeID"
-const ctxMerchantApplicationID ctxKey = "merchantApplicationID"
 const ctxMerchantID ctxKey = "merchantID"
-const ctxMerchantPromotionID ctxKey = "merchantPromotionID"
-const ctxMerchantTypeID ctxKey = "merchantTypeID"
-const ctxPlatformID ctxKey = "platformID"
-const ctxPriceDropThreshold ctxKey = "priceDropThreshold"
-const ctxProductID ctxKey = "productID"
-const ctxProductLine ctxKey = "productLine"
-const ctxPromotionID ctxKey = "promotionID"
 
 // ctxRoleID holds the authenticated user's resolved role ID (string form of
 // a uuid.UUID). It is the canonical identity of the role row, not the role's
@@ -103,9 +83,7 @@ const ctxAuthzState ctxKey = "authzState"
 const ctxStatusID ctxKey = "statusID"
 const ctxUPC ctxKey = "upc"
 const ctxGuestUserID ctxKey = "guestUserID"
-const ctxUserDashboardID ctxKey = "userDashboardID"
 const ctxUserOfferPurchaseHistoryID ctxKey = "userOfferPurchaseHistoryID"
-const ctxUserFavoriteID ctxKey = "userFavoriteID"
 
 // ctxUserID holds the authenticated user's identity as a uuid.UUID. This is
 // the sole canonical type for this key. AuthMiddleware is the sole trusted
@@ -204,8 +182,9 @@ func (app *Application) RateLimitMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// AuthMiddleware validates the Bearer JWT and establishes the trusted
-// authorization context consumed by every downstream authorization helper
+// AuthMiddleware authenticates the Bearer access token through the canonical
+// TokenService boundary and establishes the trusted authorization context
+// consumed by every downstream authorization helper
 // in this package. It is the sole writer of ctxUserID, ctxRoleID,
 // ctxRoleName, and ctxAuthzState.
 //
@@ -227,19 +206,37 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 		}
 		token := strings.TrimPrefix(auth, prefix)
 
-		// 2️⃣  Validate & get user‑ID
-		userID, err := app.Models.Token.ValidateAccessToken(r.Context(), token)
+		// 2️⃣  Authenticate through the canonical TokenService boundary.
+		// Cryptographic/claims validation and persistence-backed revocation are
+		// enforced there; middleware receives only trusted user identity.
+		userID, err := app.TokenService.AuthenticateAccessToken(r.Context(), token)
 		if err != nil || userID == uuid.Nil {
-			logger.Warn("invalid or expired token", "error", err, "remote_ip", r.RemoteAddr)
+			logger.Warn("invalid, expired, or revoked token", "error", err, "remote_ip", r.RemoteAddr)
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		// 3️⃣  Resolve primary role
+		// 3️⃣  Resolve the authenticated user's current authorization class.
+		// A missing role is an authorization outcome; persistence failures and
+		// impossible role records are server failures and must not be disguised as
+		// authentication failures.
 		role, err := app.Models.Role.GetRoleByUserID(r.Context(), userID)
-		if err != nil || role == nil || role.ID == uuid.Nil || strings.TrimSpace(role.Name) == "" {
-			logger.Warn("no role found for user", "error", err, "user_id", userID)
-			http.Error(w, "role required", http.StatusUnauthorized)
+		if err != nil {
+			if errors.Is(err, data.ErrRoleNotFound) {
+				logger.Warn("authenticated user has no active role assignment", "user_id", userID)
+				http.Error(w, "role required", http.StatusForbidden)
+				return
+			}
+
+			logger.Error("authenticated user role resolution failed", "error", err, "user_id", userID)
+			app.serverErrorResponse(logger, w, r, err)
+			return
+		}
+
+		if role == nil || role.ID == uuid.Nil || strings.TrimSpace(role.Name) == "" {
+			err := errors.New("authenticated user role resolution returned an invalid role")
+			logger.Error("authenticated user role resolution returned invalid role", "error", err, "user_id", userID)
+			app.serverErrorResponse(logger, w, r, err)
 			return
 		}
 
@@ -372,19 +369,11 @@ func (app *Application) RequireMinimumRole(minRole string) func(http.Handler) ht
 //   - X-Merchant-Application-ID
 //   - X-Merchant-ID
 //   - X-Merchant-Type-ID
-//   - X-Affiliate-Program-ID
 //   - X-Audit-Log-ID
-//   - X-Brand-ID
-//   - X-Brand-Name
 //   - X-Category-ID
 //   - X-Client-ID
-//   - X-Coupon-ID
-//   - X-Offer-ID
 //   - X-Entity-ID
 //   - X-Entity-Type-ID
-//   - X-Platform-ID
-//   - X-Product-ID
-//   - X-Product-Line
 func (app *Application) InjectApplicationContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -403,34 +392,15 @@ func (app *Application) InjectApplicationContextMiddleware(next http.Handler) ht
 		}
 
 		// --- Inject all trusted UUID headers (same list as before)
-		injectUUID("X-Merchant-Application-ID", ctxMerchantApplicationID)
 		injectUUID("X-Admin-ID", ctxAdminID)
 		injectUUID("X-Merchant-ID", ctxMerchantID)
-		injectUUID("X-Merchant-Promotion-ID", ctxMerchantPromotionID)
-		injectUUID("X-Merchant-Type-ID", ctxMerchantTypeID)
-		injectUUID("X-Affiliate-Program-ID", ctxAffiliateProgramID)
 		injectUUID("X-Audit-Log-ID", ctxAuditLogID)
-		injectUUID("X-Brand-ID", ctxBrandID)
 		injectUUID("X-Category-ID", ctxCategoryID)
 		injectUUID("X-Client-ID", ctxClientID)
-		injectUUID("X-Coupon-ID", ctxCouponID)
-		injectUUID("X-Dashboard-Template-ID", ctxDashboardTemplateID)
-		injectUUID("X-Offer-ID", ctxOfferID)
-		injectUUID("X-Offer-Alert-ID", ctxOfferAlertID)
-		injectUUID("X-Offer-Price-History-ID", ctxOfferPriceHistoryID)
-		injectUUID("X-Offer-Rating-ID", ctxOfferRatingID)
-		injectUUID("X-Offer-Sponsorship-ID", ctxOfferSponsorshipID)
-		injectUUID("X-Offer-Share-ID", ctxOfferShareID)
-		injectUUID("X-Offer-Status-ID", ctxOfferStatusID)
 		injectUUID("X-Entity-ID", ctxEntityID)
 		injectUUID("X-Entity-Type-ID", ctxEntityTypeID)
-		injectUUID("X-Platform-ID", ctxPlatformID)
-		injectUUID("X-Product-ID", ctxProductID)
-		injectUUID("X-Promotion-ID", ctxPromotionID)
 		injectUUID("X-Guest-User-ID", ctxGuestUserID)
-		injectUUID("X-User-Dashboard-ID", ctxUserDashboardID)
 		injectUUID("X-User-Offer-Purchase-History-ID", ctxUserOfferPurchaseHistoryID)
-		injectUUID("X-User-Favorite-ID", ctxUserFavoriteID)
 		injectUUID("X-User-Notification-ID", ctxUserNotificationID)
 		injectUUID("X-User-Settings-ID", ctxUserSettingsID)
 		injectUUID("X-Source-User-ID", ctxSourceUserID)
@@ -441,18 +411,6 @@ func (app *Application) InjectApplicationContextMiddleware(next http.Handler) ht
 		injectUUID("X-Target-User-ID", ctxTargetUserID)
 
 		// --- Optional string headers
-		if val := r.Header.Get("X-Brand-Name"); val != "" {
-			ctx = context.WithValue(ctx, ctxBrandName, val)
-		}
-		if val := r.Header.Get("X-Product-Line"); val != "" {
-			ctx = context.WithValue(ctx, ctxProductLine, val)
-		}
-		if val := r.Header.Get("X-Price-Drop-Threshold"); val != "" {
-			ctx = context.WithValue(ctx, ctxPriceDropThreshold, val)
-		}
-		if val := r.Header.Get("X-Offer-IDs"); val != "" {
-			ctx = context.WithValue(ctx, ctxOfferIDs, val)
-		}
 		if val := r.Header.Get("X-UPC"); val != "" {
 			ctx = context.WithValue(ctx, ctxUPC, val)
 		}
@@ -503,8 +461,6 @@ func (app *Application) DevFallbackContextMiddleware(next http.Handler) http.Han
 
 		ctx := r.Context()
 		ctx = ensureUUID(ctx, ctxMerchantID, "00000000-0000-0000-0000-000000000001")
-		ctx = ensureUUID(ctx, ctxAffiliateProgramID, "00000000-0000-0000-0000-000000000002")
-		ctx = ensureUUID(ctx, ctxBrandID, "00000000-0000-0000-0000-000000000003")
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

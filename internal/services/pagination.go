@@ -1,7 +1,7 @@
 // Package services contains trusted internal service composition,
 // automation support, moderation helpers, and shared internal workflow logic.
 //
-// sdworkspace/sdbackend/internal/services/pagination.go
+// focodebase/fobackend/internal/services/pagination.go
 //
 // GTM:
 //

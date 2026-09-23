@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for the privileged Admin Console
 // control-plane overview.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/admin_console.go
+// focodebase/fobackend/internal/server/cmd/api/admin_console.go
 //
 // GTM:
 //
@@ -18,9 +18,8 @@
 //	  permissions, or domain mutation behavior.
 //
 //	  Platform Settings, Platform Setting History, Merchant Accounts,
-//	  Merchant Billing Accounts, Merchant Billable Events, Merchant Program
-//	  Plans, Merchant Program Entitlements, Merchant Program Fee Schedules,
-//	  Merchant Program Subscriptions, Merchant Program Subscription Periods,
+//	  Merchant Billing Accounts, Merchant Billable Events,
+//	  Merchant Program Fee Schedules,
 //	  Merchant Platform Credit Accounts, Merchant Fee Calculations,
 //	  Merchant Platform Credit Applications, Merchant Invoices,
 //	  Merchant Invoice Items, Merchant Platform Credit Eligible Fee Types,
@@ -97,14 +96,10 @@ type adminConsoleDomains struct {
 	PlatformSettings                       bool `json:"platform_settings"`
 	PlatformSettingHistory                 bool `json:"platform_setting_history"`
 	MerchantAccounts                       bool `json:"merchant_accounts"`
-	MerchantProgramPlans                   bool `json:"merchant_program_plans"`
-	MerchantProgramEntitlements            bool `json:"merchant_program_entitlements"`
 	MerchantProgramFeeSchedules            bool `json:"merchant_program_fee_schedules"`
 	MerchantFutureOfferingServiceTerms     bool `json:"merchant_future_offering_service_terms"`
 	MerchantFutureOfferingServicePeriods   bool `json:"merchant_future_offering_service_periods"`
 	MerchantFutureOfferingBillingPeriods   bool `json:"merchant_future_offering_billing_periods"`
-	MerchantProgramSubscriptions           bool `json:"merchant_program_subscriptions"`
-	MerchantProgramSubscriptionPeriods     bool `json:"merchant_program_subscription_periods"`
 	MerchantPlatformCreditAccounts         bool `json:"merchant_platform_credit_accounts"`
 	MerchantPlatformCreditEligibleFeeTypes bool `json:"merchant_platform_credit_eligible_fee_types"`
 	MerchantBillingAccounts                bool `json:"merchant_billing_accounts"`
@@ -114,6 +109,7 @@ type adminConsoleDomains struct {
 	MerchantInvoices                       bool `json:"merchant_invoices"`
 	MerchantInvoiceItems                   bool `json:"merchant_invoice_items"`
 	MerchantPaymentMethods                 bool `json:"merchant_payment_methods"`
+	Users                                  bool `json:"users"`
 }
 
 // adminConsoleOverviewResponse is the stable presentation DTO returned by the
@@ -306,14 +302,10 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			PlatformSettingHistory:                 true,
 			MerchantAccounts:                       true,
 			MerchantBillingAccounts:                true,
-			MerchantProgramPlans:                   true,
-			MerchantProgramEntitlements:            true,
 			MerchantProgramFeeSchedules:            true,
 			MerchantFutureOfferingServiceTerms:     true,
 			MerchantFutureOfferingServicePeriods:   true,
 			MerchantFutureOfferingBillingPeriods:   true,
-			MerchantProgramSubscriptions:           true,
-			MerchantProgramSubscriptionPeriods:     true,
 			MerchantPlatformCreditAccounts:         true,
 			MerchantPlatformCreditEligibleFeeTypes: true,
 			MerchantBillableEvents:                 true,
@@ -322,6 +314,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			MerchantInvoices:                       true,
 			MerchantInvoiceItems:                   true,
 			MerchantPaymentMethods:                 true,
+			Users:                                  true,
 		},
 	}
 

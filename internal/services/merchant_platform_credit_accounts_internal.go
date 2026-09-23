@@ -1,7 +1,7 @@
 // Package services contains business orchestration for internal platform
 // workflows.
 //
-// sdworkspace/sdbackend/internal/services/merchant_platform_credit_accounts_internal.go
+// focodebase/fobackend/internal/services/merchant_platform_credit_accounts_internal.go
 //
 // GTM:
 //

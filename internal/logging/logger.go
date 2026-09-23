@@ -1,7 +1,7 @@
 // Package logging provides zap-backed structured logging and contextual request
 // enrichment for the Platform backend.
 //
-// sdworkspace/sdbackend/internal/logging/logger.go
+// focodebase/fobackend/internal/logging/logger.go
 //
 // GTM:
 //   Layer: 2.1 Database / Governance Foundation

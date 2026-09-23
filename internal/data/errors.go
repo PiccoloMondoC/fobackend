@@ -1,6 +1,6 @@
 // Package data defines shared sentinel errors and PostgreSQL error helpers.
 //
-// sdworkspace/sdbackend/internal/data/errors.go
+// focodebase/fobackend/internal/data/errors.go
 //
 // GTM:
 //
@@ -64,8 +64,10 @@ var (
 	ErrEditConflict   = errors.New("edit conflict")
 
 	// Duplicate errors.
-	ErrDuplicateEmail    = errors.New("duplicate email")
-	ErrDuplicateClientID = errors.New("duplicate client_id")
+	ErrDuplicateEmail      = errors.New("duplicate email")
+	ErrDuplicateGoogleID   = errors.New("duplicate google ID")
+	ErrDuplicateFacebookID = errors.New("duplicate facebook ID")
+	ErrDuplicateClientID   = errors.New("duplicate client_id")
 
 	// Platform settings.
 	ErrPlatformSettingNotFound      = errors.New("platform setting not found")
@@ -74,14 +76,17 @@ var (
 	ErrPlatformSettingTypeMismatch  = errors.New("platform setting value type mismatch")
 
 	// Users and identity.
-	ErrUserNotFound         = errors.New("user not found")
+	ErrUserNotFound = errors.New("user not found")
+	// ErrUserAlreadyActive reports that the canonical user exists but has already
+	// completed the inactive-to-active account transition and is therefore not
+	// eligible for account activation.
+	ErrUserAlreadyActive    = errors.New("user is already active")
 	ErrUserProfileNotFound  = errors.New("user profile not found")
 	ErrUserHandleNotFound   = errors.New("user handle not found")
 	ErrUserHandleTaken      = errors.New("user handle already taken")
 	ErrGlobalHandleNotFound = errors.New("global handle not found")
 	ErrGlobalHandleTaken    = errors.New("global handle already taken")
-	ErrUserSettingsNotFound = errors.New("user settings not found")
-	ErrUserFavoriteNotFound = errors.New("user favorite not found")
+
 	ErrUserWishlistNotFound = errors.New("user wishlist item not found")
 
 	// Authentication and token persistence.
@@ -90,8 +95,6 @@ var (
 	// after translating lower-level password, JWT, or token verification failures,
 	// but low-level security packages must own their own primitive sentinels.
 	ErrInvalidCredentials = errors.New("invalid credentials")
-
-	ErrJWTSecretNotConfigured = errors.New("jwt secret not configured")
 
 	ErrResetTokenInvalid    = errors.New("reset token invalid")
 	ErrInvalidResetToken    = ErrResetTokenInvalid
@@ -121,6 +124,7 @@ var (
 	// Roles and permissions.
 	ErrPermissionNotFound            = errors.New("permission not found")
 	ErrRoleNotFound                  = errors.New("role not found")
+	ErrRoleNotAssignableAtSignup     = errors.New("role is not assignable at signup")
 	ErrRolePermissionNotFound        = errors.New("role permission not found")
 	ErrRolePermissionAlreadyAssigned = errors.New("role permission already assigned")
 
@@ -134,17 +138,16 @@ var (
 	ErrDepartmentNotFound = errors.New("department not found")
 	ErrCategoryNotFound   = errors.New("category not found")
 
-	// Brands, merchants, and products.
-	ErrBrandNotFound                            = errors.New("brand not found")
-	ErrMerchantNotFound                         = errors.New("merchant not found")
-	ErrProductNotFound                          = errors.New("product not found")
-	ErrMerchantProductNotFound                  = errors.New("merchant product not found")
-	ErrMerchantApplicationNotFound              = errors.New("merchant application not found")
-	ErrMerchantApplicationStatusNotFound        = errors.New("merchant application status not found")
-	ErrMerchantApplicationStatusAlreadyInactive = errors.New("merchant application status already inactive")
-	ErrMerchantPromotionNotFound                = errors.New("merchant promotion not found")
-	ErrMerchantFollowNotFound                   = errors.New("merchant follow not found")
-	ErrMerchantAccountAccessDenied              = errors.New("merchant account access denied")
+	// Merchants
+	ErrMerchantNotFound            = errors.New("merchant not found")
+	// ErrMerchantIdentityConflict reports that a Merchant identity mutation
+	// conflicts with the canonical uniqueness constraint protecting Merchant
+	// identity. Persistence implementations must translate the owning database
+	// constraint into this sentinel rather than exposing PostgreSQL details to
+	// service or HTTP boundaries.
+	ErrMerchantIdentityConflict = errors.New("merchant identity conflict")
+	ErrMerchantFollowNotFound      = errors.New("merchant follow not found")
+	ErrMerchantAccountAccessDenied = errors.New("merchant account access denied")
 
 	// Merchant future offering service terms.
 	ErrMerchantFutureOfferingServiceTermInvalidInput = errors.New(
@@ -435,7 +438,7 @@ var (
 		"merchant invoice item requires the parent invoice to be in draft status",
 	)
 	ErrMerchantInvoiceItemProvenanceMismatch = errors.New(
-	"merchant invoice item fee calculation does not match the parent invoice merchant, currency, or future offering",
+		"merchant invoice item fee calculation does not match the parent invoice merchant, currency, or future offering",
 	)
 
 	// Merchant payment methods.
@@ -445,13 +448,13 @@ var (
 	ErrMerchantPaymentMethodDefaultConflict = errors.New("merchant payment method default assignment conflict")
 
 	// Merchant Future Offerings
-	ErrMerchantFutureOfferingInvalidInput = errors.New("invalid merchant future offering input")
-	ErrMerchantFutureOfferingNotFound = errors.New("merchant future offering not found")
-	ErrMerchantFutureOfferingMerchantNotFound = errors.New("merchant future offering references a nonexistent merchant")
-	ErrMerchantFutureOfferingCategoryNotFound = errors.New("merchant future offering references a nonexistent category")
-	ErrMerchantFutureOfferingInvalidState = errors.New("invalid merchant future offering state")
+	ErrMerchantFutureOfferingInvalidInput      = errors.New("invalid merchant future offering input")
+	ErrMerchantFutureOfferingNotFound          = errors.New("merchant future offering not found")
+	ErrMerchantFutureOfferingMerchantNotFound  = errors.New("merchant future offering references a nonexistent merchant")
+	ErrMerchantFutureOfferingCategoryNotFound  = errors.New("merchant future offering references a nonexistent category")
+	ErrMerchantFutureOfferingInvalidState      = errors.New("invalid merchant future offering state")
 	ErrMerchantFutureOfferingInvalidTransition = errors.New("invalid merchant future offering lifecycle transition")
-	ErrMerchantFutureOfferingEditConflict = errors.New("merchant future offering edit conflict")
+	ErrMerchantFutureOfferingEditConflict      = errors.New("merchant future offering edit conflict")
 
 	// Affiliate programs and performance.
 	ErrAffiliatePerformanceNotFound   = errors.New("affiliate performance not found")

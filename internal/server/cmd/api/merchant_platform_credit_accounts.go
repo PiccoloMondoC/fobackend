@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for merchant platform credit-account
 // governance.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_platform_credit_accounts.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_platform_credit_accounts.go
 //
 // GTM:
 //

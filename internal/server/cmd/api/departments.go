@@ -1,6 +1,6 @@
 // Package main provides HTTP handlers for the Platform API.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/departments.go
+// focodebase/fobackend/internal/server/cmd/api/departments.go
 //
 // GTM:
 //

@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for user notifications and related lookup entities.
 //
-// File: sdworkspace/sdbackend/internal/data/user_notifications.go
+// File: focodebase/fobackend/internal/data/user_notifications.go
 //
 // GTM:
 //

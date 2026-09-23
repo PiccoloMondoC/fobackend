@@ -1,6 +1,6 @@
 // Package main provides HTTP handlers for merchant billing accounts.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_billing_accounts.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_billing_accounts.go
 //
 // GTM:
 //
@@ -36,7 +36,7 @@
 //
 //	This handler does not determine:
 //
-//	  - whether a fee, plan, subscription, invoice, or collection is enabled;
+//	  - whether a fee, invoice, or collection is enabled;
 //	  - what a merchant owes;
 //	  - why Administration suspends or closes an account;
 //	  - whether another workflow may proceed in a given status;

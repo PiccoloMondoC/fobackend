@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for tokens and other entities.
 //
-// sdworkspace/sdbackend/internal/data/tokens.go
+// focodebase/fobackend/internal/data/tokens.go
 //
 // GTM:
 //
@@ -9,8 +9,8 @@
 //	Reason:
 //	  Tokens are release-critical authentication and session-security
 //	  infrastructure. They protect refresh-token persistence, access-token
-//	  validation, JWT revocation checks, logout/session invalidation, and
-//	  retained security records required by v1 identity and access control.
+//	  revocation persistence, logout/session invalidation, and retained security
+//	  records required by v1 identity and access control.
 //
 // SPINE Rule:
 //
@@ -19,10 +19,11 @@
 //	Preserve plaintext-token boundary handling only at controlled inputs.
 //	Preserve token_hash persistence and no raw-token JSON/log exposure.
 //	Preserve refresh-token revoked_at lifecycle semantics.
-//	Preserve access-token blacklist validation.
-//	Preserve JWT issuer/audience enforcement.
-//	Block deployment if this file breaks build, token validation,
-//	token revocation, session security, or authentication integrity.
+//	Preserve access-token blacklist persistence and lookup.
+//	Keep JWT parsing, signature verification, and claims validation outside
+//	the data layer; those concerns belong to auth.TokenService.
+//	Block deployment if this file breaks build, refresh-token persistence,
+//	access-token revocation persistence, session security, or authentication integrity.
 package data
 
 import (
@@ -32,7 +33,6 @@ import (
 	"time"
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
-	"github.com/PiccoloMondoC/focodebase/fobackend/internal/security/jwtutil"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -53,11 +53,11 @@ type Token struct {
 	CreatedAt time.Time  `json:"created_at" db:"created_at"`
 }
 
-// TokenModel holds dependencies for token persistence and validation logic.
+// TokenModel owns refresh-token persistence and persistence-backed access-token
+// revocation state. It does not parse, verify, or interpret JWTs.
 type TokenModel struct {
-	DB        *pgxpool.Pool
-	Logger    *logging.Logger
-	JWTSecret []byte
+	DB     *pgxpool.Pool
+	Logger *logging.Logger
 }
 
 // StoreRefreshToken persists a refresh token in protected canonical form and
@@ -164,58 +164,35 @@ func (m *TokenModel) ValidateRefreshToken(ctx context.Context, token string) (*T
 	return &t, nil
 }
 
-// ValidateAccessToken verifies JWT signature and claims, then checks revocation
-// against the access-token blacklist.
-func (m *TokenModel) ValidateAccessToken(ctx context.Context, raw string) (uuid.UUID, error) {
+// IsAccessTokenRevoked reports whether jti is present in the canonical
+// access-token blacklist. The JTI must come from an access token that has
+// already passed cryptographic and claims validation at the auth boundary.
+//
+// TokenModel deliberately performs no JWT parsing or claims interpretation.
+func (m *TokenModel) IsAccessTokenRevoked(ctx context.Context, jti string) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("ValidateAccessToken")
+	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("IsAccessTokenRevoked")
 
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return uuid.Nil, errors.New("token is required")
+	jti = strings.TrimSpace(jti)
+	if jti == "" {
+		err := errors.New("jti is required")
+		logger.Error("validation failed", err)
+		return false, err
 	}
 
-	if len(m.JWTSecret) == 0 {
-		logger.Error("jwt secret missing", ErrJWTSecretNotConfigured)
-		return uuid.Nil, ErrJWTSecretNotConfigured
-	}
-
-	claims, err := jwtutil.ParseAndValidate(
-		raw,
-		m.JWTSecret,
-		jwtutil.WithAudience("sagrenti-api"),
-		jwtutil.WithIssuer("sagrenti-auth"),
-	)
-	if err != nil {
-		logger.Warn("jwt validation failed", "err", err)
-		return uuid.Nil, ErrAccessTokenInvalid
-	}
-
-	if strings.TrimSpace(claims.ID) == "" {
-		logger.Warn("jwt missing jti")
-		return uuid.Nil, ErrAccessTokenInvalid
-	}
-
-	var isRevoked bool
-	err = m.DB.QueryRow(
+	var revoked bool
+	if err := m.DB.QueryRow(
 		ctx,
 		`SELECT EXISTS (SELECT 1 FROM auth_token_blacklist WHERE jti = $1)`,
-		claims.ID,
-	).Scan(&isRevoked)
-	if err != nil {
-		logger.Error("access token revocation lookup failed", err, "jti", claims.ID)
-		return uuid.Nil, err
+		jti,
+	).Scan(&revoked); err != nil {
+		logger.Error("access token revocation lookup failed", err, "jti", jti)
+		return false, err
 	}
 
-	if isRevoked {
-		logger.Warn("access token revoked", "jti", claims.ID)
-		return uuid.Nil, ErrAccessTokenRevoked
-	}
-
-	logger.Info("access token accepted", "user_id", claims.UserID)
-	return claims.UserID, nil
+	return revoked, nil
 }
 
 // DeleteRefreshToken physically deletes a refresh-token row by ID.
@@ -283,53 +260,41 @@ func (m *TokenModel) RevokeAllTokens(ctx context.Context, userID uuid.UUID) erro
 	return nil
 }
 
-// RevokeAccessToken blacklists the JWT JTI so future access-token validation fails.
+// RevokeAccessTokenJTI persists the revocation fact for an already-validated
+// access token. Revocation is idempotent: an existing blacklist row remains the
+// canonical revocation record.
 //
 // Time-source decision:
 // revoked_at is DB-owned through NOW() in SQL, not application-generated.
-func (m *TokenModel) RevokeAccessToken(ctx context.Context, raw string) error {
+func (m *TokenModel) RevokeAccessTokenJTI(ctx context.Context, jti string, userID uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
 
-	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("RevokeAccessToken")
+	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("RevokeAccessTokenJTI")
 
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return errors.New("token is required")
+	jti = strings.TrimSpace(jti)
+	if jti == "" {
+		err := errors.New("jti is required")
+		logger.Error("validation failed", err)
+		return err
 	}
-
-	if len(m.JWTSecret) == 0 {
-		logger.Error("jwt secret missing", ErrJWTSecretNotConfigured)
-		return ErrJWTSecretNotConfigured
-	}
-
-	claims, err := jwtutil.ParseAndValidate(
-		raw,
-		m.JWTSecret,
-		jwtutil.WithAudience("sagrenti-api"),
-		jwtutil.WithIssuer("sagrenti-auth"),
-	)
-	if err != nil {
-		logger.Warn("jwt parse/validate failed", "err", err)
-		return ErrAccessTokenInvalid
-	}
-
-	if strings.TrimSpace(claims.ID) == "" {
-		logger.Warn("jwt missing jti")
-		return ErrAccessTokenInvalid
-	}
-
-	_, err = m.DB.Exec(ctx, `
-		INSERT INTO auth_token_blacklist (jti, user_id, revoked_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (jti) DO NOTHING
-	`, claims.ID, claims.UserID)
-	if err != nil {
-		logger.Error("access token blacklist insert failed", err, "jti", claims.ID)
+	if userID == uuid.Nil {
+		err := errors.New("user ID is required")
+		logger.Error("validation failed", err)
 		return err
 	}
 
-	logger.Info("access token revoked", "jti", claims.ID, "user_id", claims.UserID)
+	_, err := m.DB.Exec(ctx, `
+		INSERT INTO auth_token_blacklist (jti, user_id, revoked_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (jti) DO NOTHING
+	`, jti, userID)
+	if err != nil {
+		logger.Error("access token blacklist insert failed", err, "jti", jti)
+		return err
+	}
+
+	logger.Info("access token revoked", "jti", jti, "user_id", userID)
 	return nil
 }
 

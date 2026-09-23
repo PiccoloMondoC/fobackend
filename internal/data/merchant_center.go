@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for Merchant Center and related entities.
 //
-// sdworkspace/sdbackend/internal/data/merchant_center.go
+// focodebase/fobackend/internal/data/merchant_center.go
 //
 // GTM:
 //
@@ -9,9 +9,7 @@
 //	Reason:
 //	  Merchant Center is valid future merchant self-service infrastructure, but
 //	  it is not required for the initial Platform release spine. The v1
-//	  spine requires merchant identity, merchant type classification,
-//	  affiliate-program relationships, canonical offers, publication governance,
-//	  click tracking, price history, favorites/stash, and merchant follows
+//	  spine requires merchant identity, favorites, and merchant follows
 //	  before expanding into merchant self-service dashboards, onboarding
 //	  workspaces, campaign management, storefront controls, analytics, and
 //	  operational console workflows.

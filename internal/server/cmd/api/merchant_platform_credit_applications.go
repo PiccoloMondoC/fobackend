@@ -1,7 +1,7 @@
 // Package main provides HTTP handlers for merchant platform credit
 // application privileged historical review.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_platform_credit_applications.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_platform_credit_applications.go
 //
 // GTM:
 //

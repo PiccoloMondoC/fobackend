@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for roles and other entities.
 //
-// sdworkspace/sdbackend/internal/data/roles.go
+// focodebase/fobackend/internal/data/roles.go
 //
 // GTM:
 //
@@ -12,6 +12,15 @@
 //	  role boundaries, signup assignability, approval requirements, active-state
 //	  behavior, and user-role membership needed by v1 access control.
 //
+//	  This file is also the sole owner of transaction-scoped signup
+//	  role-eligibility resolution and primary-role assignment
+//	  (ResolveSignupRoleTx / EnsureAssignableRoleTx / AssignPrimaryRoleTx).
+//	  These were relocated from UserModel during the Identity & Access
+//	  consolidation: role and user_role_assignments persistence belongs here,
+//	  not on UserModel. Callers that must compose role assignment atomically
+//	  with a users-table mutation (signup) do so at the service layer, never
+//	  through UserModel calling into RoleModel directly.
+//
 // SPINE Rule:
 //
 //	Keep compiling.
@@ -21,6 +30,11 @@
 //	Preserve user role assignment integrity.
 //	Preserve primary-role behavior.
 //	Preserve DB-owned lifecycle timestamp behavior.
+//	Preserve signup-role eligibility as data-driven (is_internal = FALSE,
+//	assignable_at_signup = TRUE, is_active = TRUE, deleted_at IS NULL).
+//	Preserve this file as the sole owner of roles/user_role_assignments
+//	persistence, including its Tx-scoped signup primitives. No other model
+//	may issue direct SQL against these tables.
 //	Block deployment if this file breaks build, role lookup,
 //	role assignment, hierarchy checks, or authorization integrity.
 package data
@@ -39,19 +53,46 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const roleSelectColumns = `
-	id,
-	name,
-	description,
-	hierarchy_level,
-	is_internal,
-	assignable_at_signup,
-	approval_required,
-	is_active,
-	created_at,
-	updated_at,
-	deleted_at
-`
+// roleColumns is the single canonical, order-significant persisted Role
+// projection. Its order must remain aligned with scanRole.
+var roleColumns = [...]string{
+	"id",
+	"name",
+	"description",
+	"hierarchy_level",
+	"is_internal",
+	"assignable_at_signup",
+	"approval_required",
+	"is_active",
+	"created_at",
+	"updated_at",
+	"deleted_at",
+}
+
+// roleSelectColumns renders the canonical Role projection for SQL statements
+// where roles is the only relation contributing same-named columns, including
+// INSERT/UPDATE ... RETURNING and single-table SELECT statements.
+func roleSelectColumns() string {
+	return strings.Join(roleColumns[:], ",\n\t\t")
+}
+
+// qualifiedRoleSelectColumns renders the same canonical Role projection with
+// a trusted SQL table alias. Joined queries must use this form so shared column
+// names such as id, created_at, updated_at, and deleted_at cannot become
+// ambiguous. Alias values are internal query literals, never request input.
+func qualifiedRoleSelectColumns(alias string) string {
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		return roleSelectColumns()
+	}
+
+	qualified := make([]string, len(roleColumns))
+	for i, column := range roleColumns {
+		qualified[i] = alias + "." + column
+	}
+
+	return strings.Join(qualified, ",\n\t\t")
+}
 
 // Role represents the canonical persisted role record.
 // deleted_at is intentionally hidden from casual JSON emission.
@@ -75,6 +116,9 @@ type RoleModel struct {
 	Logger *logging.Logger
 }
 
+// scanRole scans the canonical roleColumns projection in order. Any change to
+// the persisted Role projection must update roleColumns, Role, and this scanner
+// together.
 func scanRole(scanner interface{ Scan(...any) error }, role *Role) error {
 	return scanner.Scan(
 		&role.ID,
@@ -139,7 +183,7 @@ func (m *RoleModel) CreateRole(ctx context.Context, role *Role) error {
 		)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING %s
-	`, roleSelectColumns)
+	`, roleSelectColumns())
 
 	if err := scanRole(
 		m.DB.QueryRow(
@@ -181,7 +225,7 @@ func (m *RoleModel) GetRoleByID(ctx context.Context, id uuid.UUID) (*Role, error
 		FROM roles
 		WHERE id = $1
 		  AND deleted_at IS NULL
-	`, roleSelectColumns)
+	`, roleSelectColumns())
 
 	var role Role
 	if err := scanRole(m.DB.QueryRow(ctx, query, id), &role); err != nil {
@@ -250,7 +294,7 @@ func (m *RoleModel) GetRoleByName(ctx context.Context, name string) (*Role, erro
 		FROM roles
 		WHERE name = $1
 		  AND deleted_at IS NULL
-	`, roleSelectColumns)
+	`, roleSelectColumns())
 
 	var role Role
 	if err := scanRole(m.DB.QueryRow(ctx, query, name), &role); err != nil {
@@ -277,7 +321,7 @@ func (m *RoleModel) ListRoles(ctx context.Context) ([]*Role, error) {
 		FROM roles
 		WHERE deleted_at IS NULL
 		ORDER BY hierarchy_level ASC, name ASC
-	`, roleSelectColumns)
+	`, roleSelectColumns())
 
 	rows, err := m.DB.Query(ctx, query)
 	if err != nil {
@@ -332,7 +376,7 @@ func (m *RoleModel) ListActive(ctx context.Context, limit, offset int) ([]*Role,
 		  AND is_active = TRUE
 		ORDER BY hierarchy_level ASC, name ASC
 		LIMIT $1 OFFSET $2
-	`, roleSelectColumns)
+	`, roleSelectColumns())
 
 	rows, err := m.DB.Query(ctx, query, limit, offset)
 	if err != nil {
@@ -410,7 +454,7 @@ func (m *RoleModel) UpdateRole(ctx context.Context, role *Role) error {
 		WHERE id = $1
 		  AND deleted_at IS NULL
 		RETURNING %s
-	`, roleSelectColumns)
+	`, roleSelectColumns())
 
 	if err := scanRole(
 		m.DB.QueryRow(
@@ -607,7 +651,7 @@ func (m *RoleModel) GetRolesByUserID(ctx context.Context, userID uuid.UUID) ([]*
 		  AND r.is_active = TRUE
 		  AND u.deleted_at IS NULL
 		ORDER BY ura.is_primary DESC, r.hierarchy_level DESC, r.name ASC
-	`, roleSelectColumns)
+	`, qualifiedRoleSelectColumns("r"))
 
 	rows, err := m.DB.Query(ctx, query, userID)
 	if err != nil {
@@ -660,7 +704,7 @@ func (m *RoleModel) GetRoleByUserID(ctx context.Context, userID uuid.UUID) (*Rol
 		  AND u.deleted_at IS NULL
 		ORDER BY ura.is_primary DESC, r.hierarchy_level DESC, r.name ASC
 		LIMIT 1
-	`, roleSelectColumns)
+	`, qualifiedRoleSelectColumns("r"))
 
 	var role Role
 	if err := scanRole(m.DB.QueryRow(ctx, query, userID), &role); err != nil {
@@ -677,6 +721,11 @@ func (m *RoleModel) GetRoleByUserID(ctx context.Context, userID uuid.UUID) (*Rol
 
 // AssignRoleToUser assigns or reactivates a role assignment for a user.
 // DB-owned time remains canonical; assignment rows are filtered by deleted_at.
+//
+// This remains a self-transacting convenience entry point for standalone
+// (non-signup) role assignment. Signup, which must compose role assignment
+// atomically with users-table insertion and outbox publication, uses
+// AssignPrimaryRoleTx within the caller-owned transaction instead.
 func (m *RoleModel) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UUID, assignedBy *uuid.UUID, makePrimary bool) error {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
@@ -716,23 +765,8 @@ func (m *RoleModel) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UU
 		return err
 	}
 
-	// Validate target role exists, is active, and is not deleted.
-	var roleExists bool
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1
-			FROM roles
-			WHERE id = $1
-			  AND deleted_at IS NULL
-			  AND is_active = TRUE
-		)
-	`, roleID).Scan(&roleExists); err != nil {
+	if err := m.EnsureAssignableRoleTx(ctx, tx, roleID); err != nil {
 		logger.Error("Failed to verify role", err)
-		return err
-	}
-	if !roleExists {
-		err := errors.New("role does not exist, is deleted, or is inactive")
-		logger.Error("Validation failed", err)
 		return err
 	}
 
@@ -975,4 +1009,146 @@ func (m *RoleModel) HasRole(ctx context.Context, userID uuid.UUID, roleName stri
 	}
 
 	return true, nil
+}
+
+// ---------------------------------------------------------------------------
+// Tx-scoped signup primitives (relocated from UserModel)
+// ---------------------------------------------------------------------------
+
+// ResolveSignupRoleTx resolves a role that is eligible for public self-signup.
+//
+// Signup eligibility is data-driven. A role must be active, non-deleted,
+// non-internal, and explicitly marked assignable_at_signup. This prevents
+// callers from assigning privileged roles through public signup while allowing
+// Administration to govern which public roles are available within the
+// engineering-enforced safety boundary.
+func (m *RoleModel) ResolveSignupRoleTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	roleName string,
+) (uuid.UUID, error) {
+	if tx == nil {
+		return uuid.Nil, errors.New("transaction is required")
+	}
+
+	roleName = normalizeRoleName(roleName)
+	if roleName == "" {
+		return uuid.Nil, ErrRoleNotAssignableAtSignup
+	}
+
+	var roleID uuid.UUID
+
+	const query = `
+		SELECT id
+		FROM roles
+		WHERE name = $1
+		  AND is_internal = FALSE
+		  AND assignable_at_signup = TRUE
+		  AND is_active = TRUE
+		  AND deleted_at IS NULL
+		LIMIT 1
+	`
+
+	if err := tx.QueryRow(ctx, query, roleName).Scan(&roleID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrRoleNotAssignableAtSignup
+		}
+		return uuid.Nil, fmt.Errorf("resolve signup role: %w", err)
+	}
+
+	return roleID, nil
+}
+
+// EnsureAssignableRoleTx verifies that an existing role ID may be assigned.
+func (m *RoleModel) EnsureAssignableRoleTx(ctx context.Context, tx pgx.Tx, roleID uuid.UUID) error {
+	if tx == nil {
+		return errors.New("transaction is required")
+	}
+	if roleID == uuid.Nil {
+		return errors.New("role ID is required")
+	}
+
+	var isActive bool
+
+	const query = `
+		SELECT is_active
+		FROM roles
+		WHERE id = $1
+		  AND deleted_at IS NULL
+	`
+
+	if err := tx.QueryRow(ctx, query, roleID).Scan(&isActive); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("role not found: %s", roleID)
+		}
+		return fmt.Errorf("lookup role: %w", err)
+	}
+
+	if !isActive {
+		return errors.New("cannot assign an inactive role")
+	}
+
+	return nil
+}
+
+// AssignPrimaryRoleTx assigns or restores userID's primary role to roleID
+// within the caller-owned transaction.
+//
+// This is the canonical composition primitive for signup and any other
+// workflow that must assign a primary role atomically with a users-table
+// mutation. Callers (services) supply their own transaction; this method
+// never begins, commits, or rolls back it.
+func (m *RoleModel) AssignPrimaryRoleTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	userID uuid.UUID,
+	roleID uuid.UUID,
+	assignedBy *uuid.UUID,
+) error {
+	if tx == nil {
+		return errors.New("transaction is required")
+	}
+	if userID == uuid.Nil {
+		return errors.New("user ID is required")
+	}
+	if roleID == uuid.Nil {
+		return errors.New("role ID is required")
+	}
+
+	const clearExistingPrimary = `
+		UPDATE user_role_assignments
+		SET is_primary = FALSE,
+		    updated_at = NOW()
+		WHERE user_id = $1
+		  AND is_primary = TRUE
+		  AND deleted_at IS NULL
+	`
+
+	if _, err := tx.Exec(ctx, clearExistingPrimary, userID); err != nil {
+		return fmt.Errorf("clear existing primary roles: %w", err)
+	}
+
+	const upsertPrimaryRole = `
+		INSERT INTO user_role_assignments (
+			user_id,
+			role_id,
+			assigned_by,
+			is_primary
+		)
+		VALUES ($1, $2, $3, TRUE)
+		ON CONFLICT (user_id, role_id)
+		DO UPDATE SET
+			is_primary = TRUE,
+			assigned_by = EXCLUDED.assigned_by,
+			deleted_at = NULL,
+			updated_at = NOW()
+		RETURNING updated_at
+	`
+
+	var updatedAt time.Time
+	if err := tx.QueryRow(ctx, upsertPrimaryRole, userID, roleID, assignedBy).Scan(&updatedAt); err != nil {
+		return fmt.Errorf("assign primary role: %w", err)
+	}
+
+	return nil
 }

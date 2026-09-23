@@ -1,4 +1,4 @@
-// sdworkspace/sdbackend/internal/server/cmd/api/public_registry.go
+// focodebase/fobackend/internal/server/cmd/api/public_registry.go
 package main
 
 import (

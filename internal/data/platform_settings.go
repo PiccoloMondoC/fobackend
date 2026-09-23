@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for platform settings.
 //
-// sdworkspace/sdbackend/internal/data/platform_settings.go
+// focodebase/fobackend/internal/data/platform_settings.go
 //
 // GTM:
 //

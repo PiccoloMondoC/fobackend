@@ -4,7 +4,6 @@ This register exists to identify code files that may need to undergo a final arc
 
 Commerce Architecture — Architecture-Conformance Review Required
 
-[ ] merchant_program_plans.go
 [ ] merchant_program_entitlements.go
 [ ] merchant_program_fee_schedules.go
 [ ] merchant_program_subscriptions.go

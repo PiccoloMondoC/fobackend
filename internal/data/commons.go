@@ -1,6 +1,6 @@
 // Package data provides shared data-layer models and database access methods.
 //
-// sdworkspace/sdbackend/internal/data/commons.go
+// focodebase/fobackend/internal/data/commons.go
 //
 // GTM:
 //

@@ -2,7 +2,7 @@
 // event transport, and background job processing. These types intentionally exclude
 // database logic and should be safe for use across package boundaries to avoid import cycles.
 //
-// sdworkspace/sdbackend/internal/shared/models/offer.go
+// focodebase/fobackend/internal/shared/models/offer.go
 package models
 
 import "github.com/google/uuid"

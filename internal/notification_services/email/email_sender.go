@@ -1,26 +1,26 @@
 // Package email centralises outbound e-mail delivery for the
 // notification-services subsystem, abstracting away provider-specific details.
 //
-// sdworkspace/sdbackend/internal/notification_services/email/email_sender.go
+// focodebase/fobackend/internal/notification_services/email/email_sender.go
 //
 // GTM:
-//   Layer: 2.3 Consumer Domain
-//   Release Class: SPINE
-//   Reason:
-//     Email delivery is release-critical communication infrastructure. It
-//     supports account activation, security notifications, price-drop alerts,
-//     offer-related notifications, and future provider-backed outbound email
-//     delivery required by the initial Platform release spine.
+//
+//	Layer: 2.3 Consumer Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Email delivery is release-critical communication infrastructure.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve centralized outbound email boundary.
-//   Preserve activation-email delivery path.
-//   Preserve provider-agnostic service abstraction.
-//   Preserve notification-service injection readiness.
-//   Block deployment if this file breaks build, activation email delivery,
-//   outbound email integration, or consumer communication integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve centralized outbound email boundary.
+//	Preserve activation-email delivery path.
+//	Preserve provider-agnostic service abstraction.
+//	Preserve reuse of root notification validators.
+//	Preserve explicit activation URL policy injection.
+//	Block deployment if this file breaks build, activation email delivery,
+//	outbound email integration, or consumer communication integrity.
 package email
 
 import (
@@ -33,32 +33,17 @@ import (
 	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
 )
 
-const (
-	activationEmailSubject = "Activate Your Account"
-
-	// maxSubjectBytes follows the practical RFC 5322 subject/header-line limit.
-	maxSubjectBytes = 998
-
-	// maxBodyBytes guards provider-neutral delivery from unexpectedly large payloads.
-	maxBodyBytes = 1 << 20 // 1 MiB.
-)
+const activationEmailSubject = "Activate Your Account"
 
 var (
 	ErrNilContext                 = errors.New("email: context must not be nil")
 	ErrEmailProviderNotConfigured = errors.New("email: provider is not configured")
-	ErrInvalidRecipientEmail      = errors.New("email: recipient email is invalid")
 	ErrInvalidSenderEmail         = errors.New("email: sender email is invalid")
-	ErrInvalidSubject             = errors.New("email: subject is invalid")
-	ErrInvalidBody                = errors.New("email: body is invalid")
 	ErrInvalidActivationURL       = errors.New("email: activation URL is invalid")
 	ErrEmailDeliveryFailed        = errors.New("email: delivery failed")
 )
 
 // Message is the canonical provider-neutral outbound email payload.
-//
-// From may contain either a bare mailbox address or an RFC 5322 display-name
-// sender such as "Platform Support" <support@example.com>. To is normalized
-// to a bare mailbox address for provider portability.
 type Message struct {
 	From    string
 	To      string
@@ -66,23 +51,23 @@ type Message struct {
 	Body    string
 }
 
-// Provider is implemented by concrete email providers such as SendGrid,
-// AWS SES, Mailgun, or an internal test adapter.
+// Provider is implemented by concrete delivery transports.
 type Provider interface {
 	Send(ctx context.Context, message Message) error
 }
 
-// EmailService is the centralized outbound email boundary for Platform
-// notification delivery.
+// EmailService is the centralized outbound email boundary.
 type EmailService struct {
 	provider    Provider
 	defaultFrom string
+	policy      notificationservices.ActivationURLPolicy
 }
 
 // Config contains provider-neutral email service configuration.
 type Config struct {
-	Provider    Provider
-	DefaultFrom string
+	Provider            Provider
+	DefaultFrom         string
+	ActivationURLPolicy notificationservices.ActivationURLPolicy
 }
 
 // NewEmailService constructs a production-ready email service.
@@ -99,6 +84,7 @@ func NewEmailService(cfg Config) (*EmailService, error) {
 	return &EmailService{
 		provider:    cfg.Provider,
 		defaultFrom: from,
+		policy:      cfg.ActivationURLPolicy,
 	}, nil
 }
 
@@ -116,18 +102,21 @@ func (e *EmailService) SendEmailContext(ctx context.Context, to, subject, body s
 	if e == nil || e.provider == nil {
 		return ErrEmailProviderNotConfigured
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
-	recipient, err := normalizeRecipientEmail(to)
+	recipient, err := notificationservices.ValidateEmailAddress(to)
 	if err != nil {
 		return err
 	}
 
-	subject, err = normalizeSubject(subject)
+	validSubject, err := notificationservices.ValidateEmailSubject(subject)
 	if err != nil {
 		return err
 	}
 
-	body, err = normalizeBody(body)
+	validBody, err := notificationservices.ValidateEmailBody(body)
 	if err != nil {
 		return err
 	}
@@ -135,8 +124,8 @@ func (e *EmailService) SendEmailContext(ctx context.Context, to, subject, body s
 	msg := Message{
 		From:    e.defaultFrom,
 		To:      recipient,
-		Subject: subject,
-		Body:    body,
+		Subject: validSubject,
+		Body:    validBody,
 	}
 
 	if err := e.provider.Send(ctx, msg); err != nil {
@@ -152,8 +141,7 @@ func (e *EmailService) SendActivationEmail(toEmail, activationURL string) error 
 }
 
 // SendActivationEmailContext validates and sends an account-activation email.
-// The activation URL is never logged by this package because it may contain
-// bearer material or one-time credential material.
+// The activation URL is never logged by this package.
 func (e *EmailService) SendActivationEmailContext(ctx context.Context, toEmail, activationURL string) error {
 	if ctx == nil {
 		return ErrNilContext
@@ -162,14 +150,17 @@ func (e *EmailService) SendActivationEmailContext(ctx context.Context, toEmail, 
 		return ErrEmailProviderNotConfigured
 	}
 
-	activationURL, err := notificationservices.ValidateActivationURL(activationURL)
+	validatedURL, err := notificationservices.ValidateActivationURLWithPolicy(
+		activationURL,
+		e.policy,
+	)
 	if err != nil {
 		return ErrInvalidActivationURL
 	}
 
 	body := fmt.Sprintf(
 		"Click the link below to activate your Sagrenti account:\n\n%s\n\nIf you did not request this account, you can ignore this email.",
-		activationURL,
+		validatedURL,
 	)
 
 	return e.SendEmailContext(ctx, toEmail, activationEmailSubject, body)
@@ -187,36 +178,4 @@ func normalizeSenderEmail(value string) (string, error) {
 	}
 
 	return addr.String(), nil
-}
-
-func normalizeRecipientEmail(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" || strings.ContainsAny(value, "\r\n") {
-		return "", ErrInvalidRecipientEmail
-	}
-
-	addr, err := mail.ParseAddress(value)
-	if err != nil || addr.Address == "" {
-		return "", ErrInvalidRecipientEmail
-	}
-
-	return addr.Address, nil
-}
-
-func normalizeSubject(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" || len([]byte(value)) > maxSubjectBytes || strings.ContainsAny(value, "\r\n") {
-		return "", ErrInvalidSubject
-	}
-
-	return value, nil
-}
-
-func normalizeBody(value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" || len([]byte(value)) > maxBodyBytes {
-		return "", ErrInvalidBody
-	}
-
-	return value, nil
 }

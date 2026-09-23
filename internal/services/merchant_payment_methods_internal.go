@@ -1,7 +1,7 @@
 // Package services contains internal business workflows and domain-level
 // coordination built on the platform data models.
 //
-// sdworkspace/sdbackend/internal/services/merchant_payment_methods_internal.go
+// focodebase/fobackend/internal/services/merchant_payment_methods_internal.go
 //
 // GTM:
 //

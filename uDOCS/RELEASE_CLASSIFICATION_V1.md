@@ -77,7 +77,6 @@ A merchant must exist before anything else.
 
 ### Phase 4 — Commerce Architecture
 Everything needed to let the platform commercially operate, even if all fees are currently waived. Notice that billing ledger comes last — everything else generates financial activity; the ledger records it.
-- [x] `merchant_program_plans.go`                        — Done
 - [x] `merchant_program_entitlements.go`                 — Done
 - [x] `merchant_program_fee_schedules.go`                — Done
 - [x] `merchant_future_offering_service_terms.go`        — Done
@@ -101,8 +100,6 @@ Everything needed to let the platform commercially operate, even if all fees are
 >- [ ] `merchant_invoice_items.go`                      Suspended
 - [ ] `merchant_billing_ledger_entries.go`
 
-
-- [ ] `merchant_future_offering_payment_periods`         — 
 
 ### Phase 5 — Merchant Payments Architecture
 #### Direct Payment Mode — SPINE — v1
@@ -165,34 +162,6 @@ Everything needed for routing and observability.
         Existing pieces are insufficiently explicit; discovery service capability should be identified
 - [ ] `commerce_route_events.go`
 
-## DEFERRED (explicitly out of scope for v1)
-
-## Treasury Balance Mode — DEFERRED — post-v1
-- Marked for early post-v1 implementation.
-- `merchant_balances.go`
-- `merchant_ledger_entries.go`
-- `merchant_funding_transactions.go`
-- `merchant_funding_sources.go`
-- `merchant_funding_source_provider_links.go`
-- `merchant_withdrawals.go`
-
-## Commerce Architecture — DEFERRED — post-v1
-
-### Enterprise collaboration
-- `merchant_account_roles.go`
-- `merchant_account_members.go`
-
-### Present commerce
-- `merchant_launch_campaigns.go`
-- `merchant_launch_campaign_clicks.go`
-- `merchant_launch_campaign_attribution_events.go`
-
-### Settlement & reconciliation
-- `merchant_settlement_batches.go`
-- `merchant_settlement_batch_items.go`
-- `merchant_attribution_matches.go`
-- `merchant_postback_configs.go`
-- `merchant_postback_events.go`
 - `merchant_fee_reversals.go`
 
 ## Change Log

@@ -170,17 +170,6 @@ Admins should not delete wallets or profiles directly, only mark the user as sof
 Hard delete policy
 Only after a retention period (e.g. 10 years) and triggered by a scheduled archival process—not manual interaction.
 
-
-🚫 Anti-Pattern Example
-The route like the one in this example allows isolated deletions of wallets and it should never happen:
-
-// DELETE: Delete an existing user wallet
-uw.With(app.RequirePermission("delete_user_wallet")).
-   Delete("/", app.DeleteUserWalletHandler)
-
-This route causes a serious violation: the ability to remove essential user state without removing the user. It should not exist outside the full user lifecycle process.
-
-
 ✅ Checklist: Safe User Deletion Architecture
 🔒 Policy Enforcement
  Only DELETE /me (user-initiated) or DELETE /users/{id} (admin-initiated) soft-deletes the user.

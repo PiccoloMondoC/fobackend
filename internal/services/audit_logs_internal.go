@@ -2,7 +2,7 @@
 // automation, audit logging, and data synchronization. It is used by async routines
 // and internal system workflows, not exposed via public API routes.
 //
-// sdworkspace/sdbackend/internal/services/internal-services/audit_logs_internal.go
+// focodebase/fobackend/internal/services/internal-services/audit_logs_internal.go
 package services
 
 /*

@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for user roles and permissions.
 //
-// File: sdworkspace/sdbackend/internal/data/user_permissions.go
+// File: focodebase/fobackend/internal/data/user_permissions.go
 //
 // GTM:
 //

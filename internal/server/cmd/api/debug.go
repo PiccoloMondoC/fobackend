@@ -1,4 +1,4 @@
-// sdworkspace/sdbackend/internal/server/cmd/api/debug.go
+// focodebase/fobackend/internal/server/cmd/api/debug.go
 package main
 
 import (
@@ -14,8 +14,7 @@ func (app *Application) DebugContextHandler(w http.ResponseWriter, r *http.Reque
 	// Collect the keys you care about (kept short on purpose—expand if needed).
 	keys := []ctxKey{
 		ctxUserID, ctxTargetUserID,
-		ctxMerchantID, ctxAffiliateProgramID, ctxBrandID,
-		ctxOfferID, ctxRoleID,
+		ctxMerchantID, ctxRoleID,
 	}
 
 	out := make(map[string]any, len(keys))

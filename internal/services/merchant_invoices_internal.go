@@ -1,7 +1,7 @@
 // Package services contains trusted internal Commerce Architecture
 // orchestration for merchant invoice lifecycle mutation.
 //
-// sdworkspace/sdbackend/internal/services/merchant_invoices_internal.go
+// focodebase/fobackend/internal/services/merchant_invoices_internal.go
 //
 // GTM:
 //
@@ -136,7 +136,7 @@
 //	resolved to "due immediately."
 //
 //	This service never decides which merchant, Future Offering, invoice class,
-//	fee, plan, or commercial arrangement receives either treatment.
+//	fee, or commercial arrangement receives either treatment.
 //
 // Transaction Boundary:
 //

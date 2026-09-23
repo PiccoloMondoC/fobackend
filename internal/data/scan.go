@@ -1,6 +1,6 @@
 // Package data provides the shared scan interface for data-layer row hydration.
 //
-// sdworkspace/sdbackend/internal/data/scan.go
+// focodebase/fobackend/internal/data/scan.go
 //
 // GTM:
 //

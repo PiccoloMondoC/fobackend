@@ -2,7 +2,7 @@
 // automation, audit logging, and data synchronization. It is used by async routines
 // and internal system workflows, not exposed via public API routes.
 //
-// sdworkspace/sdbackend/internal/services/retry_queue.go
+// focodebase/fobackend/internal/services/retry_queue.go
 package services
 
 import (

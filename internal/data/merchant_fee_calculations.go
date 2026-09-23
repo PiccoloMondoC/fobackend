@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for merchant fee
 // calculations.
 //
-// sdworkspace/sdbackend/internal/data/merchant_fee_calculations.go
+// focodebase/fobackend/internal/data/merchant_fee_calculations.go
 //
 // GTM:
 //

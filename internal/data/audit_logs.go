@@ -1,6 +1,6 @@
 // Package data provides models and database access methods for audit logs and related audit metadata.
 //
-// sdworkspace/sdbackend/internal/data/audit_logs.go
+// focodebase/fobackend/internal/data/audit_logs.go
 //
 // GTM:
 //

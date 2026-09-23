@@ -1,6 +1,6 @@
 // Package data provides canonical merchant payment-method models and database access methods.
 //
-// sdworkspace/sdbackend/internal/data/merchant_payment_methods.go
+// focodebase/fobackend/internal/data/merchant_payment_methods.go
 //
 // GTM:
 //

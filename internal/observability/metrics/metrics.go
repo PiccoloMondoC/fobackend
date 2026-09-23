@@ -4,7 +4,7 @@
 // Importing this package registers collectors through package init, keeping
 // collector ownership centralized and avoiding cmd/api ↔ service import cycles.
 //
-// sdworkspace/sdbackend/internal/observability/metrics/metrics.go
+// focodebase/fobackend/internal/observability/metrics/metrics.go
 //
 // GTM:
 //   Layer: 2.1 Database / Governance Foundation
@@ -56,9 +56,6 @@ const (
 
 	// OperationSuggestOffers is the canonical operation label value for async personalized offer suggestion work.
 	OperationSuggestOffers = "suggest_offers"
-
-	// OperationPlanSuggestions is the canonical operation label value for async suggestion planning batches.
-	OperationPlanSuggestions = "plan_suggestions"
 
 	// OperationUpdateOfferStatus is the canonical operation label value for async offer status updates.
 	OperationUpdateOfferStatus = "update_offer_status"
@@ -247,17 +244,7 @@ var (
 		[]string{"result", "user_id"},
 	)
 
-	// SuggestionPlanResult counts batches that select users for offer suggestions.
-	//
-	// Labels:
-	//   - result: success | failure
-	SuggestionPlanResult = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "suggestion_plan_total",
-			Help: "Batches that plan personalized suggestions, labelled by result.",
-		},
-		[]string{"result"},
-	)
+
 
 	// OfferStatusUpdateResult counts async offer status-update attempts.
 	//
@@ -308,86 +295,6 @@ var (
 			Help: "Offer blacklist attempts, labelled by result.",
 		},
 		[]string{"result"},
-	)
-
-	// UserFavoriteOperationDuration measures async favorite-operation latency.
-	//
-	// Labels:
-	//   - operation: canonical Operation* value
-	UserFavoriteOperationDuration = prometheus.NewHistogramVec(
-		prometheus.HistogramOpts{
-			Name:    "user_favorite_operation_duration_seconds",
-			Help:    "Async user-favorite operation latency.",
-			Buckets: favoriteAsyncBuckets,
-		},
-		[]string{"operation"},
-	)
-
-	// UserFavoritePersonalizationResult counts personalized-offer generation attempts.
-	//
-	// Labels:
-	//   - result: success | failure
-	//   - user_id: target user UUID
-	//
-	// WARNING: user_id is high-cardinality.
-	UserFavoritePersonalizationResult = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "user_favorite_personalization_total",
-			Help: "Personalized offer generation attempts, labelled by result and user.",
-		},
-		[]string{"result", "user_id"},
-	)
-
-	// UserFavoriteAutoExpireResult counts async favorite auto-expire attempts.
-	//
-	// Labels:
-	//   - result: success | failure
-	UserFavoriteAutoExpireResult = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "user_favorite_auto_expire_total",
-			Help: "Auto-expire attempts for user favorites, labelled by result.",
-		},
-		[]string{"result"},
-	)
-
-	// UserFavoriteBatchExpireResult counts batch inactive-favorite expiration.
-	//
-	// Labels:
-	//   - result: success | failure
-	UserFavoriteBatchExpireResult = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "user_favorite_batch_expire_total",
-			Help: "Batch expiration attempts for inactive favorites, labelled by result.",
-		},
-		[]string{"result"},
-	)
-
-	// UserFavoritePurgeResult counts permanent purges of soft-deleted favorites.
-	//
-	// Labels:
-	//   - result: success | failure
-	UserFavoritePurgeResult = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "user_favorite_purge_total",
-			Help: "Purge attempts for soft-deleted user favorites, labelled by result.",
-		},
-		[]string{"result"},
-	)
-
-	// UserFavoriteRestoreResult counts restore attempts for soft-deleted favorites.
-	//
-	// Labels:
-	//   - result: success | failure
-	//   - user_id: user UUID
-	//   - offer_id: offer UUID
-	//
-	// WARNING: compound high-cardinality collector: O(users × offers).
-	UserFavoriteRestoreResult = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "user_favorite_restore_total",
-			Help: "Restore attempts for soft-deleted user favorites, labelled by result, user, and offer.",
-		},
-		[]string{"result", "user_id", "offer_id"},
 	)
 
 	// UserNotificationResult counts async notification attempts.
@@ -498,17 +405,10 @@ func init() {
 		OfferAutoExpireResult,
 		OfferRemovalResult,
 		OfferSuggestionResult,
-		SuggestionPlanResult,
 		OfferStatusUpdateResult,
 		OfferFlagResult,
 		OfferAutoFlagResult,
 		OfferBlacklistResult,
-		UserFavoriteOperationDuration,
-		UserFavoritePersonalizationResult,
-		UserFavoriteAutoExpireResult,
-		UserFavoriteBatchExpireResult,
-		UserFavoritePurgeResult,
-		UserFavoriteRestoreResult,
 		UserNotificationResult,
 		UserNotificationOperationDuration,
 		ProfileAutoFlagResult,

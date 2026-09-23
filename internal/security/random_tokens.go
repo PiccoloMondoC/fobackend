@@ -1,6 +1,6 @@
 // Package security provides shared authentication and credential-security helpers.
 //
-// sdworkspace/sdbackend/internal/security/random_tokens.go
+// focodebase/fobackend/internal/security/random_tokens.go
 //
 // GTM:
 //   Layer: 2.2 Identity / Auth Domain

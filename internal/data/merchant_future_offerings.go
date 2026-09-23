@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for merchant future
 // offerings.
 //
-// sdworkspace/sdbackend/internal/data/merchant_future_offerings.go
+// focodebase/fobackend/internal/data/merchant_future_offerings.go
 //
 // GTM:
 //

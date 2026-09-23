@@ -1,7 +1,7 @@
 // Package services contains trusted internal Commerce Architecture
 // orchestration.
 //
-// sdworkspace/sdbackend/internal/services/merchant_platform_credit_applications_internal.go
+// focodebase/fobackend/internal/services/merchant_platform_credit_applications_internal.go
 //
 // GTM:
 //

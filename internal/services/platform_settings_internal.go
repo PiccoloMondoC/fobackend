@@ -1,7 +1,7 @@
 // Package services provides internal service methods for platform setting
 // bootstrap and operational helper access.
 //
-// sdworkspace/sdbackend/internal/services/platform_settings_internal.go
+// focodebase/fobackend/internal/services/platform_settings_internal.go
 //
 // GTM:
 //

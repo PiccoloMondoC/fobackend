@@ -1,7 +1,7 @@
 // Package data provides models and database access methods for platform
 // setting value history.
 //
-// sdworkspace/sdbackend/internal/data/platform_setting_history.go
+// focodebase/fobackend/internal/data/platform_setting_history.go
 //
 // GTM:
 //

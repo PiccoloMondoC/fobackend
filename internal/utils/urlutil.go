@@ -1,6 +1,6 @@
 // Package utils provides general-purpose utility functions for string normalization,
 // formatting, and lightweight transformations used across the application
-// sdworkspace/sdbackend/internal/utils/urlutil.go
+// focodebase/fobackend/internal/utils/urlutil.go
 package utils
 
 import (

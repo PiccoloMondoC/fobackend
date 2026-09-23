@@ -1,7 +1,7 @@
 // Package main provides the merchant-facing HTTP boundary for the
 // authoritative Future Offering aggregate.
 //
-// sdworkspace/sdbackend/internal/server/cmd/api/merchant_future_offerings.go
+// focodebase/fobackend/internal/server/cmd/api/merchant_future_offerings.go
 //
 // GTM:
 //
@@ -34,11 +34,10 @@
 //
 //	The authenticated user comes exclusively from AuthMiddleware.
 //
-//	X-Merchant-ID may identify which merchant account an authenticated actor
-//	wishes to operate, but possession of that identifier is not authority.
-//	Every request verifies the authenticated user's active Merchant Account
-//	membership for the selected merchant before accessing Future Offering
-//	state.
+//	X-Merchant-ID may identify which Merchant an authenticated principal wishes
+//	to operate, but possession of that identifier is not authority. Every
+//	request verifies the authenticated User is the principal of that Merchant's
+//	active canonical Merchant Account before accessing Future Offering state.
 //
 //	The data layer independently scopes every merchant-facing Future Offering
 //	read or mutation by merchant_id, preserving defense in depth.
@@ -52,7 +51,7 @@
 //
 //	Keep compiling.
 //	Keep production-ready.
-//	Preserve authenticated merchant-account membership verification.
+//	Preserve authenticated Merchant Account principal verification.
 //	Preserve merchant-scoped data access.
 //	Preserve draft-only mutation and discard.
 //	Preserve optimistic concurrency.
@@ -246,11 +245,10 @@ func newMerchantFutureOfferingResponse(
 // -----------------------------------------------------------------------------
 
 // requireAuthorizedMerchantFutureOfferingMerchant resolves the selected
-// merchant and proves that the authenticated user is an active member of that
-// merchant's active Merchant Account.
+// Merchant and proves that the authenticated user is the canonical principal
+// of that Merchant's active Merchant Account.
 //
-// X-Merchant-ID is therefore a selector only. It is never accepted as
-// authorization by itself.
+// X-Merchant-ID is a selector only.
 func (app *Application) requireAuthorizedMerchantFutureOfferingMerchant(
 	ctx context.Context,
 ) (uuid.UUID, error) {
@@ -264,16 +262,14 @@ func (app *Application) requireAuthorizedMerchantFutureOfferingMerchant(
 		return uuid.Nil, errMerchantFutureOfferingMerchantContextRequired
 	}
 
-	authorized, err :=
-		app.Models.MerchantAccount.IsActiveMemberForMerchant(
-			ctx,
-			*userID,
-			*merchantID,
-		)
+	authorized, err := app.Models.MerchantAccount.IsPrincipalForMerchant(
+		ctx,
+		*userID,
+		*merchantID,
+	)
 	if err != nil {
 		return uuid.Nil, err
 	}
-
 	if !authorized {
 		return uuid.Nil, data.ErrMerchantAccountAccessDenied
 	}

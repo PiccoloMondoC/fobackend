@@ -1,7 +1,7 @@
 // Package data provides the production data-layer implementation for the
 // Platform transactional domain-event outbox.
 //
-// sdworkspace/sdbackend/internal/data/outbox_events.go
+// focodebase/fobackend/internal/data/outbox_events.go
 //
 // GTM:
 //

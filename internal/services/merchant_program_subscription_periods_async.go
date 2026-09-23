@@ -1,7 +1,7 @@
 // Package services intentionally provides no asynchronous merchant program
 // subscription-period workflow at this stage.
 //
-// sdworkspace/sdbackend/internal/services/merchant_program_subscription_periods_async.go
+// focodebase/fobackend/internal/services/merchant_program_subscription_periods_async.go
 //
 // GTM:
 //

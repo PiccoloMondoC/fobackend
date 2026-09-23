@@ -1,7 +1,7 @@
 // Package timeutil provides centralized helpers for working with application
 // time values.
 //
-// sdworkspace/sdbackend/internal/utils/timeutil/timeutil.go
+// focodebase/fobackend/internal/utils/timeutil/timeutil.go
 //
 // GTM:
 //

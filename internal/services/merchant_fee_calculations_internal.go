@@ -1,7 +1,7 @@
 // Package services contains trusted internal orchestration for merchant fee
 // calculation recording and lifecycle transitions.
 //
-// sdworkspace/sdbackend/internal/services/merchant_fee_calculations_internal.go
+// focodebase/fobackend/internal/services/merchant_fee_calculations_internal.go
 //
 // GTM:
 //

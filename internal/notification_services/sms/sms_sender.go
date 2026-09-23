@@ -2,7 +2,7 @@
 // text messages from the notification-services subsystem. It centralizes all
 // third-party SMS gateway interaction behind a small application-facing API.
 //
-// sdworkspace/sdbackend/internal/notification_services/sms/sms_sender.go
+// focodebase/fobackend/internal/notification_services/sms/sms_sender.go
 //
 // GTM:
 //   Layer: 2.3 Consumer Domain

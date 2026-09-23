@@ -1,4 +1,4 @@
-// sdworkspace/sdbackend/internal/server/cmd/api/endpoints.go
+// focodebase/fobackend/internal/server/cmd/api/endpoints.go
 package main
 
 import (

@@ -8,7 +8,7 @@
 // random-token generation, and audit logging belong to callers at the appropriate
 // application layer.
 //
-// sdworkspace/sdbackend/internal/security/jwtutil/token.go
+// focodebase/fobackend/internal/security/jwtutil/token.go
 //
 // GTM:
 //   Layer: 2.2 Identity / Auth Domain

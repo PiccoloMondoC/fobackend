@@ -1,7 +1,7 @@
 // Package services contains trusted internal service composition,
 // automation support, moderation helpers, and shared internal workflow logic.
 //
-// sdworkspace/sdbackend/internal/services/errors.go
+// focodebase/fobackend/internal/services/errors.go
 //
 // GTM:
 //
@@ -9,8 +9,9 @@
 //	Release Class: SPINE
 //	Reason:
 //	  Defines stable internal-service sentinel errors used by composition,
-//	  decimal validation, offer processing, status resolution, and governed
-//	  notification-job behavior.
+//	  decimal validation, offer processing, status resolution, governed
+//	  notification-job behavior, Users identity workflows, and account
+//	  lifecycle orchestration.
 //
 // SPINE Rule:
 //
@@ -26,22 +27,42 @@ package services
 import "errors"
 
 var (
-	ErrInvalidServiceConfiguration                  = errors.New("invalid internal service configuration")
-	ErrNilContext                                   = errors.New("context must not be nil")
-	ErrNilOffer                                     = errors.New("offer must not be nil")
-	ErrInvalidDecimal                               = errors.New("invalid decimal value")
-	ErrOfferMetadataIncomplete                      = errors.New("offer metadata incomplete")
-	ErrStatusNameRequired                           = errors.New("status name cannot be empty")
-	ErrMaintenanceJobDisabled                       = errors.New("system maintenance notification job is disabled")
+	ErrInvalidServiceConfiguration = errors.New(
+		"invalid internal service configuration",
+	)
+
+	ErrNilContext = errors.New(
+		"context must not be nil",
+	)
+
+	ErrNilOffer = errors.New(
+		"offer must not be nil",
+	)
+
+	ErrInvalidDecimal = errors.New(
+		"invalid decimal value",
+	)
+
+	ErrOfferMetadataIncomplete = errors.New(
+		"offer metadata incomplete",
+	)
+
+	ErrStatusNameRequired = errors.New(
+		"status name cannot be empty",
+	)
+
+	ErrMaintenanceJobDisabled = errors.New(
+		"system maintenance notification job is disabled",
+	)
+
 	ErrInvalidMerchantProgramSubscriptionTransition = errors.New(
 		"invalid merchant program subscription transition",
 	)
+
 	ErrUnsupportedMerchantProgramSubscriptionTransition = errors.New(
 		"unsupported merchant program subscription transition",
 	)
-	ErrMerchantProgramSubscriptionPlanUnchanged = errors.New(
-		"merchant program subscription plan is unchanged",
-	)
+
 	ErrMerchantBillableEventSourceNotFound = errors.New(
 		"merchant billable event authoritative source not found",
 	)
@@ -49,6 +70,7 @@ var (
 	ErrMerchantBillableEventSourceIneligible = errors.New(
 		"merchant billable event authoritative source is ineligible",
 	)
+
 	ErrMerchantPlatformCreditApplicationFeeCalculationNotApproved = errors.New(
 		"merchant platform credit application requires an approved fee calculation",
 	)
@@ -60,6 +82,7 @@ var (
 	ErrMerchantPlatformCreditApplicationMerchantMismatch = errors.New(
 		"merchant platform credit account and fee calculation belong to different merchants",
 	)
+
 	ErrMerchantFutureOfferingServiceTermOperatingRangeInvalid = errors.New(
 		"merchant future offering service term operating range configuration is invalid",
 	)
@@ -122,5 +145,71 @@ var (
 
 	ErrMerchantFutureOfferingBillingPeriodInvalidState = errors.New(
 		"merchant future offering billing period orchestration encountered invalid state",
+	)
+
+	// Users / Identity workflow sentinels.
+
+	ErrUsersSignupInputInvalid = errors.New(
+		"invalid users signup input",
+	)
+
+	ErrUsersActivationInitialization = errors.New(
+		"user account created but activation initialization failed",
+	)
+
+	ErrUsersAuthenticationInputInvalid = errors.New(
+		"invalid user authentication input",
+	)
+
+	ErrUsersActorRequired = errors.New(
+		"acting user ID is required",
+	)
+
+	ErrUsersTargetRequired = errors.New(
+		"target user ID is required",
+	)
+
+	ErrUsersRefreshTokenRequired = errors.New(
+		"refresh token is required",
+	)
+
+	ErrUsersSessionInvalid = errors.New(
+		"user session is invalid or expired",
+	)
+
+	ErrUsersSessionOwnershipMismatch = errors.New(
+		"refresh token does not belong to the acting user",
+	)
+
+	ErrUsersAccountNotEligible = errors.New(
+		"user account is not eligible for this operation",
+	)
+
+	ErrUsersPasswordAlreadyEstablished = errors.New(
+		"user password is already established",
+	)
+
+	ErrUsersPasswordEstablishmentConflict = errors.New(
+		"initial password establishment encountered a concurrent state conflict",
+	)
+
+	ErrUsersCurrentPasswordIncorrect = errors.New(
+		"services: current password is incorrect",
+	)
+
+	ErrUsersPasswordConfirmationMismatch = errors.New(
+		"services: new password and confirmation do not match",
+	)
+
+	ErrMerchantActorRequired = errors.New(
+		"merchant service: actor user ID is required",
+	)
+
+	ErrMerchantResourceRequired = errors.New(
+		"merchant service: merchant ID is required",
+	)
+
+	ErrMerchantAccessForbidden = errors.New(
+		"merchant service: actor is not authorized for this merchant",
 	)
 )

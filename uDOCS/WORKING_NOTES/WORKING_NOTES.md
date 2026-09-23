@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ~/fobackend
 git add -A
-git commit -m "update Go module and import paths for fobackend"
+git commit -m "clean backend for Future Offering v1 architecture"
 git push
 
 | data layer | handler layer | service layer |
@@ -168,3 +168,6 @@ I’ve got the SE review now. I’m doing the independent CE pass against the co
 
 
 BEG §18.6D requires that we ask ourselves: Does this implementation unnecessarily couple domains in a way that would make later service extraction require redesign? Please read BEG §18.6D.
+
+
+BEG §27.11 requires us to treat existing implementation is evidence, not authority. If one of your engineers identifies a genuine best-practice correction and independent CE review confirms it, existing code must move—not the engineering standard.

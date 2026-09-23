@@ -1,7 +1,7 @@
 // Package services contains business orchestration for merchant program
 // fee-schedule readiness and effective commercial-policy resolution.
 //
-// sdworkspace/sdbackend/internal/services/merchant_program_fee_schedules_internal.go
+// focodebase/fobackend/internal/services/merchant_program_fee_schedules_internal.go
 //
 // GTM:
 //
@@ -11,11 +11,11 @@
 //	  merchant_program_fee_schedules service behavior is release-critical
 //	  monetization infrastructure for merchant setup fees, subscription fees,
 //	  Future Offering and Launch Intelligence fees, Campaign Performance Fees,
-//	  adjustments, refunds, reversals, plan-specific pricing, and global
+//	  adjustments, refunds, reversals, and global
 //	  fallback pricing.
 //
 //	  This file provides synchronous commercial-policy readiness validation
-//	  and stable plan-code resolution for downstream merchant billing
+//	  for downstream merchant billing
 //	  consumers. It does not calculate fees, invent pricing, process payments,
 //	  or govern HTTP authorization.
 //
@@ -24,7 +24,6 @@
 //	Keep compiling.
 //	Keep production-ready.
 //	Preserve synchronous monetization-readiness validation.
-//	Preserve deterministic plan-specific-over-global resolution.
 //	Preserve exact decimal values as returned by the data layer.
 //	Never invent, hard-code, or silently default commercial price terms.
 //	Never convert a missing schedule into a zero fee.
@@ -32,8 +31,7 @@
 //	Do not duplicate fee-schedule SQL, persistence validation, lifecycle
 //	mutation, HTTP authorization, handler auditing, or fee calculation.
 //	Block deployment if this file breaks merchant monetization readiness,
-//	active-plan resolution, effective commercial-policy resolution, or
-//	monetary precision.
+//	effective commercial-policy resolution, or monetary precision.
 package services
 
 import (
@@ -51,26 +49,20 @@ import (
 // category that must resolve before a dependent monetization workflow is
 // considered ready.
 //
-// A nil PlanCode requires a global schedule.
-//
-// A non-nil PlanCode requires the named active merchant program plan and
-// resolves its applicable schedule using the data layer's canonical
-// plan-specific-over-global precedence.
+// Requirements identify the fee type and billing interval whose effective
+// commercial-policy coverage must be resolved.
 //
 // Requirements identify policy coverage only. They never contain monetary
 // amounts, percentages, or other price terms.
 type MerchantProgramFeeScheduleRequirement struct {
 	FeeType         data.MerchantFeeType         `json:"fee_type"`
 	BillingInterval data.MerchantBillingInterval `json:"billing_interval"`
-	PlanCode        *data.MerchantPlanCode       `json:"plan_code,omitempty"`
 }
 
 // MerchantProgramFeeScheduleRequirementResult reports the effective schedule
 // selected for one validated readiness requirement.
 type MerchantProgramFeeScheduleRequirementResult struct {
 	Requirement   MerchantProgramFeeScheduleRequirement `json:"requirement"`
-	ResolvedScope data.MerchantFeeScope                 `json:"resolved_scope,omitempty"`
-	PlanID        *uuid.UUID                            `json:"plan_id,omitempty"`
 	FeeScheduleID uuid.UUID                             `json:"fee_schedule_id"`
 }
 
@@ -164,34 +156,14 @@ func normalizeMerchantProgramFeeScheduleRequirement(
 		)
 	}
 
-	if requirement.PlanCode != nil {
-		code := data.NormalizeMerchantPlanCode(
-			*requirement.PlanCode,
-		)
-		if !data.IsValidMerchantPlanCode(code) {
-			return MerchantProgramFeeScheduleRequirement{}, fmt.Errorf(
-				"invalid merchant program plan code: %s",
-				code,
-			)
-		}
-
-		requirement.PlanCode = &code
-	}
-
 	return requirement, nil
 }
 
 func merchantProgramFeeScheduleRequirementKey(
 	requirement MerchantProgramFeeScheduleRequirement,
 ) string {
-	planCode := "<global>"
-	if requirement.PlanCode != nil {
-		planCode = string(*requirement.PlanCode)
-	}
-
 	return fmt.Sprintf(
-		"%s:%s:%s",
-		planCode,
+		"%s:%s",
 		requirement.FeeType,
 		requirement.BillingInterval,
 	)
@@ -242,43 +214,12 @@ func normalizeMerchantProgramFeeScheduleRequirements(
 	return normalized, nil
 }
 
-func (s *Service) resolveMerchantProgramFeeSchedulePlanID(
-	ctx context.Context,
-	planCode *data.MerchantPlanCode,
-) (*uuid.UUID, error) {
-	if planCode == nil {
-		return nil, nil
-	}
-
-	plan, err := s.ResolveActiveMerchantProgramPlanInternal(
-		ctx,
-		*planCode,
-	)
-	if err != nil {
-		return nil, fmt.Errorf(
-			"resolve active merchant program plan %s: %w",
-			*planCode,
-			err,
-		)
-	}
-
-	if plan == nil || plan.ID == uuid.Nil {
-		return nil, fmt.Errorf(
-			"active merchant program plan not found: %s",
-			*planCode,
-		)
-	}
-
-	planID := plan.ID
-	return &planID, nil
-}
 
 func (s *Service) resolveEffectiveMerchantProgramFeeSchedule(
-	ctx context.Context,
-	feeType data.MerchantFeeType,
-	billingInterval data.MerchantBillingInterval,
-	planID *uuid.UUID,
-	asOf time.Time,
+    ctx context.Context,
+    feeType data.MerchantFeeType,
+    billingInterval data.MerchantBillingInterval,
+    asOf time.Time,
 ) (*data.MerchantProgramFeeSchedule, error) {
 	dbCtx, cancel := context.WithTimeout(
 		ctx,
@@ -293,7 +234,6 @@ func (s *Service) resolveEffectiveMerchantProgramFeeSchedule(
 				dbCtx,
 				feeType,
 				billingInterval,
-				planID,
 				asOf,
 			)
 	if err != nil {
@@ -304,13 +244,7 @@ func (s *Service) resolveEffectiveMerchantProgramFeeSchedule(
 }
 
 // ResolveEffectiveMerchantProgramFeeScheduleInternal resolves the effective
-// merchant commercial policy for one fee type, billing interval, and optional
-// stable merchant program plan code.
-//
-// When planCode is supplied, the code must identify an active canonical plan.
-// The data layer then applies plan-specific-over-global precedence.
-//
-// When planCode is nil, resolution is global-only.
+// merchant commercial policy for one fee type and billing interval.
 //
 // A missing schedule is returned as a clear error. It is never converted into
 // a zero fee or another synthetic commercial term.
@@ -318,7 +252,6 @@ func (s *Service) ResolveEffectiveMerchantProgramFeeScheduleInternal(
 	ctx context.Context,
 	feeType data.MerchantFeeType,
 	billingInterval data.MerchantBillingInterval,
-	planCode *data.MerchantPlanCode,
 	asOf time.Time,
 ) (*data.MerchantProgramFeeSchedule, error) {
 	if err := validateMerchantProgramFeeScheduleService(s); err != nil {
@@ -336,26 +269,9 @@ func (s *Service) ResolveEffectiveMerchantProgramFeeScheduleInternal(
 			MerchantProgramFeeScheduleRequirement{
 				FeeType:         feeType,
 				BillingInterval: billingInterval,
-				PlanCode:        planCode,
 			},
 		)
 	if err != nil {
-		return nil, err
-	}
-
-	planID, err :=
-		s.resolveMerchantProgramFeeSchedulePlanID(
-			ctx,
-			requirement.PlanCode,
-		)
-	if err != nil {
-		logger.Error(
-			"Merchant program plan resolution failed",
-			"plan_code",
-			requirement.PlanCode,
-			"error",
-			err,
-		)
 		return nil, err
 	}
 
@@ -364,7 +280,6 @@ func (s *Service) ResolveEffectiveMerchantProgramFeeScheduleInternal(
 			ctx,
 			requirement.FeeType,
 			requirement.BillingInterval,
-			planID,
 			asOf,
 		)
 	if err != nil {
@@ -374,8 +289,6 @@ func (s *Service) ResolveEffectiveMerchantProgramFeeScheduleInternal(
 			requirement.FeeType,
 			"billing_interval",
 			requirement.BillingInterval,
-			"plan_id",
-			planID,
 			"error",
 			err,
 		)
@@ -401,7 +314,7 @@ func (s *Service) ResolveEffectiveMerchantProgramFeeScheduleInternal(
 // explicit set of commercial-policy requirements at one consistent UTC
 // reference time.
 //
-// Missing policy, inactive plans, ambiguous policy, cancellation, timeout,
+// Missing policy, ambiguous policy, cancellation, timeout,
 // and database failures all prevent successful readiness validation. The
 // method does not weaken integrity failures into a partially successful
 // readiness report.
@@ -445,29 +358,11 @@ func (s *Service) ValidateMerchantProgramFeeScheduleReadinessInternal(
 			return MerchantProgramFeeScheduleReadiness{}, err
 		}
 
-		planID, err :=
-			s.resolveMerchantProgramFeeSchedulePlanID(
-				ctx,
-				requirement.PlanCode,
-			)
-		if err != nil {
-			logger.Error(
-				"Merchant program fee schedule readiness plan resolution failed",
-				"plan_code",
-				requirement.PlanCode,
-				"error",
-				err,
-			)
-
-			return MerchantProgramFeeScheduleReadiness{}, err
-		}
-
 		schedule, err :=
 			s.resolveEffectiveMerchantProgramFeeSchedule(
 				ctx,
 				requirement.FeeType,
 				requirement.BillingInterval,
-				planID,
 				asOf,
 			)
 		if err != nil {
@@ -477,8 +372,6 @@ func (s *Service) ValidateMerchantProgramFeeScheduleReadinessInternal(
 				requirement.FeeType,
 				"billing_interval",
 				requirement.BillingInterval,
-				"plan_id",
-				planID,
 				"error",
 				err,
 			)
@@ -503,8 +396,6 @@ func (s *Service) ValidateMerchantProgramFeeScheduleReadinessInternal(
 
 		result := MerchantProgramFeeScheduleRequirementResult{
 			Requirement:   requirement,
-			ResolvedScope: schedule.FeeScope,
-			PlanID:        planID,
 			FeeScheduleID: feeScheduleID,
 		}
 
