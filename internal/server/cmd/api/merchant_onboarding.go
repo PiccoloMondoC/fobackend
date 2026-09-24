@@ -14,12 +14,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// onboardMerchantInput is the v1 self-service onboarding request. It carries
+// only identity facts owned by canonical Merchant persistence.
 type onboardMerchantInput struct {
-	Name        string     `json:"name"`
-	DisplayName string     `json:"display_name"`
-	Slug        string     `json:"slug"`
-	LogoURL     *string    `json:"logo_url,omitempty"`
-	Website     *string    `json:"website,omitempty"`
+	Name    string  `json:"name"`
+	LogoURL *string `json:"logo_url,omitempty"`
+	Website *string `json:"website,omitempty"`
 }
 
 type onboardMerchantResponse struct {
@@ -27,6 +27,9 @@ type onboardMerchantResponse struct {
 	MerchantAccount *data.MerchantAccount `json:"merchant_account"`
 }
 
+// OnboardMerchantHandler establishes the authenticated merchant user as the
+// principal of a newly created Merchant and v1 Merchant Account. Actor
+// identity comes exclusively from trusted authentication context.
 func (app *Application) OnboardMerchantHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -54,11 +57,9 @@ func (app *Application) OnboardMerchantHandler(
 		ctx,
 		*userID,
 		services.MerchantOnboardingInput{
-			Name:        input.Name,
-			DisplayName: input.DisplayName,
-			Slug:        input.Slug,
-			LogoURL:     input.LogoURL,
-			Website:     input.Website,
+			Name:    input.Name,
+			LogoURL: input.LogoURL,
+			Website: input.Website,
 		},
 	)
 	if err != nil {
@@ -70,7 +71,7 @@ func (app *Application) OnboardMerchantHandler(
 		case errors.Is(err, services.ErrMerchantOnboardingAlreadyCompleted):
 			app.respondWithError(w, errors.New("merchant onboarding already completed"), http.StatusConflict)
 		case errors.Is(err, data.ErrMerchantIdentityConflict):
-			app.respondWithError(w, errors.New("merchant name or slug already exists"), http.StatusConflict)
+			app.respondWithError(w, errors.New("merchant name already exists"), http.StatusConflict)
 		case errors.Is(err, context.DeadlineExceeded):
 			app.respondWithError(w, errors.New("merchant onboarding request timed out"), http.StatusGatewayTimeout)
 		case errors.Is(err, context.Canceled):

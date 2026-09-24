@@ -18,6 +18,7 @@
 //	Keep public Users signup unchanged.
 //	Create Merchant + principal-owned Merchant Account atomically.
 //	Do not require merchant classification for M01 onboarding.
+//	Do not accept identity facts that Merchant persistence does not own.
 //	Do not provide an administrator-created Merchant Account path.
 package services
 
@@ -35,15 +36,26 @@ import (
 )
 
 var (
+	// ErrMerchantOnboardingActorRequired indicates that no authenticated actor
+	// was supplied to onboarding.
 	ErrMerchantOnboardingActorRequired = errors.New(
 		"merchant onboarding: actor user ID is required",
 	)
+
+	// ErrMerchantOnboardingInputInvalid indicates caller-correctable Merchant
+	// identity input. It may wrap data.ErrMerchantInvalid.
 	ErrMerchantOnboardingInputInvalid = errors.New(
 		"merchant onboarding: merchant identity input is invalid",
 	)
+
+	// ErrMerchantOnboardingActorIneligible indicates that the actor is not an
+	// active user holding the public merchant role.
 	ErrMerchantOnboardingActorIneligible = errors.New(
 		"merchant onboarding: actor is not an active merchant user",
 	)
+
+	// ErrMerchantOnboardingAlreadyCompleted indicates that the actor is
+	// already the principal of a Merchant Account. v1 permits exactly one.
 	ErrMerchantOnboardingAlreadyCompleted = errors.New(
 		"merchant onboarding: actor already owns a merchant account",
 	)
@@ -55,17 +67,18 @@ const (
 	merchantAggregateType         = "merchant"
 )
 
-// MerchantOnboardingInput contains only the identity facts required to create
-// the v1 Merchant. Merchant type is intentionally absent: classification is a
-// deferred capability and is not an M01 onboarding invariant.
+// MerchantOnboardingInput contains only the identity facts that canonical
+// Merchant persistence owns. Merchant classification, display names, and
+// public routing handles are intentionally absent: none is an M01 onboarding
+// invariant and Merchant persistence does not store them.
 type MerchantOnboardingInput struct {
-	Name        string
-	DisplayName string
-	Slug        string
-	LogoURL     *string
-	Website     *string
+	Name    string
+	LogoURL *string
+	Website *string
 }
 
+// MerchantOnboardingResult is the established Merchant and its active,
+// principal-owned Merchant Account.
 type MerchantOnboardingResult struct {
 	Merchant        *data.Merchant
 	MerchantAccount *data.MerchantAccount
@@ -79,7 +92,8 @@ type merchantOnboardedEventV1 struct {
 
 // OnboardMerchantInternal atomically creates the Merchant and its active,
 // principal-owned Merchant Account, then persists the onboarding occurrence in
-// the transactional outbox. Users signup and activation remain separate.
+// the transactional outbox. Users signup and activation remain separate; this
+// operation requires an already-activated, authenticated merchant user.
 func (s *Service) OnboardMerchantInternal(
 	ctx context.Context,
 	actorUserID uuid.UUID,
@@ -94,11 +108,7 @@ func (s *Service) OnboardMerchantInternal(
 	if actorUserID == uuid.Nil {
 		return nil, ErrMerchantOnboardingActorRequired
 	}
-
-	name := strings.TrimSpace(in.Name)
-	displayName := strings.TrimSpace(in.DisplayName)
-	slug := strings.TrimSpace(in.Slug)
-	if name == "" || displayName == "" || slug == "" {
+	if strings.TrimSpace(in.Name) == "" {
 		return nil, ErrMerchantOnboardingInputInvalid
 	}
 
@@ -132,12 +142,18 @@ func (s *Service) OnboardMerchantInternal(
 		}
 	}()
 
+	// InsertTx owns validation and canonicalization; the canonical values it
+	// writes back are the values used for the remainder of the workflow.
 	merchant := &data.Merchant{
-		Name:    name,
+		Name:    in.Name,
 		LogoURL: in.LogoURL,
 		Website: in.Website,
 	}
 	if err := s.Models.Merchant.InsertTx(ctx, tx, merchant); err != nil {
+		if errors.Is(err, data.ErrMerchantInvalid) {
+			return nil, fmt.Errorf("%w: %w", ErrMerchantOnboardingInputInvalid, err)
+		}
+		// data.ErrMerchantIdentityConflict remains inspectable via errors.Is.
 		return nil, fmt.Errorf("merchant onboarding: create merchant: %w", err)
 	}
 

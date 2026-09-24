@@ -26,6 +26,9 @@
 //	FO-, Engagement-Action-, or Engagement-Action-Group-specific consumer
 //	handoff destination.
 //	Preserve database-owned lifecycle timestamps.
+//	Preserve typed translation of caller-correctable validation failures
+//	(ErrMerchantInvalid) and canonical-name conflicts
+//	(ErrMerchantIdentityConflict).
 //	Do not introduce account lifecycle, Merchant classification, public
 //	routing, catalog, affiliate, platform, engagement, billing, or
 //	FO-specific state into Merchant persistence.
@@ -58,6 +61,10 @@ const merchantSelectColumns = `
 	created_at,
 	updated_at
 `
+
+// merchantNameUniqueConstraint is the canonical uniqueness constraint over
+// Merchant name. The column is CITEXT, so uniqueness is case-insensitive.
+const merchantNameUniqueConstraint = "ux_merchants_name"
 
 // Merchant is the canonical durable commercial identity behind one or more
 // Future Offerings.
@@ -111,11 +118,20 @@ func scanMerchant(row scannableRow, merchant *Merchant) error {
 	)
 }
 
+// isMerchantNameConflict reports whether err is a unique violation of the
+// canonical Merchant-name constraint. SQLSTATE and constraint inspection are
+// delegated to the central PostgreSQL helpers in errors.go.
+func isMerchantNameConflict(err error) bool {
+	return IsUniqueViolation(err) &&
+		IsPgConstraint(err, merchantNameUniqueConstraint)
+}
+
 // normalizeMerchantURLField normalizes an optional Merchant URL and, when
 // present, validates and canonicalizes it using the package's shared HTTP URL
 // validator.
 //
 // The returned value is the canonical value that must be used downstream.
+// Validation failures wrap ErrMerchantInvalid.
 func normalizeMerchantURLField(
 	raw *string,
 	fieldName string,
@@ -127,7 +143,7 @@ func normalizeMerchantURLField(
 
 	canonical, err := validateHTTPURL(*cleaned)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", fieldName, err)
+		return nil, fmt.Errorf("%w: %s: %w", ErrMerchantInvalid, fieldName, err)
 	}
 
 	return &canonical, nil
@@ -137,7 +153,9 @@ func normalizeMerchantURLField(
 // identity facts in place.
 //
 // Callers must persist the resulting canonical values rather than the original
-// unvalidated input.
+// unvalidated input. Caller-correctable identity failures wrap
+// ErrMerchantInvalid so boundary layers can classify them as input errors. A
+// nil merchant is a programming error and is not classified as input.
 func validateAndNormalizeMerchant(merchant *Merchant) error {
 	if merchant == nil {
 		return errors.New("merchant is required")
@@ -145,7 +163,7 @@ func validateAndNormalizeMerchant(merchant *Merchant) error {
 
 	name := strings.TrimSpace(merchant.Name)
 	if name == "" {
-		return errors.New("merchant name is required")
+		return fmt.Errorf("%w: merchant name is required", ErrMerchantInvalid)
 	}
 	merchant.Name = name
 
@@ -179,6 +197,10 @@ func validateAndNormalizeMerchant(merchant *Merchant) error {
 //
 // If merchant.ID is uuid.Nil, InsertTx generates a new identifier.
 // created_at and updated_at are database-owned and returned to the caller.
+//
+// Returns an error wrapping ErrMerchantInvalid when identity facts fail
+// validation, and ErrMerchantIdentityConflict when the canonical name is
+// already held by another Merchant.
 func (m *MerchantModel) InsertTx(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -221,6 +243,9 @@ func (m *MerchantModel) InsertTx(
 		),
 		merchant,
 	); err != nil {
+		if isMerchantNameConflict(err) {
+			return ErrMerchantIdentityConflict
+		}
 		return fmt.Errorf("insert merchant: %w", err)
 	}
 
@@ -281,7 +306,10 @@ func (m *MerchantModel) GetByID(
 // persistence. The canonical values returned by validation are the values
 // written to the database.
 //
-// Returns ErrMerchantNotFound when no Merchant exists with merchant.ID.
+// Returns an error wrapping ErrMerchantInvalid when identity facts fail
+// validation, ErrMerchantIdentityConflict when the canonical name is already
+// held by another Merchant, and ErrMerchantNotFound when no Merchant exists
+// with merchant.ID.
 func (m *MerchantModel) Update(
 	ctx context.Context,
 	merchant *Merchant,
@@ -338,6 +366,9 @@ func (m *MerchantModel) Update(
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrMerchantNotFound
+		}
+		if isMerchantNameConflict(err) {
+			return ErrMerchantIdentityConflict
 		}
 
 		logger.Error(

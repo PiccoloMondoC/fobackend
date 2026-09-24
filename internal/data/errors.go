@@ -139,13 +139,17 @@ var (
 	ErrCategoryNotFound   = errors.New("category not found")
 
 	// Merchants
-	ErrMerchantNotFound            = errors.New("merchant not found")
+	// ErrMerchantInvalid reports that supplied Merchant identity facts failed
+	// validation or canonicalization. It represents caller-correctable input,
+	// not a persistence failure.
+	ErrMerchantInvalid  = errors.New("merchant identity is invalid")
+	ErrMerchantNotFound = errors.New("merchant not found")
 	// ErrMerchantIdentityConflict reports that a Merchant identity mutation
 	// conflicts with the canonical uniqueness constraint protecting Merchant
 	// identity. Persistence implementations must translate the owning database
 	// constraint into this sentinel rather than exposing PostgreSQL details to
 	// service or HTTP boundaries.
-	ErrMerchantIdentityConflict = errors.New("merchant identity conflict")
+	ErrMerchantIdentityConflict    = errors.New("merchant identity conflict")
 	ErrMerchantFollowNotFound      = errors.New("merchant follow not found")
 	ErrMerchantAccountAccessDenied = errors.New("merchant account access denied")
 
@@ -456,53 +460,11 @@ var (
 	ErrMerchantFutureOfferingInvalidTransition = errors.New("invalid merchant future offering lifecycle transition")
 	ErrMerchantFutureOfferingEditConflict      = errors.New("merchant future offering edit conflict")
 
-	// Affiliate programs and performance.
-	ErrAffiliatePerformanceNotFound   = errors.New("affiliate performance not found")
-	ErrAffiliateProgramNotFound       = errors.New("affiliate program not found")
-	ErrAffiliateProgramAlreadyExists  = errors.New("affiliate program already exists")
-	ErrAffiliateProgramSecretNotFound = errors.New("affiliate program secret material not found")
-
-	// Coupons.
-	ErrCouponNotFound         = errors.New("coupon not found")
-	ErrCouponAlreadyExists    = errors.New("coupon already exists")
-	ErrCouponStatusNotFound   = errors.New("coupon status not found")
-	ErrCouponOfferRequired    = errors.New("offer_id is required")
-	ErrCouponCodeRequired     = errors.New("code is required")
-	ErrCouponClipNotSupported = errors.New("coupon cannot be clipped because it is not linked to an offer")
-
-	// Offers.
-	ErrOfferClickNotFound             = errors.New("offer click not found")
-	ErrOfferClickImmutable            = errors.New("offer click records are immutable")
-	ErrOfferConversionNotFound        = errors.New("offer conversion not found")
-	ErrOfferConversionImmutable       = errors.New("offer conversion records are immutable")
-	ErrOfferFlagNotFound              = errors.New("offer flag not found")
-	ErrOfferFlagAlreadyResolved       = errors.New("offer flag already resolved")
-	ErrOfferPriceHistoryNotFound      = errors.New("offer price history not found")
-	ErrOfferPriceHistoryImmutable     = errors.New("offer price history records are immutable")
-	ErrPriceDropSubscriptionNotFound  = errors.New("price drop subscription not found")
-	ErrOfferRatingNotFound            = errors.New("offer rating not found")
-	ErrOfferReviewNotFound            = errors.New("offer not found or not eligible for review transition")
-	ErrOfferSponsorshipNotFound       = errors.New("offer sponsorship not found")
-	ErrOfferStatusNotFound            = errors.New("offer status not found")
-	ErrOfferStatusNameRequired        = errors.New("offer status name is required")
-	ErrOfferStatusDescriptionRequired = errors.New("offer status description is required")
-	ErrOfferStatusIDRequired          = errors.New("offer status id is required")
-	ErrOfferIDRequired                = errors.New("offer id is required")
-	ErrMerchantIDRequired             = errors.New("merchant id is required")
-	ErrPendingReviewStatusMissing     = errors.New("required offer status 'pending_review' is missing")
-	ErrOfferNotFoundForMerchant       = errors.New("offer not found for merchant")
-
 	// Notifications.
 	ErrUserNotificationNotFound    = errors.New("user notification not found")
 	ErrUserNotificationImmutable   = errors.New("user notification records are immutable")
 	ErrNotificationTypeNotFound    = errors.New("notification type not found")
 	ErrNotificationChannelNotFound = errors.New("notification channel not found")
-
-	// Wallets.
-	ErrWalletNotFound      = errors.New("wallet not found")
-	ErrLedgerEntryNotFound = errors.New("wallet ledger entry not found")
-	ErrInvalidWalletState  = errors.New("invalid wallet state")
-	ErrInvalidLedgerState  = errors.New("invalid wallet ledger state")
 )
 
 // IsUniqueViolation reports whether err wraps a PostgreSQL unique-constraint violation.
