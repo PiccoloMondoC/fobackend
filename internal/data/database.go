@@ -1966,6 +1966,53 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 
 	-- =====================================================================
+	-- Engagement Actions
+	-- =====================================================================
+	-- Defines the Platform-governed catalog of merchant-selectable Engagement
+	-- Actions that may be made available for Future Offerings.
+	--
+	-- Engagement Action identity is persistent and independent of presentation.
+	-- The stable code provides a machine-readable semantic identifier; the UUID
+	-- is the canonical database identity.
+	--
+	-- Administration may add new Engagement Actions as legitimate business
+	-- needs emerge without requiring changes to the Future Offering persistence
+	-- model. Existing actions must not be repurposed to represent materially
+	-- different consumer intent. A materially different action receives a new
+	-- identity.
+	--
+	-- Merchants select applicable Engagement Actions from the active Platform
+	-- catalog for each Future Offering. Merchant selection does not create,
+	-- redefine, or govern canonical Engagement Action types.
+	--
+	-- Watch is Platform-owned and is intentionally absent from this catalog.
+	-- =====================================================================
+
+	CREATE TABLE IF NOT EXISTS engagement_actions (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		code TEXT NOT NULL
+			CHECK (
+				code = LOWER(code)
+				AND code ~ '^[a-z][a-z0-9_]*$'
+			),
+
+		name TEXT NOT NULL
+			CHECK (BTRIM(name) <> ''),
+
+		description TEXT,
+
+		is_active BOOLEAN NOT NULL DEFAULT TRUE,
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT ux_engagement_actions_code
+			UNIQUE (code)
+	);
+
+
+	-- =====================================================================
 	-- Merchant Future Offering Engagement Options
 	-- =====================================================================
 	-- Defines the merchant-controlled Engagement Actions made available for
@@ -1974,8 +2021,8 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	-- Watch is Platform-owned and is intentionally absent from this table.
 	--
 	-- Every available merchant Engagement Action belongs to exactly one
-	-- Engagement Action Group. The group and Engagement Action must belong
-	-- to the same Future Offering.
+	-- Engagement Action Group for the Future Offering. Each option references
+	-- a canonical Platform-governed Engagement Action.
 	--
 	-- The merchant determines which Engagement Actions are available and
 	-- which group contains each action. Group-level selection ceilings are
@@ -2004,14 +2051,9 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 		engagement_action_group_id UUID NOT NULL,
 
-		action_type TEXT NOT NULL
-			CHECK (action_type IN (
-				'waitlist',
-				'early_access_request',
-				'beta',
-				'reservation_interest',
-				'preorder_intent'
-			)),
+		engagement_action_id UUID NOT NULL
+			REFERENCES engagement_actions(id)
+			ON DELETE RESTRICT,
 
 		quantity_enabled BOOLEAN NOT NULL DEFAULT FALSE,
 
@@ -2030,7 +2072,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		CONSTRAINT ux_merchant_future_offering_engagement_options_action
 			UNIQUE (
 				future_offering_id,
-				action_type
+				engagement_action_id
 			),
 
 		CONSTRAINT chk_merchant_future_offering_engagement_options_quantity
@@ -2073,6 +2115,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		id
 	)
 	WHERE is_active = TRUE;
+
 
 	-- Merchant Future Offerings Events
 	CREATE TABLE IF NOT EXISTS merchant_future_offerings_events (

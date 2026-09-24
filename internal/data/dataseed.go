@@ -115,7 +115,7 @@ const (
 	ON CONFLICT (role_id, permission_id) DO NOTHING;
 	`
 
-	
+
 	// ---------------------------------------------------------------
 	// oauth_clients
 	//
@@ -167,6 +167,25 @@ const (
 		('Reddit',    'https://www.reddit.com/user/','Community-driven discussion and content aggregation platform.')
 	ON CONFLICT (name) DO NOTHING;
 	`
+insertEngagementActionsQuery = `
+	INSERT INTO engagement_actions (
+		code,
+		name
+	)
+	VALUES
+		('waitlist', 'Waitlist'),
+		('early_access_request', 'Early Access Request'),
+		('beta', 'Beta'),
+		('reservation_interest', 'Reservation Interest'),
+		('preorder_intent', 'Preorder Intent'),
+		('signup_intent', 'Signup Intent'),
+		('enrollment_intent', 'Enrollment Intent'),
+		('application_intent', 'Application Intent'),
+		('subscription_intent', 'Subscription Intent'),
+		('booking_intent', 'Booking Intent'),
+		('purchase_intent', 'Purchase Intent')
+	ON CONFLICT (code) DO NOTHING;
+`
 	insertMerchantFeeTypesQuery = `
 	INSERT INTO merchant_fee_types (code, display_name) VALUES
 		('anticipation_intelligence_activation_fee', 'Anticipation Intelligence Activation Fee'),
