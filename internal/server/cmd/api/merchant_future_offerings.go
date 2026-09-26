@@ -553,8 +553,9 @@ func (app *Application) CreateMerchantFutureOfferingDraftHandler(
 	}
 
 	created, err :=
-		app.Models.MerchantFutureOffering.InsertDraft(
+		app.InternalServices.CreateMerchantFutureOfferingDraft(
 			ctx,
+			*userID,
 			fo,
 		)
 	if err != nil {

@@ -8,62 +8,46 @@
 //	Layer: 2.6 Internal Services / Merchant Future Offering Domain
 //	Release Class: SPINE
 //	Reason:
-//	  merchant_future_offerings is the core Future Offering aggregate and the
-//	  PCDF-M01 orchestration anchor. This file owns the transaction boundary for
-//	  the guarded draft -> submitted transition once canonical M01 readiness can
-//	  be established across the contributing Future Offering domains.
+//	  merchant_future_offerings is the PCDF-M01 orchestration anchor. This
+//	  file owns the transaction boundaries for operations that span
+//	  authoritative Future Offering domains:
+//	    - draft creation + 'created' history;
+//	    - authoritative readiness evaluation;
+//	    - draft -> submitted transition + 'submitted_for_activation' history
+//	      + FutureOfferingSubmitted outbox event.
 //
-//	  Ordinary aggregate draft operations remain data-model operations because
-//	  they do not currently require cross-domain workflow orchestration.
+//	Single-domain draft fact replacement and discard remain data-model
+//	operations invoked directly by handlers.
 //
-// Submission Readiness Boundary:
+// Submission Boundary:
 //
-//	M01 readiness is an aggregate-level contract composed from authoritative
-//	facts owned by the contributing Phase 6 domains. Those domains own the
-//	meaning and validation of their own facts; this orchestration anchor owns
-//	which domain contributions constitute complete submission readiness.
+//	Submission evaluates the canonical composite readiness (see
+//	merchant_future_offering_readiness.go) inside the transaction that
+//	performs the transition. Callers cannot supply or omit readiness checks.
+//	The history record and outbox event commit atomically with the status
+//	change. The Activation billable event (FOCA §16) is NOT created here; it
+//	is produced by the Commerce consumer of FutureOfferingSubmitted, keyed by
+//	future_offering_event_id (SE report §7, CE confirmation requested).
 //
-//	The readiness contract is deliberately a single canonical evaluator. It is
-//	not a variadic or caller-selected set of checks: an HTTP handler or other
-//	caller must never be able to weaken submission readiness by omitting a
-//	required domain.
+// Lock Order (all M01 transactions):
 //
-//	No canonical composite evaluator is implemented in this file because the
-//	contributing data/service contracts are not yet all present. The transaction
-//	runner therefore remains package-internal and is not exposed through HTTP.
-//	As those domains land, their authoritative checks compose behind
-//	merchantFutureOfferingSubmissionReadiness; the transaction algorithm below
-//	does not change.
-//
-// Transaction Boundary:
-//
-//	submitMerchantFutureOffering owns the transaction. It locks the merchant-
-//	scoped Future Offering, rejects stale or invalid lifecycle state before
-//	readiness work, evaluates canonical M01 readiness, performs the guarded
-//	draft -> submitted transition through MerchantFutureOfferingModel.SubmitTx,
-//	and persists FutureOfferingSubmitted through the transactional outbox before
-//	committing.
-//
-//	Future Offering event/history persistence is a separate authoritative domain.
-//	When its data-layer transaction contract lands, the canonical submission
-//	orchestrator must include the corresponding submitted_for_activation history
-//	record in this same commit boundary before HTTP submission is exposed.
+//  1. merchant_future_offerings row (FOR UPDATE, merchant-scoped)
+//  2. engagement_actions rows (FOR SHARE)
+//  3. engagement groups/options rows (DML)
+//  4. merchant_future_offerings_events / outbox_events (INSERT)
 //
 // SPINE Rule:
 //
 //	Keep compiling.
 //	Keep production-ready.
 //	Preserve merchant scope and optimistic concurrency.
-//	Preserve one service-owned transaction for submission-side authoritative
-//	writes and the outbox event.
-//	Preserve contributing-domain ownership of readiness facts.
-//	Do not let callers select or omit required readiness checks.
-//	Do not query another domain's tables directly from this file.
-//	Do not invent submission policy from nullable Future Offering columns.
-//	Do not perform network calls inside the submission transaction.
-//	Do not create Future-Offering-specific worker machinery for outbox delivery.
-//	Block deployment if submission can commit without canonical readiness,
-//	required lifecycle history, or transactional outbox persistence.
+//	Preserve one service-owned transaction for submission writes, history and
+//	outbox.
+//	Preserve the documented lock order.
+//	Preserve canonical, non-selectable readiness.
+//	Do not perform network calls inside a transaction.
+//	Block deployment if submission can commit without readiness, history,
+//	or outbox persistence.
 package services
 
 import (
@@ -87,242 +71,293 @@ const (
 )
 
 // merchantFutureOfferingSubmittedPayloadV1 is the producer-owned payload for
-// FutureOfferingSubmitted version 1.
+// FutureOfferingSubmitted v1. It carries stable identity only; consumers read
+// mutable descriptive state from the authoritative domain.
 //
-// The payload contains only stable aggregate identity, merchant ownership, and
-// occurrence time. Consumers that need mutable descriptive state must obtain it
-// from the authoritative Future Offering domain rather than treating an event
-// snapshot as a second source of truth.
+// future_offering_event_id identifies the authoritative submitted_for_activation
+// history record, giving Commerce a stable key for the Activation billable
+// event (merchant_billable_events already supports lookup by FO event id).
 type merchantFutureOfferingSubmittedPayloadV1 struct {
-	FutureOfferingID uuid.UUID `json:"future_offering_id"`
-	MerchantID       uuid.UUID `json:"merchant_id"`
-	SubmittedAt      time.Time `json:"submitted_at"`
-}
-
-// merchantFutureOfferingSubmissionReadiness is the canonical M01 readiness
-// contract consumed by the Future Offering submission orchestrator.
-//
-// The eventual concrete composite owns the complete required set of M01
-// contributing domains. Individual contributing domains may expose narrower
-// domain-owned validation/readiness methods, but callers of submission do not
-// choose which of those requirements apply.
-//
-// Evaluate executes inside the caller-owned submission transaction. It must not
-// begin, commit, or roll back the transaction, and it must not perform network
-// calls while the transaction is held.
-//
-// Concurrency contract:
-//
-//	A contributing readiness implementation must ensure that every
-//	authoritative fact on which a successful readiness determination depends
-//	cannot be invalidated before the enclosing submission transaction commits.
-//
-//	The contributing domain owns how that guarantee is achieved. Appropriate
-//	mechanisms may include row or aggregate locking, guarded lifecycle mutation,
-//	optimistic version checks, immutability, monotonic state, or another explicit
-//	domain invariant. A readiness implementation must not rely on an ordinary
-//	unprotected read when concurrent mutation could make its successful result
-//	stale before submission commits.
-type merchantFutureOfferingSubmissionReadiness interface {
-	Evaluate(
-		ctx context.Context,
-		tx pgx.Tx,
-		fo *data.MerchantFutureOffering,
-	) error
+	FutureOfferingID      uuid.UUID `json:"future_offering_id"`
+	FutureOfferingEventID uuid.UUID `json:"future_offering_event_id"`
+	MerchantID            uuid.UUID `json:"merchant_id"`
+	SubmittedAt           time.Time `json:"submitted_at"`
 }
 
 func marshalMerchantFutureOfferingSubmittedPayload(
 	fo *data.MerchantFutureOffering,
+	history *data.MerchantFutureOfferingEvent,
 ) (json.RawMessage, error) {
-	if fo == nil ||
-		fo.ID == uuid.Nil ||
-		fo.MerchantID == uuid.Nil ||
-		fo.SubmittedAt == nil ||
-		fo.SubmittedAt.IsZero() {
+	if fo == nil || fo.ID == uuid.Nil || fo.MerchantID == uuid.Nil ||
+		fo.SubmittedAt == nil || fo.SubmittedAt.IsZero() ||
+		history == nil || history.ID == uuid.Nil {
 		return nil, data.ErrMerchantFutureOfferingInvalidState
 	}
-
-	payload, err := json.Marshal(
-		merchantFutureOfferingSubmittedPayloadV1{
-			FutureOfferingID: fo.ID,
-			MerchantID:       fo.MerchantID,
-			SubmittedAt:      fo.SubmittedAt.UTC(),
-		},
-	)
+	payload, err := json.Marshal(merchantFutureOfferingSubmittedPayloadV1{
+		FutureOfferingID:      fo.ID,
+		FutureOfferingEventID: history.ID,
+		MerchantID:            fo.MerchantID,
+		SubmittedAt:           fo.SubmittedAt.UTC(),
+	})
 	if err != nil {
-		return nil, fmt.Errorf(
-			"marshal FutureOfferingSubmitted v1 payload: %w",
-			err,
-		)
+		return nil, fmt.Errorf("marshal FutureOfferingSubmitted v1 payload: %w", err)
 	}
-
 	return payload, nil
 }
 
-// submitMerchantFutureOffering executes the authoritative transaction algorithm
-// for PCDF-M01 submission.
+// runMerchantFutureOfferingTx owns begin/rollback/commit for M01 service
+// transactions. commit=false always rolls back (used for read-only
+// evaluation that must take the same locks as submission).
 //
-// This method is intentionally package-internal until the complete canonical
-// M01 readiness composite and Future Offering event/history transaction method
-// exist. HTTP exposure before those contracts exist would turn a partially
-// implemented orchestration boundary into product behavior.
-func (s *Service) submitMerchantFutureOffering(
+// CE NOTE: if a central transaction helper exists in services, replace this
+// with it (BEG 3.21/3.22). None was supplied with the assignment.
+func (s *Service) runMerchantFutureOfferingTx(
 	ctx context.Context,
-	merchantID uuid.UUID,
-	futureOfferingID uuid.UUID,
-	expectedUpdatedAt time.Time,
-	readiness merchantFutureOfferingSubmissionReadiness,
-) (*data.MerchantFutureOffering, error) {
+	functionName string,
+	commit bool,
+	fn func(ctx context.Context, tx pgx.Tx) error,
+) error {
 	if err := s.validate(); err != nil {
-		return nil, err
+		return err
 	}
 	if ctx == nil {
-		return nil, ErrNilContext
+		return ErrNilContext
 	}
-	if readiness == nil {
-		return nil, fmt.Errorf(
-			"%w: merchant Future Offering submission readiness is not composed",
-			ErrInvalidServiceConfiguration,
-		)
-	}
-
-	if merchantID == uuid.Nil {
-		return nil, fmt.Errorf(
-			"%w: merchant_id is required",
-			data.ErrMerchantFutureOfferingInvalidInput,
-		)
-	}
-	if futureOfferingID == uuid.Nil {
-		return nil, fmt.Errorf(
-			"%w: future_offering_id is required",
-			data.ErrMerchantFutureOfferingInvalidInput,
-		)
-	}
-	if expectedUpdatedAt.IsZero() {
-		return nil, fmt.Errorf(
-			"%w: expected_updated_at is required",
-			data.ErrMerchantFutureOfferingInvalidInput,
-		)
-	}
-
-	pool := s.Models.DB
-	if pool == nil {
-		return nil, fmt.Errorf(
-			"%w: database pool is nil",
-			ErrInvalidServiceConfiguration,
-		)
-	}
-
 	ctx, cancel := context.WithTimeout(ctx, s.Cfg.DBTimeout)
 	defer cancel()
 
-	logger := s.Logger.GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("submitMerchantFutureOffering")
+	logger := s.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName(functionName)
 
-	tx, err := pool.Begin(ctx)
+	tx, err := s.Models.DB.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"begin merchant Future Offering submission transaction: %w",
-			err,
-		)
+		return fmt.Errorf("begin %s transaction: %w", functionName, err)
 	}
-
-	committed := false
+	finished := false
 	defer func() {
-		if committed {
+		if finished {
 			return
 		}
-
-		if rbErr := tx.Rollback(ctx); rbErr != nil &&
-			!errors.Is(rbErr, pgx.ErrTxClosed) {
-			logger.Warn(
-				"merchant Future Offering submission rollback failed",
-				"future_offering_id", futureOfferingID,
-				"merchant_id", merchantID,
-				"error", rbErr,
-			)
+		if rbErr := tx.Rollback(ctx); rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+			logger.Warn("Future Offering transaction rollback failed", "error", rbErr)
 		}
 	}()
 
-	locked, err := s.Models.MerchantFutureOffering.GetByIDForUpdateTx(
-		ctx,
-		tx,
-		merchantID,
-		futureOfferingID,
-	)
+	if err := fn(ctx, tx); err != nil {
+		return err
+	}
+	if !commit {
+		return nil
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit %s transaction: %w", functionName, err)
+	}
+	finished = true
+	return nil
+}
+
+func validateMerchantFutureOfferingScope(merchantID, futureOfferingID uuid.UUID) error {
+	if merchantID == uuid.Nil {
+		return fmt.Errorf("%w: merchant_id is required", data.ErrMerchantFutureOfferingInvalidInput)
+	}
+	if futureOfferingID == uuid.Nil {
+		return fmt.Errorf("%w: future_offering_id is required", data.ErrMerchantFutureOfferingInvalidInput)
+	}
+	return nil
+}
+
+func validatePerformedBy(userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return fmt.Errorf("%w: performing user is required", data.ErrMerchantFutureOfferingInvalidInput)
+	}
+	return nil
+}
+
+// lockDraftAtVersion locks the merchant-scoped Future Offering and verifies
+// it is a draft at expectedUpdatedAt. Stale requests fail before any
+// cross-domain work.
+func (s *Service) lockDraftAtVersion(
+	ctx context.Context,
+	tx pgx.Tx,
+	merchantID, futureOfferingID uuid.UUID,
+	expectedUpdatedAt time.Time,
+) (*data.MerchantFutureOffering, error) {
+	locked, err := s.Models.MerchantFutureOffering.GetByIDForUpdateTx(ctx, tx, merchantID, futureOfferingID)
 	if err != nil {
 		return nil, err
 	}
-
-	if locked.Status != data.MerchantFutureOfferingStatusDraft {
+	if data.NormalizeMerchantFutureOfferingStatus(locked.Status) != data.MerchantFutureOfferingStatusDraft {
 		return nil, data.ErrMerchantFutureOfferingInvalidTransition
 	}
-
-	// Fail stale requests before potentially multi-domain readiness work.
-	//
-	// SubmitTx remains the authoritative persistence guard and repeats the
-	// optimistic-concurrency condition in SQL before changing lifecycle state.
 	if !locked.UpdatedAt.Equal(expectedUpdatedAt.UTC()) {
 		return nil, data.ErrMerchantFutureOfferingEditConflict
 	}
+	return locked, nil
+}
 
-	if err := readiness.Evaluate(ctx, tx, locked); err != nil {
+// -----------------------------------------------------------------------------
+// Create
+// -----------------------------------------------------------------------------
+
+// CreateMerchantFutureOfferingDraft creates a merchant-owned draft and its
+// 'created' history record atomically.
+func (s *Service) CreateMerchantFutureOfferingDraft(
+	ctx context.Context,
+	performedBy uuid.UUID,
+	fo *data.MerchantFutureOffering,
+) (*data.MerchantFutureOffering, error) {
+	if err := validatePerformedBy(performedBy); err != nil {
 		return nil, err
 	}
+	if fo == nil {
+		return nil, fmt.Errorf("%w: future offering is required", data.ErrMerchantFutureOfferingInvalidInput)
+	}
+	var created *data.MerchantFutureOffering
+	err := s.runMerchantFutureOfferingTx(ctx, "CreateMerchantFutureOfferingDraft", true,
+		func(ctx context.Context, tx pgx.Tx) error {
+			inserted, err := s.Models.MerchantFutureOffering.InsertDraftTx(ctx, tx, fo)
+			if err != nil {
+				return err
+			}
+			draft := data.MerchantFutureOfferingStatusDraft
+			if _, err := s.Models.MerchantFutureOfferingEvent.InsertTx(ctx, tx, data.NewMerchantFutureOfferingEvent{
+				FutureOfferingID: inserted.ID,
+				EventType:        data.MerchantFutureOfferingEventCreated,
+				ToStatus:         &draft,
+				PerformedBy:      &performedBy,
+			}); err != nil {
+				return err
+			}
+			created = inserted
+			return nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
 
-	submitted, err := s.Models.MerchantFutureOffering.SubmitTx(
-		ctx,
-		tx,
-		merchantID,
-		futureOfferingID,
-		expectedUpdatedAt,
-	)
+// -----------------------------------------------------------------------------
+// Readiness
+// -----------------------------------------------------------------------------
+
+// EvaluateMerchantFutureOfferingReadiness returns the authoritative readiness
+// of a merchant-owned draft from a coherent read transaction. Submission re-evaluates
+// the same canonical composite after taking its write lock and version guard.
+func (s *Service) EvaluateMerchantFutureOfferingReadiness(
+	ctx context.Context,
+	merchantID, futureOfferingID uuid.UUID,
+) (MerchantFutureOfferingReadiness, error) {
+	var result MerchantFutureOfferingReadiness
+	if err := validateMerchantFutureOfferingScope(merchantID, futureOfferingID); err != nil {
+		return result, err
+	}
+	err := s.runMerchantFutureOfferingTx(ctx, "EvaluateMerchantFutureOfferingReadiness", false,
+		func(ctx context.Context, tx pgx.Tx) error {
+			fo, err := s.Models.MerchantFutureOffering.GetByIDForMerchantTx(ctx, tx, merchantID, futureOfferingID)
+			if err != nil {
+				return err
+			}
+			if data.NormalizeMerchantFutureOfferingStatus(fo.Status) != data.MerchantFutureOfferingStatusDraft {
+				return data.ErrMerchantFutureOfferingInvalidTransition
+			}
+			result, err = s.merchantFutureOfferingReadiness().Evaluate(ctx, tx, fo)
+			return err
+		})
+	return result, err
+}
+
+// -----------------------------------------------------------------------------
+// Submit
+// -----------------------------------------------------------------------------
+
+// submitMerchantFutureOffering is deliberately package-internal until the complete M01 readiness composite exists. It performs the eventual activation boundary:
+// draft -> submitted, guarded by merchant scope, optimistic concurrency and
+// canonical readiness, with history and outbox committed atomically.
+//
+// A readiness failure returns *MerchantFutureOfferingNotReadyError carrying
+// the authoritative issues.
+func (s *Service) submitMerchantFutureOffering(
+	ctx context.Context,
+	merchantID, futureOfferingID uuid.UUID,
+	performedBy uuid.UUID,
+	expectedUpdatedAt time.Time,
+) (*data.MerchantFutureOffering, error) {
+	if err := validateMerchantFutureOfferingScope(merchantID, futureOfferingID); err != nil {
+		return nil, err
+	}
+	if err := validatePerformedBy(performedBy); err != nil {
+		return nil, err
+	}
+	if expectedUpdatedAt.IsZero() {
+		return nil, fmt.Errorf("%w: expected_updated_at is required", data.ErrMerchantFutureOfferingInvalidInput)
+	}
+
+	var submitted *data.MerchantFutureOffering
+	err := s.runMerchantFutureOfferingTx(ctx, "SubmitMerchantFutureOffering", true,
+		func(ctx context.Context, tx pgx.Tx) error {
+			locked, err := s.lockDraftAtVersion(ctx, tx, merchantID, futureOfferingID, expectedUpdatedAt)
+			if err != nil {
+				return err
+			}
+
+			readiness, err := s.merchantFutureOfferingReadiness().Evaluate(ctx, tx, locked)
+			if err != nil {
+				return err
+			}
+			if !readiness.Ready {
+				return &MerchantFutureOfferingNotReadyError{Readiness: readiness}
+			}
+
+			result, err := s.Models.MerchantFutureOffering.SubmitTx(ctx, tx, merchantID, futureOfferingID, expectedUpdatedAt)
+			if err != nil {
+				return err
+			}
+
+			from := data.MerchantFutureOfferingStatusDraft
+			to := data.MerchantFutureOfferingStatusSubmitted
+			history, err := s.Models.MerchantFutureOfferingEvent.InsertTx(ctx, tx, data.NewMerchantFutureOfferingEvent{
+				FutureOfferingID: result.ID,
+				EventType:        data.MerchantFutureOfferingEventSubmittedForActivation,
+				FromStatus:       &from,
+				ToStatus:         &to,
+				PerformedBy:      &performedBy,
+			})
+			if err != nil {
+				return err
+			}
+
+			payload, err := marshalMerchantFutureOfferingSubmittedPayload(result, history)
+			if err != nil {
+				return err
+			}
+			occurredAt := result.SubmittedAt.UTC()
+			if _, err := s.Models.OutboxEvent.InsertTx(ctx, tx, data.NewOutboxEvent{
+				AggregateType: merchantFutureOfferingAggregateType,
+				AggregateID:   result.ID,
+				EventType:     merchantFutureOfferingSubmittedEventType,
+				EventVersion:  merchantFutureOfferingSubmittedEventVersion,
+				Payload:       payload,
+				// Keyed by the history record, not the FO: a future
+				// resubmission (after changes_requested) is a distinct
+				// occurrence and must not collide.
+				IdempotencyKey: fmt.Sprintf("merchant_future_offering_event:%s", history.ID),
+				OccurredAt:     &occurredAt,
+			}); err != nil {
+				return fmt.Errorf("persist FutureOfferingSubmitted outbox event: %w", err)
+			}
+
+			submitted = result
+			return nil
+		})
 	if err != nil {
 		return nil, err
 	}
 
-	payload, err := marshalMerchantFutureOfferingSubmittedPayload(submitted)
-	if err != nil {
-		return nil, err
-	}
-
-	occurredAt := submitted.SubmittedAt.UTC()
-
-	if _, err := s.Models.OutboxEvent.InsertTx(
-		ctx,
-		tx,
-		data.NewOutboxEvent{
-			AggregateType: merchantFutureOfferingAggregateType,
-			AggregateID:   submitted.ID,
-			EventType:     merchantFutureOfferingSubmittedEventType,
-			EventVersion:  merchantFutureOfferingSubmittedEventVersion,
-			Payload:       payload,
-			IdempotencyKey: fmt.Sprintf(
-				"merchant_future_offering:%s:submitted",
-				submitted.ID,
-			),
-			OccurredAt: &occurredAt,
-		},
-	); err != nil {
-		return nil, fmt.Errorf(
-			"persist FutureOfferingSubmitted outbox event: %w",
-			err,
+	s.Logger.GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("SubmitMerchantFutureOffering").
+		Info("merchant Future Offering submitted",
+			"future_offering_id", submitted.ID,
+			"merchant_id", submitted.MerchantID,
 		)
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf(
-			"commit merchant Future Offering submission transaction: %w",
-			err,
-		)
-	}
-	committed = true
-
-	logger.Info(
-		"merchant Future Offering submitted",
-		"future_offering_id", submitted.ID,
-		"merchant_id", submitted.MerchantID,
-	)
-
 	return submitted, nil
 }

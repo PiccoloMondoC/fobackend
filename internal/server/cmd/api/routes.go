@@ -114,7 +114,6 @@ func (app *Application) Routes() http.Handler {
 
 		// ---- PUBLIC API ROUTES (no auth required) ----
 
-
 		// ---- PUBLIC IDENTITY AND AUTHENTICATION ROUTES ----
 
 		// User Activation Routes.
@@ -503,7 +502,6 @@ func (app *Application) Routes() http.Handler {
 				app.HardDeleteMerchantAccountHandler,
 			)
 		})
-
 
 		// Merchant Future Offering Service Terms
 		//
@@ -1093,6 +1091,10 @@ func (app *Application) Routes() http.Handler {
 				Delete("/{merchantPaymentMethodID}", app.SoftDeleteMerchantPaymentMethodHandler)
 		})
 
+		// Platform-governed merchant Engagement Action catalog.
+		v1.With(app.AuthMiddleware, app.RequirePermission("list_engagement_actions")).
+			Get("/engagement-actions", app.ListEngagementActionsHandler)
+
 		// Future Offerings
 		//
 		// Merchant authority is established from the authenticated User's
@@ -1145,6 +1147,19 @@ func (app *Application) Routes() http.Handler {
 				"/{futureOfferingID}",
 				app.DiscardMerchantFutureOfferingDraftHandler,
 			)
+
+			fo.With(app.RequirePermission("read_merchant_future_offering")).
+				Get("/{futureOfferingID}/engagement", app.GetMerchantFutureOfferingEngagementHandler)
+			fo.With(app.RequirePermission("update_merchant_future_offering_draft")).
+				Put("/{futureOfferingID}/engagement", app.ReplaceMerchantFutureOfferingEngagementHandler)
+			fo.With(app.RequirePermission("read_merchant_future_offering")).
+				Get("/{futureOfferingID}/readiness", app.GetMerchantFutureOfferingReadinessHandler)
+			fo.With(app.RequirePermission("read_merchant_future_offering")).
+				Get("/{futureOfferingID}/history", app.ListMerchantFutureOfferingHistoryHandler)
+
+			// POST /{futureOfferingID}/submit is intentionally not registered.
+			// Canonical M01 readiness is incomplete until assets, goals, initial
+			// milestones, and the M01 Service Term choice are composed.
 		})
 
 		// Categories
@@ -1171,7 +1186,6 @@ func (app *Application) Routes() http.Handler {
 			cat.With(app.RequirePermission("read_category")).
 				Get("/by-id", app.GetCategoryByIDHandler)
 		})
-
 
 		// User Notifications (system-managed)
 		v1.Route("/user-notifications", func(un chi.Router) {
@@ -1222,7 +1236,6 @@ func (app *Application) Routes() http.Handler {
 				Get("/reserved-handles", app.GetReservedHandlesHandler)
 		})
 
-		
 		// Users
 		v1.Route("/users", func(u chi.Router) {
 			u.Use(app.AuthMiddleware)

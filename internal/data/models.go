@@ -114,7 +114,11 @@ type Models struct {
 	MerchantInvoice                       MerchantInvoiceModel                       // SPINE: Commerce Architecture — durable merchant commercial obligation
 	MerchantInvoiceItem                   MerchantInvoiceItemModel                   // SPINE: Commerce Architecture — normalized invoice-line provenance bridge
 
-	MerchantFutureOffering MerchantFutureOfferingModel // SPINE: Future Offering v1 — authoritative FO aggregate
+	MerchantFutureOffering                      MerchantFutureOfferingModel                      // SPINE: Future Offering v1 — authoritative FO aggregate
+	EngagementAction                            EngagementActionModel                            // SPINE: Platform-governed merchant Engagement Action catalog
+	MerchantFutureOfferingEngagementActionGroup MerchantFutureOfferingEngagementActionGroupModel // SPINE: M01 engagement grouping
+	MerchantFutureOfferingEngagementOption      MerchantFutureOfferingEngagementOptionModel      // SPINE: M01 merchant-selectable engagement options
+	MerchantFutureOfferingEvent                 MerchantFutureOfferingEventModel                 // SPINE: append-only Future Offering lifecycle history
 
 	//MerchantCenter MerchantCenterModel // DEFERRED: full merchant self-service workspace
 
@@ -186,7 +190,11 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		MerchantInvoice:                       MerchantInvoiceModel{DB: dbPool, Logger: logger},                   // SPINE: Commerce Architecture — durable merchant commercial obligation
 		MerchantInvoiceItem:                   MerchantInvoiceItemModel{DB: dbPool, Logger: logger},               // SPINE: Commerce Architecture — normalized invoice-line provenance bridge
 
-		MerchantFutureOffering: MerchantFutureOfferingModel{DB: dbPool, Logger: logger},
+		MerchantFutureOffering:                      MerchantFutureOfferingModel{DB: dbPool, Logger: logger},
+		EngagementAction:                            EngagementActionModel{DB: dbPool, Logger: logger},
+		MerchantFutureOfferingEngagementActionGroup: MerchantFutureOfferingEngagementActionGroupModel{DB: dbPool, Logger: logger},
+		MerchantFutureOfferingEngagementOption:      MerchantFutureOfferingEngagementOptionModel{DB: dbPool, Logger: logger},
+		MerchantFutureOfferingEvent:                 MerchantFutureOfferingEventModel{DB: dbPool, Logger: logger},
 
 		//MerchantCenter: MerchantCenterModel{DB: dbPool, Logger: logger}, // DEFERRED
 

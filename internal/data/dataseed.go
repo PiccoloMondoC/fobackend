@@ -107,6 +107,8 @@ const (
 		'list_merchant_future_offerings',
 		'update_merchant_future_offering_draft',
 		'discard_merchant_future_offering_draft',
+		'list_engagement_actions',
+		'list_categories',
 
 		'delete_own_account'
 	)
@@ -114,7 +116,6 @@ const (
 
 	ON CONFLICT (role_id, permission_id) DO NOTHING;
 	`
-
 
 	// ---------------------------------------------------------------
 	// oauth_clients
@@ -152,7 +153,6 @@ const (
 	ON CONFLICT (client_id) DO NOTHING;
 	`
 
-
 	insertSocialPlatformQuery = `
 	INSERT INTO social_platforms (name, base_url, description) VALUES
 		('Instagram', 'https://www.instagram.com/',  'Photo and video sharing social network.'),
@@ -167,7 +167,7 @@ const (
 		('Reddit',    'https://www.reddit.com/user/','Community-driven discussion and content aggregation platform.')
 	ON CONFLICT (name) DO NOTHING;
 	`
-insertEngagementActionsQuery = `
+	insertEngagementActionsQuery = `
 	INSERT INTO engagement_actions (
 		code,
 		name
@@ -443,6 +443,7 @@ insertEngagementActionsQuery = `
 			'discard_merchant_future_offering_draft',
 			'Allows an authorized merchant to discard a Future Offering draft'
 		),
+		('list_engagement_actions', 'Allows an authorized merchant to list active Platform-governed Engagement Actions'),
 		-- Platform Settings
 		('create_platform_setting', 'Allows creating a new platform setting'),
 		('ensure_platform_setting', 'Allows idempotently ensuring a platform setting'),
@@ -720,6 +721,7 @@ insertEngagementActionsQuery = `
 			'discard_merchant_future_offering_draft',
 			'Discard a merchant Future Offering draft'
 		),
+		('update_merchant_future_offering_engagement', 'Replace engagement configuration of a merchant Future Offering draft'),
 		-- Platform Settings
 		('create_platform_setting', 'Create a platform setting'),
 		('ensure_platform_setting', 'Ensure a platform setting'),

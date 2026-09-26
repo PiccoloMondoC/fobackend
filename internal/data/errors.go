@@ -460,6 +460,10 @@ var (
 	ErrMerchantFutureOfferingInvalidTransition = errors.New("invalid merchant future offering lifecycle transition")
 	ErrMerchantFutureOfferingEditConflict      = errors.New("merchant future offering edit conflict")
 
+	// Merchant Future Offering Engagement
+	ErrMerchantFutureOfferingEngagementInvalidInput = errors.New("invalid engagement configuration")
+	ErrEngagementActionNotFound                     = errors.New("engagement action not found or inactive")
+
 	// Notifications.
 	ErrUserNotificationNotFound    = errors.New("user notification not found")
 	ErrUserNotificationImmutable   = errors.New("user notification records are immutable")

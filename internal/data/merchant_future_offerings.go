@@ -802,6 +802,72 @@ func (m *MerchantFutureOfferingModel) GetByIDForUpdateTx(ctx context.Context, tx
 	return &fo, nil
 }
 
+// GetByIDForMerchantTx retrieves one non-deleted Future Offering through a
+// caller-owned transaction, scoped to merchant ownership, without taking a
+// write lock. It is used by coherent read-only aggregate snapshots.
+func (m *MerchantFutureOfferingModel) GetByIDForMerchantTx(ctx context.Context, tx pgx.Tx, merchantID, id uuid.UUID) (*MerchantFutureOffering, error) {
+	if err := m.validateBase(); err != nil {
+		return nil, err
+	}
+	if tx == nil {
+		return nil, merchantFutureOfferingInvalidInput("transaction is required")
+	}
+	if err := validateMerchantFutureOfferingMerchantID(merchantID); err != nil {
+		return nil, err
+	}
+	if err := validateMerchantFutureOfferingID(id); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	const query = `SELECT ` + merchantFutureOfferingSelectColumns + ` FROM merchant_future_offerings WHERE id = $1 AND merchant_id = $2 AND deleted_at IS NULL`
+	var fo MerchantFutureOffering
+	if err := scanMerchantFutureOffering(tx.QueryRow(ctx, query, id, merchantID), &fo); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrMerchantFutureOfferingNotFound
+		}
+		return nil, fmt.Errorf("get merchant future offering by ID for merchant transaction: %w", err)
+	}
+	if err := validateMerchantFutureOfferingPersistedState(&fo); err != nil {
+		return nil, err
+	}
+	return &fo, nil
+}
+
+// AdvanceDraftVersionTx advances the aggregate optimistic-concurrency version
+// after a supporting M01 domain mutates inside the same transaction.
+func (m *MerchantFutureOfferingModel) AdvanceDraftVersionTx(ctx context.Context, tx pgx.Tx, merchantID, id uuid.UUID, expectedUpdatedAt time.Time) (*MerchantFutureOffering, error) {
+	if err := m.validateBase(); err != nil {
+		return nil, err
+	}
+	if tx == nil {
+		return nil, merchantFutureOfferingInvalidInput("transaction is required")
+	}
+	if err := validateMerchantFutureOfferingMerchantID(merchantID); err != nil {
+		return nil, err
+	}
+	if err := validateMerchantFutureOfferingID(id); err != nil {
+		return nil, err
+	}
+	if expectedUpdatedAt.IsZero() {
+		return nil, merchantFutureOfferingInvalidInput("expected_updated_at is required")
+	}
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+	const query = `UPDATE merchant_future_offerings SET updated_at = ` + merchantFutureOfferingNextVersionSQL + ` WHERE id = $1 AND merchant_id = $2 AND status = 'draft' AND deleted_at IS NULL AND updated_at = $3 RETURNING ` + merchantFutureOfferingSelectColumns
+	var fo MerchantFutureOffering
+	if err := scanMerchantFutureOffering(tx.QueryRow(ctx, query, id, merchantID, expectedUpdatedAt.UTC()), &fo); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, classifyMerchantFutureOfferingWriteError(err)
+		}
+		return nil, m.resolveDraftMutationNoMatch(ctx, tx, merchantID, id)
+	}
+	if err := validateMerchantFutureOfferingPersistedState(&fo); err != nil {
+		return nil, err
+	}
+	return &fo, nil
+}
+
 // listByMerchant is ordered by updated_at DESC, id DESC to align with
 // idx_merchant_future_offerings_merchant_status(merchant_id, status,
 // updated_at DESC), which favors surfacing the most recently touched draft
@@ -956,6 +1022,8 @@ func (m *MerchantFutureOfferingModel) resolveDraftMutationNoMatch(
 	return ErrMerchantFutureOfferingEditConflict
 }
 
+const merchantFutureOfferingNextVersionSQL = `GREATEST(clock_timestamp(), updated_at + INTERVAL '1 microsecond')`
+
 func (m *MerchantFutureOfferingModel) updateDraftFacts(
 	ctx context.Context,
 	querier merchantFutureOfferingQueryRower,
@@ -1015,7 +1083,7 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 			release_strategy = $9,
 			access_policy = $10,
 			launch_at = $11,
-			updated_at = NOW()
+			updated_at = ` + merchantFutureOfferingNextVersionSQL + `
 		WHERE id = $1
 		  AND merchant_id = $2
 		  AND status = 'draft'
@@ -1104,7 +1172,7 @@ func (m *MerchantFutureOfferingModel) SubmitTx(ctx context.Context, tx pgx.Tx, m
 	logger := m.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("SubmitMerchantFutureOfferingTx")
 	const query = `
 		UPDATE merchant_future_offerings
-		SET status = 'submitted', submitted_at = NOW(), updated_at = NOW()
+		SET status = 'submitted', submitted_at = NOW(), updated_at = ` + merchantFutureOfferingNextVersionSQL + `
 		WHERE id = $1
 		  AND merchant_id = $2
 		  AND status = 'draft'
@@ -1141,7 +1209,7 @@ func (m *MerchantFutureOfferingModel) discardDraft(ctx context.Context, querier 
 	}
 	const query = `
 		UPDATE merchant_future_offerings
-		SET deleted_at = NOW(), updated_at = NOW()
+		SET deleted_at = NOW(), updated_at = ` + merchantFutureOfferingNextVersionSQL + `
 		WHERE id = $1
 		  AND merchant_id = $2
 		  AND status = 'draft'
