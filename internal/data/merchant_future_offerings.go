@@ -111,6 +111,9 @@ const merchantFutureOfferingSelectColumns = `
 	access_policy,
 	status,
 	launch_at,
+	launch_window_precision,
+	launch_window_start,
+	launch_display_text,
 	submitted_at,
 	approved_at,
 	published_at,
@@ -131,6 +134,11 @@ const (
 	merchantFutureOfferingReleaseStrategyConstraint = "merchant_future_offerings_release_strategy_check"
 	merchantFutureOfferingAccessPolicyConstraint    = "merchant_future_offerings_access_policy_check"
 	merchantFutureOfferingStatusConstraint          = "merchant_future_offerings_status_check"
+	merchantFutureOfferingDescriptionConstraint     = "merchant_future_offerings_description_check"
+	merchantFutureOfferingLaunchPrecisionConstraint = "merchant_future_offerings_launch_window_precision_check"
+	merchantFutureOfferingLaunchDisplayConstraint   = "merchant_future_offerings_launch_display_text_check"
+	merchantFutureOfferingLaunchTimingConstraint    = "chk_merchant_future_offerings_launch_timing"
+	merchantFutureOfferingLaunchAlignConstraint     = "chk_merchant_future_offerings_launch_window_alignment"
 )
 
 // MerchantFutureOfferingStatus is the persisted lifecycle state of a Future Offering.
@@ -281,13 +289,18 @@ type MerchantFutureOffering struct {
 	ProjectName     string                                 `json:"project_name" db:"project_name"`
 	Title           *string                                `json:"title,omitempty" db:"title"`
 	Summary         string                                 `json:"summary" db:"summary"`
-	Description     *string                                `json:"description,omitempty" db:"description"`
+	Description     *RichTextDocument                      `json:"description,omitempty" db:"description"`
 	CategoryID      *uuid.UUID                             `json:"category_id,omitempty" db:"category_id"`
 	OfferingType    *MerchantFutureOfferingType            `json:"offering_type,omitempty" db:"offering_type"`
 	ReleaseStrategy *MerchantFutureOfferingReleaseStrategy `json:"release_strategy,omitempty" db:"release_strategy"`
 	AccessPolicy    *MerchantFutureOfferingAccessPolicy    `json:"access_policy,omitempty" db:"access_policy"`
 	Status          MerchantFutureOfferingStatus           `json:"status" db:"status"`
 	LaunchAt        *time.Time                             `json:"launch_at,omitempty" db:"launch_at"`
+	// LaunchWindowPrecision and LaunchWindowStart describe an approximate
+	// launch period; see merchant_future_offering_launch_timing.go.
+	LaunchWindowPrecision *MerchantFutureOfferingLaunchPrecision `json:"launch_window_precision,omitempty" db:"launch_window_precision"`
+	LaunchWindowStart     *time.Time                             `json:"launch_window_start,omitempty" db:"launch_window_start"`
+	LaunchDisplayText     *string                                `json:"launch_display_text,omitempty" db:"launch_display_text"`
 	SubmittedAt     *time.Time                             `json:"submitted_at,omitempty" db:"submitted_at"`
 	ApprovedAt      *time.Time                             `json:"approved_at,omitempty" db:"approved_at"`
 	PublishedAt     *time.Time                             `json:"published_at,omitempty" db:"published_at"`
@@ -307,12 +320,12 @@ type MerchantFutureOfferingDraftFacts struct {
 	ProjectName     string
 	Title           *string
 	Summary         string
-	Description     *string
+	Description     *RichTextDocument
 	CategoryID      *uuid.UUID
 	OfferingType    *MerchantFutureOfferingType
 	ReleaseStrategy *MerchantFutureOfferingReleaseStrategy
 	AccessPolicy    *MerchantFutureOfferingAccessPolicy
-	LaunchAt        *time.Time
+	LaunchTiming    MerchantFutureOfferingLaunchTiming
 }
 
 // MerchantFutureOfferingModel owns Future Offering aggregate persistence.
@@ -359,6 +372,9 @@ func scanMerchantFutureOffering(row scannableRow, fo *MerchantFutureOffering) er
 		&fo.AccessPolicy,
 		&fo.Status,
 		&fo.LaunchAt,
+		&fo.LaunchWindowPrecision,
+		&fo.LaunchWindowStart,
+		&fo.LaunchDisplayText,
 		&fo.SubmittedAt,
 		&fo.ApprovedAt,
 		&fo.PublishedAt,
@@ -387,6 +403,13 @@ func classifyMerchantFutureOfferingWriteError(err error) error {
 		IsPgConstraint(err, merchantFutureOfferingReleaseStrategyConstraint),
 		IsPgConstraint(err, merchantFutureOfferingAccessPolicyConstraint):
 		return ErrMerchantFutureOfferingInvalidInput
+	case IsPgConstraint(err, merchantFutureOfferingDescriptionConstraint):
+		return fmt.Errorf("%w: %w", ErrMerchantFutureOfferingInvalidInput, ErrRichTextInvalid)
+	case IsPgConstraint(err, merchantFutureOfferingLaunchPrecisionConstraint),
+		IsPgConstraint(err, merchantFutureOfferingLaunchDisplayConstraint),
+		IsPgConstraint(err, merchantFutureOfferingLaunchTimingConstraint),
+		IsPgConstraint(err, merchantFutureOfferingLaunchAlignConstraint):
+		return fmt.Errorf("%w: %w", ErrMerchantFutureOfferingInvalidInput, ErrMerchantFutureOfferingLaunchTimingInvalid)
 	case IsPgConstraint(err, merchantFutureOfferingStatusConstraint):
 		return ErrMerchantFutureOfferingInvalidState
 	case IsForeignKeyViolation(err):
@@ -465,6 +488,16 @@ func normalizeOptionalMerchantFutureOfferingCategoryID(categoryID *uuid.UUID) (*
 	}
 	id := *categoryID
 	return &id, nil
+}
+
+// canonicalMerchantFutureOfferingDescription returns the only bytes that may
+// be persisted for description: this package's canonical serialization.
+func canonicalMerchantFutureOfferingDescription(doc *RichTextDocument) ([]byte, error) {
+	encoded, err := doc.CanonicalJSON()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrMerchantFutureOfferingInvalidInput, err)
+	}
+	return encoded, nil
 }
 
 func normalizeMerchantFutureOfferingOptionalTime(value *time.Time) *time.Time {
@@ -546,6 +579,19 @@ func validateMerchantFutureOfferingPersistedState(fo *MerchantFutureOffering) er
 	if fo.CategoryID != nil && *fo.CategoryID == uuid.Nil {
 		return ErrMerchantFutureOfferingInvalidState
 	}
+	if fo.Description != nil {
+		if canonical, err := CanonicalizeRichTextDocument(fo.Description); err != nil || canonical == nil {
+			return ErrMerchantFutureOfferingInvalidState
+		}
+	}
+	if _, err := NormalizeMerchantFutureOfferingLaunchTiming(MerchantFutureOfferingLaunchTiming{
+		LaunchAt:              fo.LaunchAt,
+		LaunchWindowPrecision: fo.LaunchWindowPrecision,
+		LaunchWindowStart:     fo.LaunchWindowStart,
+		LaunchDisplayText:     fo.LaunchDisplayText,
+	}); err != nil {
+		return ErrMerchantFutureOfferingInvalidState
+	}
 
 	status := NormalizeMerchantFutureOfferingStatus(fo.Status)
 	if status == MerchantFutureOfferingStatusDraft {
@@ -612,7 +658,10 @@ func (m *MerchantFutureOfferingModel) insertDraft(
 		return nil, err
 	}
 	title := normalizeOptionalString(fo.Title)
-	description := normalizeOptionalString(fo.Description)
+	description, err := canonicalMerchantFutureOfferingDescription(fo.Description)
+	if err != nil {
+		return nil, err
+	}
 	summary := normalizeMerchantFutureOfferingSummary(fo.Summary)
 	categoryID, err := normalizeOptionalMerchantFutureOfferingCategoryID(fo.CategoryID)
 	if err != nil {
@@ -637,7 +686,15 @@ func (m *MerchantFutureOfferingModel) insertDraft(
 		fo.RejectedAt != nil || fo.UnpublishedAt != nil || fo.ArchivedAt != nil {
 		return nil, merchantFutureOfferingInvalidInput("lifecycle timestamps must not be supplied at creation")
 	}
-	launchAt := normalizeMerchantFutureOfferingOptionalTime(fo.LaunchAt)
+	timing, err := NormalizeMerchantFutureOfferingLaunchTiming(MerchantFutureOfferingLaunchTiming{
+		LaunchAt:              fo.LaunchAt,
+		LaunchWindowPrecision: fo.LaunchWindowPrecision,
+		LaunchWindowStart:     fo.LaunchWindowStart,
+		LaunchDisplayText:     fo.LaunchDisplayText,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	id := fo.ID
 	if id == uuid.Nil {
@@ -656,9 +713,12 @@ func (m *MerchantFutureOfferingModel) insertDraft(
 			offering_type,
 			release_strategy,
 			access_policy,
-			launch_at
+			launch_at,
+			launch_window_precision,
+			launch_window_start,
+			launch_display_text
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING ` + merchantFutureOfferingSelectColumns
 
 	var result MerchantFutureOffering
@@ -666,7 +726,8 @@ func (m *MerchantFutureOfferingModel) insertDraft(
 		querier.QueryRow(
 			ctx, query,
 			id, fo.MerchantID, projectName, title, summary, description,
-			categoryID, offeringType, releaseStrategy, accessPolicy, launchAt,
+			categoryID, offeringType, releaseStrategy, accessPolicy, timing.LaunchAt,
+			timing.LaunchWindowPrecision, timing.LaunchWindowStart, timing.LaunchDisplayText,
 		),
 		&result,
 	); err != nil {
@@ -1049,7 +1110,10 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 	}
 	title := normalizeOptionalString(facts.Title)
 	summary := normalizeMerchantFutureOfferingSummary(facts.Summary)
-	description := normalizeOptionalString(facts.Description)
+	description, err := canonicalMerchantFutureOfferingDescription(facts.Description)
+	if err != nil {
+		return nil, err
+	}
 	categoryID, err := normalizeOptionalMerchantFutureOfferingCategoryID(facts.CategoryID)
 	if err != nil {
 		return nil, err
@@ -1066,7 +1130,10 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 	if err != nil {
 		return nil, err
 	}
-	launchAt := normalizeMerchantFutureOfferingOptionalTime(facts.LaunchAt)
+	timing, err := NormalizeMerchantFutureOfferingLaunchTiming(facts.LaunchTiming)
+	if err != nil {
+		return nil, err
+	}
 	if expectedUpdatedAt.IsZero() {
 		return nil, merchantFutureOfferingInvalidInput("expected_updated_at is required")
 	}
@@ -1083,6 +1150,9 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 			release_strategy = $9,
 			access_policy = $10,
 			launch_at = $11,
+			launch_window_precision = $13,
+			launch_window_start = $14,
+			launch_display_text = $15,
 			updated_at = ` + merchantFutureOfferingNextVersionSQL + `
 		WHERE id = $1
 		  AND merchant_id = $2
@@ -1094,7 +1164,8 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 	var fo MerchantFutureOffering
 	if err := scanMerchantFutureOffering(querier.QueryRow(ctx, query,
 		id, merchantID, projectName, title, summary, description, categoryID,
-		offeringType, releaseStrategy, accessPolicy, launchAt, expectedUpdatedAt.UTC(),
+		offeringType, releaseStrategy, accessPolicy, timing.LaunchAt, expectedUpdatedAt.UTC(),
+		timing.LaunchWindowPrecision, timing.LaunchWindowStart, timing.LaunchDisplayText,
 	), &fo); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			err = classifyMerchantFutureOfferingWriteError(err)

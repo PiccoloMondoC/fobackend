@@ -20,8 +20,9 @@
 //	Readiness is a list of issues. Zero issues means ready. Each issue carries
 //	a stable machine code, the contributing section, an optional field, and a
 //	default English message. Codes and sections are the API contract;
-//	messages are presentation defaults that a future runtime terminology
-//	capability (FOCA §2) may replace.
+//	messages are merchant-facing presentation defaults that a future runtime
+//	terminology capability (FOCA §2) may replace. Messages must not use
+//	internal vocabulary such as "Future Offering".
 //
 //	An issue is a merchant-correctable deficiency. A returned error is a
 //	system failure. Contributors must never convert system failures into
@@ -33,7 +34,9 @@
 //	list. It is constructed internally; no caller can select or omit
 //	contributors. Contributors currently composed:
 //
-//	  details     core Future Offering facts (merchant_future_offerings)
+//	  details     core Future Offering facts, including launch timing
+//	              (exact launch_at or approximate launch window)
+//	  category    selectability of the chosen category (leaf, active ancestry)
 //	  engagement  groups/options (merchant_future_offering_engagement_*)
 //
 //	PENDING M01 contributors: assets, goals, service term, milestones. Until they land, this result describes implemented workspace readiness and MUST NOT authorize submission.
@@ -48,7 +51,9 @@
 //	engagement replacement — requires that same lock and draft status, so no
 //	readiness fact owned by a composed contributor can change before the
 //	enclosing transaction ends. Catalog activity is protected by FOR SHARE
-//	locks (see engagement_actions.go).
+//	locks (see engagement_actions.go). Category taxonomy is Administration-
+//	governed and read without locks; a concurrent taxonomy change is caught
+//	by the next evaluation.
 //
 // SPINE Rule:
 //
@@ -94,6 +99,9 @@ const (
 	ReadinessCodeAccessPolicyRequired     = "access_policy_required"
 	ReadinessCodeLaunchAtRequired         = "launch_at_required"
 	ReadinessCodeLaunchAtNotFuture        = "launch_at_not_in_future"
+	ReadinessCodeLaunchWindowNotFuture    = "launch_window_not_in_future"
+	ReadinessCodeCategoryUnavailable      = "category_unavailable"
+	ReadinessCodeCategoryNotSpecific      = "category_not_specific"
 	ReadinessCodeEngagementGroupEmpty     = "engagement_group_empty"
 	ReadinessCodeEngagementCeilingTooHigh = "engagement_group_max_selections_exceeds_options"
 	ReadinessCodeEngagementActionInactive = "engagement_action_unavailable"
@@ -160,6 +168,7 @@ func (s *Service) merchantFutureOfferingReadiness() *canonicalMerchantFutureOffe
 	return &canonicalMerchantFutureOfferingReadiness{
 		contributors: []merchantFutureOfferingReadinessContributor{
 			&coreFactsReadiness{},
+			&categoryReadiness{models: s.Models},
 			&engagementReadiness{models: s.Models},
 		},
 	}
@@ -220,9 +229,15 @@ func (coreFactsReadiness) evaluate(
 	fo *data.MerchantFutureOffering,
 	dbNow time.Time,
 ) ([]MerchantFutureOfferingReadinessIssue, error) {
+	return coreFactsIssues(fo, dbNow), nil
+}
+
+// coreFactsIssues is the pure core-facts rule set. Default messages are
+// merchant-facing presentation defaults and avoid internal vocabulary.
+func coreFactsIssues(fo *data.MerchantFutureOffering, dbNow time.Time) []MerchantFutureOfferingReadinessIssue {
 	var issues []MerchantFutureOfferingReadinessIssue
 	if fo.Title == nil || strings.TrimSpace(*fo.Title) == "" {
-		issues = append(issues, detailsIssue(ReadinessCodeTitleRequired, "title", "Add a title for this Future Offering."))
+		issues = append(issues, detailsIssue(ReadinessCodeTitleRequired, "title", "Add a public title."))
 	}
 	if strings.TrimSpace(fo.Summary) == "" {
 		issues = append(issues, detailsIssue(ReadinessCodeSummaryRequired, "summary", "Add a short summary of what is coming."))
@@ -231,24 +246,74 @@ func (coreFactsReadiness) evaluate(
 		issues = append(issues, detailsIssue(ReadinessCodeCategoryRequired, "category_id", "Choose a category."))
 	}
 	if fo.OfferingType == nil {
-		issues = append(issues, detailsIssue(ReadinessCodeOfferingTypeRequired, "offering_type", "Choose what kind of offering this is."))
+		issues = append(issues, detailsIssue(ReadinessCodeOfferingTypeRequired, "offering_type", "Choose what kind of thing this is."))
 	}
 	if fo.ReleaseStrategy == nil {
-		issues = append(issues, detailsIssue(ReadinessCodeReleaseStrategyRequired, "release_strategy", "Choose how it will be released."))
+		issues = append(issues, detailsIssue(ReadinessCodeReleaseStrategyRequired, "release_strategy", "Choose how it will become available."))
 	}
 	if fo.AccessPolicy == nil {
 		issues = append(issues, detailsIssue(ReadinessCodeAccessPolicyRequired, "access_policy", "Choose who can take part."))
 	}
+	return append(issues, launchTimingIssues(fo, dbNow)...)
+}
+
+// launchTimingIssues requires one timing fact, either an exact moment or an
+// approximate window, and that it has not already passed.
+//
+// Engineering invariant: a Future Offering launches in the future
+// (FOCA §15). For an exact moment that means after NOW(). For a window it
+// means the window has not fully elapsed: "2026" remains a legitimate
+// planned launch during 2026, but not in 2027. Minimum anticipation runway
+// is Administration policy and is not yet configured.
+func launchTimingIssues(fo *data.MerchantFutureOffering, dbNow time.Time) []MerchantFutureOfferingReadinessIssue {
 	switch {
-	case fo.LaunchAt == nil:
-		issues = append(issues, detailsIssue(ReadinessCodeLaunchAtRequired, "launch_at", "Set the planned launch date."))
-	case !fo.LaunchAt.After(dbNow):
-		// Engineering invariant: a Future Offering launches in the future
-		// (FOCA §15). Minimum anticipation runway is Administration policy
-		// and is not yet configured (SE report §10).
-		issues = append(issues, detailsIssue(ReadinessCodeLaunchAtNotFuture, "launch_at", "The planned launch date must be in the future."))
+	case fo.LaunchAt != nil:
+		if !fo.LaunchAt.After(dbNow) {
+			return []MerchantFutureOfferingReadinessIssue{detailsIssue(ReadinessCodeLaunchAtNotFuture, "launch_at", "The planned launch date has already passed.")}
+		}
+	case fo.LaunchWindowPrecision != nil && fo.LaunchWindowStart != nil:
+		end := data.LaunchWindowEnd(*fo.LaunchWindowPrecision, *fo.LaunchWindowStart)
+		today := dbNow.UTC().Truncate(24 * time.Hour)
+		if !end.After(today) {
+			return []MerchantFutureOfferingReadinessIssue{detailsIssue(ReadinessCodeLaunchWindowNotFuture, "launch_timing", "The planned launch period has already passed.")}
+		}
+	default:
+		return []MerchantFutureOfferingReadinessIssue{detailsIssue(ReadinessCodeLaunchAtRequired, "launch_timing", "Say when it is planned to launch. A rough period is fine.")}
 	}
-	return issues, nil
+	return nil
+}
+
+// -----------------------------------------------------------------------------
+// Category contributor
+// -----------------------------------------------------------------------------
+
+// categoryReadiness requires the chosen category to be a selectable leaf:
+// the one category that best defines the offering (PCDF-M01), whose
+// ancestry supplies broader classification.
+type categoryReadiness struct {
+	models *data.Models
+}
+
+func (r *categoryReadiness) evaluate(
+	ctx context.Context,
+	tx pgx.Tx,
+	fo *data.MerchantFutureOffering,
+	_ time.Time,
+) ([]MerchantFutureOfferingReadinessIssue, error) {
+	if fo.CategoryID == nil {
+		return nil, nil // reported by coreFactsReadiness
+	}
+	state, err := r.models.Category.IsSelectableForFutureOfferingTx(ctx, tx, *fo.CategoryID)
+	if err != nil {
+		return nil, err
+	}
+	switch state {
+	case data.FutureOfferingCategoryUnavailable:
+		return []MerchantFutureOfferingReadinessIssue{detailsIssue(ReadinessCodeCategoryUnavailable, "category_id", "The chosen category is no longer available. Choose another.")}, nil
+	case data.FutureOfferingCategoryNotSpecific:
+		return []MerchantFutureOfferingReadinessIssue{detailsIssue(ReadinessCodeCategoryNotSpecific, "category_id", "Choose a more specific category.")}, nil
+	}
+	return nil, nil
 }
 
 // -----------------------------------------------------------------------------
@@ -287,16 +352,27 @@ func (r *engagementReadiness) evaluate(
 	}
 
 	actionIDs := make([]uuid.UUID, 0, len(options))
-	perGroup := make(map[uuid.UUID]int, len(groups))
 	for _, o := range options {
 		actionIDs = append(actionIDs, o.EngagementActionID)
-		perGroup[o.EngagementActionGroupID]++
 	}
 	active, err := r.models.EngagementAction.ListActiveByIDsForShareTx(ctx, tx, actionIDs)
 	if err != nil {
 		return nil, err
 	}
 
+	return engagementConfigurationIssues(groups, options, active), nil
+}
+
+// engagementConfigurationIssues is the pure engagement rule set.
+func engagementConfigurationIssues(
+	groups []*data.MerchantFutureOfferingEngagementActionGroup,
+	options []*data.MerchantFutureOfferingEngagementOption,
+	active map[uuid.UUID]*data.EngagementAction,
+) []MerchantFutureOfferingReadinessIssue {
+	perGroup := make(map[uuid.UUID]int, len(groups))
+	for _, o := range options {
+		perGroup[o.EngagementActionGroupID]++
+	}
 	var issues []MerchantFutureOfferingReadinessIssue
 	known := make(map[uuid.UUID]struct{}, len(groups))
 	for _, g := range groups {
@@ -305,24 +381,24 @@ func (r *engagementReadiness) evaluate(
 		count := perGroup[id]
 		if count == 0 {
 			issues = append(issues, engagementIssue(ReadinessCodeEngagementGroupEmpty, &id,
-				"This group has no actions. Add an action or remove the group."))
+				"A set of choices has no actions. Add one or remove the set."))
 			continue
 		}
 		if g.MaxSelections != nil && *g.MaxSelections > count {
 			issues = append(issues, engagementIssue(ReadinessCodeEngagementCeilingTooHigh, &id,
-				fmt.Sprintf("This group allows %d choices but offers only %d.", *g.MaxSelections, count)))
+				fmt.Sprintf("A set allows %d choices but offers only %d.", *g.MaxSelections, count)))
 		}
 	}
 	for _, o := range options {
 		id := o.ID
 		if _, ok := known[o.EngagementActionGroupID]; !ok {
 			issues = append(issues, engagementIssue(ReadinessCodeEngagementOptionOrphaned, &id,
-				"An action belongs to a group that is no longer active."))
+				"An action is not in an active set of choices."))
 		}
 		if _, ok := active[o.EngagementActionID]; !ok {
 			issues = append(issues, engagementIssue(ReadinessCodeEngagementActionInactive, &id,
-				"An action you selected is no longer available. Remove it to continue."))
+				"An action you chose is no longer offered. Remove it to continue."))
 		}
 	}
-	return issues, nil
+	return issues
 }

@@ -210,7 +210,13 @@ const (
 			('early_access_request', 'anticipation_intelligence_fee'),
 			('beta', 'anticipation_intelligence_fee'),
 			('reservation_interest', 'anticipation_intelligence_fee'),
-			('preorder_intent', 'anticipation_intelligence_fee')
+			('preorder_intent', 'anticipation_intelligence_fee'),
+			('signup_intent', 'anticipation_intelligence_fee'),
+			('enrollment_intent', 'anticipation_intelligence_fee'),
+			('application_intent', 'anticipation_intelligence_fee'),
+			('subscription_intent', 'anticipation_intelligence_fee'),
+			('booking_intent', 'anticipation_intelligence_fee'),
+			('purchase_intent', 'anticipation_intelligence_fee')
 	) AS mapping (
 		billable_event_type,
 		fee_type_code
@@ -1127,6 +1133,11 @@ func (m *DBConnectionParamsModel) SeedAllData(
 		{name: "actions", query: insertActionQuery},
 		{name: "notification_types", query: insertNotificationTypesQuery},
 		{name: "notification_channels", query: insertNotificationChannelsQuery},
+
+		// Future Offering engagement and monetization foundations.
+		{name: "engagement_actions", query: insertEngagementActionsQuery},
+		{name: "merchant_fee_types", query: insertMerchantFeeTypesQuery},
+		{name: "merchant_billable_event_fee_types", query: insertMerchantBillableEventFeeTypesQuery},
 
 		// Category hierarchy
 		{name: "departments", query: insertDepartmentsQuery},

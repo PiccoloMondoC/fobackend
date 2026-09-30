@@ -13,7 +13,7 @@ import (
 // Angular's MerchantContextService rejects null as an unusable collection,
 // which would prevent routing a context-less merchant to onboarding.
 func TestBuildOwnMerchantContextsResponse_EmptyIsJSONArray(t *testing.T) {
-	inputs := map[string][]*data.MerchantAccount{
+	inputs := map[string][]*data.MerchantOperatingContext{
 		"nil slice":   nil,
 		"empty slice": {},
 		"nil entry":   {nil},
@@ -21,7 +21,12 @@ func TestBuildOwnMerchantContextsResponse_EmptyIsJSONArray(t *testing.T) {
 
 	for name, in := range inputs {
 		t.Run(name, func(t *testing.T) {
-			b, err := json.Marshal(buildOwnMerchantContextsResponse(in))
+			b, err := json.Marshal(
+				buildOwnMerchantContextsResponse(
+					in,
+					map[uuid.UUID]bool{},
+				),
+			)
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
@@ -33,22 +38,32 @@ func TestBuildOwnMerchantContextsResponse_EmptyIsJSONArray(t *testing.T) {
 }
 
 func TestBuildOwnMerchantContextsResponse_MapsPrincipalContext(t *testing.T) {
-	account := &data.MerchantAccount{
-		ID:            uuid.New(),
-		MerchantID:    uuid.New(),
-		AccountStatus: data.MerchantAccountStatusActive,
+	merchantContext := &data.MerchantOperatingContext{
+		MerchantAccountID: uuid.New(),
+		MerchantID:        uuid.New(),
+		MerchantName:      "Her Majesty's Super Gadget Company",
+		AccountStatus:     data.MerchantAccountStatusActive,
 	}
 
-	got := buildOwnMerchantContextsResponse([]*data.MerchantAccount{account})
+	firstVisits := map[uuid.UUID]bool{
+		merchantContext.MerchantAccountID: true,
+	}
+
+	got := buildOwnMerchantContextsResponse(
+		[]*data.MerchantOperatingContext{merchantContext},
+		firstVisits,
+	)
 
 	if len(got.MerchantContexts) != 1 {
 		t.Fatalf("expected 1 context, got %d", len(got.MerchantContexts))
 	}
 
 	c := got.MerchantContexts[0]
-	if c.MerchantAccountID != account.ID ||
-		c.MerchantID != account.MerchantID ||
-		c.AccountStatus != "active" {
+	if c.MerchantAccountID != merchantContext.MerchantAccountID ||
+		c.MerchantID != merchantContext.MerchantID ||
+		c.MerchantName != merchantContext.MerchantName ||
+		c.AccountStatus != "active" ||
+		!c.FirstPlatformVisit {
 		t.Fatalf("unexpected context mapping: %+v", c)
 	}
 }

@@ -710,7 +710,18 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 		summary TEXT NOT NULL DEFAULT '',
 
-		description TEXT,
+		/*
+		* Consumer-facing description: controlled rich-text document
+		* (data/rich_text.go). Only server-canonicalized JSON is written.
+		*/
+		description JSONB
+			CHECK (
+				description IS NULL
+				OR (
+					jsonb_typeof(description) = 'object'
+					AND description->>'type' = 'doc'
+				)
+			),
 
 		category_id UUID
 			REFERENCES categories(id)
@@ -789,6 +800,26 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		launch_at TIMESTAMPTZ,
 
 		/*
+		* Approximate launch window (mutually exclusive with launch_at).
+		* Half-open [start, start + precision). A calendar date without a
+		* time is precision 'day'. See merchant_future_offering_launch_timing.go.
+		*/
+		launch_window_precision TEXT
+			CHECK (
+				launch_window_precision IS NULL
+				OR launch_window_precision IN ('day', 'month', 'quarter', 'half', 'year')
+			),
+
+		launch_window_start DATE,
+
+		/* Merchant wording, e.g. 'Arriving early 2027'. Never interpreted. */
+		launch_display_text TEXT
+			CHECK (
+				launch_display_text IS NULL
+				OR (btrim(launch_display_text) <> '' AND char_length(launch_display_text) <= 80)
+			),
+
+		/*
 		* Lifecycle occurrence timestamps.
 		*
 		* These record facts that have occurred. They are not substitutes for
@@ -803,7 +834,36 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
+		deleted_at TIMESTAMPTZ,
+
+		CONSTRAINT chk_merchant_future_offerings_launch_timing
+			CHECK (
+				(launch_window_precision IS NULL) = (launch_window_start IS NULL)
+				AND NOT (launch_at IS NOT NULL AND launch_window_start IS NOT NULL)
+				AND (
+					launch_display_text IS NULL
+					OR launch_at IS NOT NULL
+					OR launch_window_start IS NOT NULL
+				)
+			),
+
+		CONSTRAINT chk_merchant_future_offerings_launch_window_alignment
+			CHECK (
+				launch_window_start IS NULL
+				OR launch_window_precision = 'day'
+				OR (
+					EXTRACT(DAY FROM launch_window_start) = 1
+					AND (
+						launch_window_precision = 'month'
+						OR (launch_window_precision = 'quarter'
+							AND EXTRACT(MONTH FROM launch_window_start) IN (1, 4, 7, 10))
+						OR (launch_window_precision = 'half'
+							AND EXTRACT(MONTH FROM launch_window_start) IN (1, 7))
+						OR (launch_window_precision = 'year'
+							AND EXTRACT(MONTH FROM launch_window_start) = 1)
+					)
+				)
+			)
 	);
 
 	CREATE INDEX IF NOT EXISTS
@@ -3063,6 +3123,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			CHECK (account_status IN ('pending', 'active', 'suspended', 'closed')),
 
 		onboarded_at TIMESTAMPTZ,
+		first_platform_visit_at TIMESTAMPTZ,
 
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

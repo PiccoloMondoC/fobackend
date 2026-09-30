@@ -1,7 +1,7 @@
 ## To update code on Github:
-cd ~/fobackend
+cd ../fobackend
 git add -A
-git commit -m "continue backend cleanup for Future Offering v1 architecture"
+git commit -m "update files all layers"
 git push
 
 | data layer | handler layer | service layer |

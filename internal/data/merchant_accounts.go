@@ -79,6 +79,7 @@ const merchantAccountSelectColumns = `
 	principal_user_id,
 	account_status,
 	onboarded_at,
+	first_platform_visit_at,
 	created_at,
 	updated_at,
 	deleted_at
@@ -106,6 +107,11 @@ type MerchantAccount struct {
 	// It is nil before first activation and is never overwritten after being
 	// established.
 	OnboardedAt *time.Time `json:"onboarded_at,omitempty" db:"onboarded_at"`
+
+	// FirstPlatformVisitAt records the first time the Merchant Account entered
+	// the authenticated merchant Platform experience. Nil means the merchant has
+	// not yet entered that experience.
+	FirstPlatformVisitAt *time.Time `json:"first_platform_visit_at,omitempty" db:"first_platform_visit_at"`
 
 	CreatedAt time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
@@ -146,6 +152,7 @@ func scanMerchantAccount(row pgx.Row, account *MerchantAccount) error {
 		&account.PrincipalUserID,
 		&account.AccountStatus,
 		&account.OnboardedAt,
+		&account.FirstPlatformVisitAt,
 		&account.CreatedAt,
 		&account.UpdatedAt,
 		&account.DeletedAt,
@@ -159,6 +166,7 @@ func scanMerchantAccountRows(rows pgx.Rows, account *MerchantAccount) error {
 		&account.PrincipalUserID,
 		&account.AccountStatus,
 		&account.OnboardedAt,
+		&account.FirstPlatformVisitAt,
 		&account.CreatedAt,
 		&account.UpdatedAt,
 		&account.DeletedAt,
@@ -1123,6 +1131,95 @@ func (m *MerchantAccountModel) IsPrincipalForMerchant(
 	return authorized, nil
 }
 
+
+// MerchantOperatingContext is the self-scoped projection required by
+// authenticated merchant clients. It combines canonical Merchant Account
+// operating authority with the Merchant identity needed to present that
+// operating context.
+type MerchantOperatingContext struct {
+	MerchantAccountID    uuid.UUID
+	MerchantID           uuid.UUID
+	MerchantName         string
+	AccountStatus        MerchantAccountStatus
+	FirstPlatformVisitAt *time.Time
+}
+
+// ListActiveOperatingContextsForPrincipal returns the active Merchant operating
+// contexts canonically owned by principalUserID.
+func (m *MerchantAccountModel) ListActiveOperatingContextsForPrincipal(
+	ctx context.Context,
+	principalUserID uuid.UUID,
+) ([]*MerchantOperatingContext, error) {
+	if m == nil || m.DB == nil {
+		return nil, errors.New(
+			"merchant account model database is required",
+		)
+	}
+
+	if principalUserID == uuid.Nil {
+		return nil, errors.New("principal user ID is required")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	const query = `
+		SELECT
+			ma.id,
+			ma.merchant_id,
+			m.name,
+			ma.account_status,
+			ma.first_platform_visit_at
+		FROM merchant_accounts ma
+		INNER JOIN merchants m ON m.id = ma.merchant_id
+		WHERE ma.principal_user_id = $1
+		  AND ma.account_status = 'active'
+		  AND ma.deleted_at IS NULL
+		  AND m.deleted_at IS NULL
+		ORDER BY ma.created_at ASC, ma.id ASC
+	`
+
+	rows, err := m.DB.Query(ctx, query, principalUserID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"list active merchant operating contexts for principal: %w",
+			err,
+		)
+	}
+	defer rows.Close()
+
+	contexts := make([]*MerchantOperatingContext, 0)
+
+	for rows.Next() {
+		var merchantContext MerchantOperatingContext
+
+		if err := rows.Scan(
+			&merchantContext.MerchantAccountID,
+			&merchantContext.MerchantID,
+			&merchantContext.MerchantName,
+			&merchantContext.AccountStatus,
+			&merchantContext.FirstPlatformVisitAt,
+		); err != nil {
+			return nil, fmt.Errorf(
+				"scan active merchant operating context for principal: %w",
+				err,
+			)
+		}
+
+		contexts = append(contexts, &merchantContext)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf(
+			"iterate active merchant operating contexts for principal: %w",
+			err,
+		)
+	}
+
+	return contexts, nil
+}
+
+
 // ListActiveForPrincipal returns the active, non-deleted Merchant Accounts
 // canonically owned by principalUserID.
 //
@@ -1186,4 +1283,55 @@ func (m *MerchantAccountModel) ListActiveForPrincipal(
 	}
 
 	return accounts, nil
+}
+
+
+// RecordFirstPlatformVisit establishes the Merchant Account's first entry into
+// the authenticated merchant Platform experience.
+//
+// The original timestamp is immutable. The returned boolean is true only for
+// the request that established the milestone.
+func (m MerchantAccountModel) RecordFirstPlatformVisit(
+	ctx context.Context,
+	id uuid.UUID,
+) (bool, error) {
+	if id == uuid.Nil {
+		return false, errors.New("merchant account ID is required")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	const query = `
+		UPDATE merchant_accounts
+		SET first_platform_visit_at = NOW()
+		WHERE id = $1
+		  AND account_status = 'active'
+		  AND deleted_at IS NULL
+		  AND first_platform_visit_at IS NULL
+		RETURNING first_platform_visit_at
+	`
+
+	var firstVisitAt time.Time
+
+	err := m.DB.QueryRow(ctx, query, id).Scan(&firstVisitAt)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, pgx.ErrNoRows):
+		// Either this milestone already exists or this is not an operable
+		// Merchant Account. Resolve that distinction through the canonical read.
+		account, getErr := m.GetByID(ctx, id)
+		if getErr != nil {
+			return false, getErr
+		}
+		if account == nil ||
+			account.AccountStatus != MerchantAccountStatusActive {
+			return false, errors.New("active merchant account is required")
+		}
+
+		return false, nil
+	default:
+		return false, fmt.Errorf("record first platform visit: %w", err)
+	}
 }

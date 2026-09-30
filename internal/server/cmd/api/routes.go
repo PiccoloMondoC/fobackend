@@ -1162,6 +1162,15 @@ func (app *Application) Routes() http.Handler {
 			// milestones, and the M01 Service Term choice are composed.
 		})
 
+		// Category choices for What's New project creation.
+		v1.With(
+			app.AuthMiddleware,
+			app.RequirePermission("list_categories"),
+		).Get(
+			"/future-offering-categories",
+			app.ListFutureOfferingCategoryOptionsHandler,
+		)
+
 		// Categories
 		v1.Route("/categories", func(cat chi.Router) {
 			cat.Use(app.AuthMiddleware)

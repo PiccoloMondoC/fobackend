@@ -459,6 +459,12 @@ var (
 	ErrMerchantFutureOfferingInvalidState      = errors.New("invalid merchant future offering state")
 	ErrMerchantFutureOfferingInvalidTransition = errors.New("invalid merchant future offering lifecycle transition")
 	ErrMerchantFutureOfferingEditConflict      = errors.New("merchant future offering edit conflict")
+		// ErrMerchantFutureOfferingLaunchTimingInvalid classifies incoherent launch
+	// timing facts (window alignment, exclusivity with launch_at, display text).
+	ErrMerchantFutureOfferingLaunchTimingInvalid = errors.New("invalid merchant future offering launch timing")
+
+	// ErrRichTextInvalid is returned when controlled rich text fails strict parsing.
+	ErrRichTextInvalid = errors.New("invalid rich text document")
 
 	// Merchant Future Offering Engagement
 	ErrMerchantFutureOfferingEngagementInvalidInput = errors.New("invalid engagement configuration")

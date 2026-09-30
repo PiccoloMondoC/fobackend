@@ -66,6 +66,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -107,49 +108,62 @@ var (
 	errMerchantFutureOfferingAuthenticatedUserMissing = errors.New("authenticated user missing from trusted context")
 
 	errMerchantFutureOfferingMerchantContextRequired = errors.New("merchant context is required")
+
+	errMerchantFutureOfferingLaunchWindowStartFormat = errors.New("launch_window_start must be a date in YYYY-MM-DD form")
 )
 
 // -----------------------------------------------------------------------------
 // Request / response contracts
 // -----------------------------------------------------------------------------
 
+// merchantFutureOfferingDraftFactsRequest is the wire form of the mutable
+// core draft facts.
+//
+// description is a controlled rich-text document (see data/rich_text.go) or
+// null. launch_window_start is a calendar date, YYYY-MM-DD. launch_at and the
+// launch window are mutually exclusive; launch_display_text annotates
+// whichever is present.
+type merchantFutureOfferingDraftFactsRequest struct {
+	ProjectName           string          `json:"project_name"`
+	Title                 *string         `json:"title"`
+	Summary               string          `json:"summary"`
+	Description           json.RawMessage `json:"description"`
+	CategoryID            *uuid.UUID      `json:"category_id"`
+	OfferingType          *string         `json:"offering_type"`
+	ReleaseStrategy       *string         `json:"release_strategy"`
+	AccessPolicy          *string         `json:"access_policy"`
+	LaunchAt              *time.Time      `json:"launch_at"`
+	LaunchWindowPrecision *string         `json:"launch_window_precision"`
+	LaunchWindowStart     *string         `json:"launch_window_start"`
+	LaunchDisplayText     *string         `json:"launch_display_text"`
+}
+
 type createMerchantFutureOfferingDraftRequest struct {
-	ProjectName     string     `json:"project_name"`
-	Title           *string    `json:"title"`
-	Summary         string     `json:"summary"`
-	Description     *string    `json:"description"`
-	CategoryID      *uuid.UUID `json:"category_id"`
-	OfferingType    *string    `json:"offering_type"`
-	ReleaseStrategy *string    `json:"release_strategy"`
-	AccessPolicy    *string    `json:"access_policy"`
-	LaunchAt        *time.Time `json:"launch_at"`
+	merchantFutureOfferingDraftFactsRequest
 }
 
 type updateMerchantFutureOfferingDraftRequest struct {
-	ProjectName       string     `json:"project_name"`
-	Title             *string    `json:"title"`
-	Summary           string     `json:"summary"`
-	Description       *string    `json:"description"`
-	CategoryID        *uuid.UUID `json:"category_id"`
-	OfferingType      *string    `json:"offering_type"`
-	ReleaseStrategy   *string    `json:"release_strategy"`
-	AccessPolicy      *string    `json:"access_policy"`
-	LaunchAt          *time.Time `json:"launch_at"`
-	ExpectedUpdatedAt time.Time  `json:"expected_updated_at"`
+	merchantFutureOfferingDraftFactsRequest
+	ExpectedUpdatedAt time.Time `json:"expected_updated_at"`
 }
+
+const merchantFutureOfferingDateLayout = "2006-01-02"
 
 type merchantFutureOfferingResponse struct {
 	ID              uuid.UUID  `json:"id"`
 	ProjectName     string     `json:"project_name"`
 	Title           *string    `json:"title,omitempty"`
 	Summary         string     `json:"summary"`
-	Description     *string    `json:"description,omitempty"`
+	Description     *data.RichTextDocument `json:"description,omitempty"`
 	CategoryID      *uuid.UUID `json:"category_id,omitempty"`
 	OfferingType    *string    `json:"offering_type,omitempty"`
 	ReleaseStrategy *string    `json:"release_strategy,omitempty"`
 	AccessPolicy    *string    `json:"access_policy,omitempty"`
 	Status          string     `json:"status"`
 	LaunchAt        *time.Time `json:"launch_at,omitempty"`
+	LaunchWindowPrecision *string `json:"launch_window_precision,omitempty"`
+	LaunchWindowStart     *string `json:"launch_window_start,omitempty"`
+	LaunchDisplayText     *string `json:"launch_display_text,omitempty"`
 	SubmittedAt     *time.Time `json:"submitted_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
@@ -165,44 +179,59 @@ type merchantFutureOfferingListResponse struct {
 // Conversion
 // -----------------------------------------------------------------------------
 
+// merchantFutureOfferingDraftFacts converts the wire form into domain facts.
+// Description and launch-window start are parsed strictly here; the data
+// layer re-validates and canonicalizes before persistence.
 func merchantFutureOfferingDraftFacts(
-	projectName string,
-	title *string,
-	summary string,
-	description *string,
-	categoryID *uuid.UUID,
-	offeringType *string,
-	releaseStrategy *string,
-	accessPolicy *string,
-	launchAt *time.Time,
-) data.MerchantFutureOfferingDraftFacts {
+	in merchantFutureOfferingDraftFactsRequest,
+) (data.MerchantFutureOfferingDraftFacts, error) {
 	facts := data.MerchantFutureOfferingDraftFacts{
-		ProjectName: projectName,
-		Title:       title,
-		Summary:     summary,
-		Description: description,
-		CategoryID:  categoryID,
-		LaunchAt:    launchAt,
+		ProjectName: in.ProjectName,
+		Title:       in.Title,
+		Summary:     in.Summary,
+		CategoryID:  in.CategoryID,
+		LaunchTiming: data.MerchantFutureOfferingLaunchTiming{
+			LaunchAt:          in.LaunchAt,
+			LaunchDisplayText: in.LaunchDisplayText,
+		},
 	}
 
-	if offeringType != nil {
-		value := data.MerchantFutureOfferingType(*offeringType)
+	description, err := data.ParseRichTextDocument(in.Description)
+	if err != nil {
+		return facts, err
+	}
+	facts.Description = description
+
+	if in.LaunchWindowPrecision != nil {
+		value := data.MerchantFutureOfferingLaunchPrecision(*in.LaunchWindowPrecision)
+		facts.LaunchTiming.LaunchWindowPrecision = &value
+	}
+	if in.LaunchWindowStart != nil {
+		start, err := time.Parse(merchantFutureOfferingDateLayout, *in.LaunchWindowStart)
+		if err != nil {
+			return facts, errMerchantFutureOfferingLaunchWindowStartFormat
+		}
+		facts.LaunchTiming.LaunchWindowStart = &start
+	}
+
+	if in.OfferingType != nil {
+		value := data.MerchantFutureOfferingType(*in.OfferingType)
 		facts.OfferingType = &value
 	}
 
-	if releaseStrategy != nil {
+	if in.ReleaseStrategy != nil {
 		value := data.MerchantFutureOfferingReleaseStrategy(
-			*releaseStrategy,
+			*in.ReleaseStrategy,
 		)
 		facts.ReleaseStrategy = &value
 	}
 
-	if accessPolicy != nil {
-		value := data.MerchantFutureOfferingAccessPolicy(*accessPolicy)
+	if in.AccessPolicy != nil {
+		value := data.MerchantFutureOfferingAccessPolicy(*in.AccessPolicy)
 		facts.AccessPolicy = &value
 	}
 
-	return facts
+	return facts, nil
 }
 
 func newMerchantFutureOfferingResponse(
@@ -218,6 +247,8 @@ func newMerchantFutureOfferingResponse(
 		Status:      string(fo.Status),
 		LaunchAt:    fo.LaunchAt,
 		SubmittedAt: fo.SubmittedAt,
+
+		LaunchDisplayText: fo.LaunchDisplayText,
 		CreatedAt:   fo.CreatedAt,
 		UpdatedAt:   fo.UpdatedAt,
 	}
@@ -235,6 +266,13 @@ func newMerchantFutureOfferingResponse(
 	if fo.AccessPolicy != nil {
 		value := string(*fo.AccessPolicy)
 		response.AccessPolicy = &value
+	}
+
+	if fo.LaunchWindowPrecision != nil && fo.LaunchWindowStart != nil {
+		precision := string(*fo.LaunchWindowPrecision)
+		start := fo.LaunchWindowStart.UTC().Format(merchantFutureOfferingDateLayout)
+		response.LaunchWindowPrecision = &precision
+		response.LaunchWindowStart = &start
 	}
 
 	return response
@@ -339,6 +377,19 @@ func (app *Application) respondMerchantFutureOfferingError(
 	err error,
 ) {
 	switch {
+	case errors.Is(err, data.ErrRichTextInvalid):
+		app.respondWithError(
+			w,
+			errors.New("description contains unsupported content"),
+			http.StatusBadRequest,
+		)
+	case errors.Is(err, data.ErrMerchantFutureOfferingLaunchTimingInvalid),
+		errors.Is(err, errMerchantFutureOfferingLaunchWindowStartFormat):
+		app.respondWithError(
+			w,
+			errors.New("launch timing is invalid"),
+			http.StatusBadRequest,
+		)
 	case errors.Is(
 		err,
 		data.ErrMerchantFutureOfferingInvalidInput,
@@ -527,17 +578,11 @@ func (app *Application) CreateMerchantFutureOfferingDraftHandler(
 		return
 	}
 
-	facts := merchantFutureOfferingDraftFacts(
-		input.ProjectName,
-		input.Title,
-		input.Summary,
-		input.Description,
-		input.CategoryID,
-		input.OfferingType,
-		input.ReleaseStrategy,
-		input.AccessPolicy,
-		input.LaunchAt,
-	)
+	facts, err := merchantFutureOfferingDraftFacts(input.merchantFutureOfferingDraftFactsRequest)
+	if err != nil {
+		app.respondMerchantFutureOfferingError(w, r, err)
+		return
+	}
 
 	fo := &data.MerchantFutureOffering{
 		MerchantID:      merchantID,
@@ -549,7 +594,11 @@ func (app *Application) CreateMerchantFutureOfferingDraftHandler(
 		OfferingType:    facts.OfferingType,
 		ReleaseStrategy: facts.ReleaseStrategy,
 		AccessPolicy:    facts.AccessPolicy,
-		LaunchAt:        facts.LaunchAt,
+
+		LaunchAt:              facts.LaunchTiming.LaunchAt,
+		LaunchWindowPrecision: facts.LaunchTiming.LaunchWindowPrecision,
+		LaunchWindowStart:     facts.LaunchTiming.LaunchWindowStart,
+		LaunchDisplayText:     facts.LaunchTiming.LaunchDisplayText,
 	}
 
 	created, err :=
@@ -852,17 +901,11 @@ func (app *Application) UpdateMerchantFutureOfferingDraftHandler(
 		return
 	}
 
-	facts := merchantFutureOfferingDraftFacts(
-		input.ProjectName,
-		input.Title,
-		input.Summary,
-		input.Description,
-		input.CategoryID,
-		input.OfferingType,
-		input.ReleaseStrategy,
-		input.AccessPolicy,
-		input.LaunchAt,
-	)
+	facts, err := merchantFutureOfferingDraftFacts(input.merchantFutureOfferingDraftFactsRequest)
+	if err != nil {
+		app.respondMerchantFutureOfferingError(w, r, err)
+		return
+	}
 
 	updated, err :=
 		app.Models.MerchantFutureOffering.UpdateDraftFacts(
