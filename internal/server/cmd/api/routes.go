@@ -51,6 +51,11 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+func isDevelopmentEnvironment(env string) bool {
+	env = strings.ToLower(strings.TrimSpace(env))
+	return env == "dev" || env == "development"
+}
+
 func (app *Application) Routes() http.Handler {
 	r := chi.NewRouter()
 
@@ -61,8 +66,8 @@ func (app *Application) Routes() http.Handler {
 	r.Use(middleware.Recoverer)
 
 	var allowedOrigins []string
-	if strings.ToLower(app.Config.Bootstrap.Env) == "development" {
-		allowedOrigins = []string{"http://localhost:4300"}
+	if isDevelopmentEnvironment(app.Config.Bootstrap.Env) {
+		allowedOrigins = []string{"http://localhost:4200"}
 	} else {
 		allowedOrigins = []string{"https://your-production-domain.com"}
 	}
@@ -97,7 +102,7 @@ func (app *Application) Routes() http.Handler {
 	app.registerPublic("GET", "/metrics")
 
 	// Development-only (don't advertise)
-	if strings.ToLower(app.Config.Bootstrap.Env) == "development" {
+	if isDevelopmentEnvironment(app.Config.Bootstrap.Env) {
 		r.Get("/debug/context", app.DebugContextHandler)
 	}
 
@@ -108,7 +113,7 @@ func (app *Application) Routes() http.Handler {
 
 		// Development-only fallback context.
 		// Never install synthetic trusted identifiers in production.
-		if strings.EqualFold(app.Config.Bootstrap.Env, "development") {
+		if isDevelopmentEnvironment(app.Config.Bootstrap.Env) {
 			v1.Use(app.DevFallbackContextMiddleware)
 		}
 
@@ -168,7 +173,32 @@ func (app *Application) Routes() http.Handler {
 			"/api/v1/user/token/refresh",
 		)
 
-		// Authenticated self-service password establishment.
+		// Password recovery is public, rate-limited, and non-enumerating. The
+		// reset credential itself is the bearer proof for redemption.
+		// Static /user/password/* routes are registered before any future
+		// parameterized sibling.
+		v1.With(app.RateLimitMiddleware).
+			Post("/user/password/forgot", app.RequestPasswordResetHandler)
+		app.registerPublic(
+			"POST",
+			"/api/v1/user/password/forgot",
+		)
+
+		v1.With(app.RateLimitMiddleware).
+			Post("/user/password/reset", app.ResetPasswordHandler)
+		app.registerPublic(
+			"POST",
+			"/api/v1/user/password/reset",
+		)
+
+		// Authenticated password change verifies the current password, so it
+		// is rate-limited before authentication to bound guessing with a
+		// captured access token.
+		v1.With(app.RateLimitMiddleware, app.AuthMiddleware).
+			Post("/user/password/change", app.ChangePasswordHandler)
+
+		// Authenticated self-service initial password establishment for an
+		// active account that has no password yet.
 		v1.With(app.AuthMiddleware).
 			Post("/user/password", app.SetPasswordHandler)
 

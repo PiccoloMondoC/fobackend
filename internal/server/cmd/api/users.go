@@ -33,6 +33,8 @@
 //	revocation through the canonical Users service workflow.
 //	Preserve password validation and hashing through the shared security package
 //	and Users service workflow.
+//	Preserve logout as refresh-session revocation plus revocation of the
+//	presented access token.
 //	Preserve authenticated identity exclusively through AuthMiddleware.
 //	Preserve account soft-delete semantics through the Users service boundary.
 //	Preserve required audit metadata through canonical seed data.
@@ -72,9 +74,8 @@ const (
 )
 
 type signupUserInput struct {
-	Email         string `json:"email"`
-	Password      string `json:"password"`
-	RequestedRole string `json:"requested_role"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type loginInput struct {
@@ -147,7 +148,7 @@ func (app *Application) SignupUserHandler(
 		services.SignupUserInput{
 			Email:         input.Email,
 			PlainPassword: input.Password,
-			RequestedRole: input.RequestedRole,
+			RequestedRole: "consumer",
 		},
 	)
 
@@ -217,7 +218,7 @@ func (app *Application) SignupUserHandler(
 		activationURL, urlErr := buildActivationURL(
 			app.Config.Bootstrap.BaseURL,
 			result.ActivationToken,
-			app.activationURLPolicy(),
+			app.credentialLinkURLPolicy(),
 		)
 		if urlErr == nil {
 			contact := &data.UserContactInfo{
@@ -502,7 +503,8 @@ func (app *Application) LoginHandler(
 //
 // Initial-password eligibility and atomic no-overwrite enforcement are
 // service-owned. Existing-password changes belong to the distinct
-// password-change workflow.
+// password-change workflow (ChangePasswordHandler in user_password.go), which
+// verifies the current credential and invalidates sessions.
 func (app *Application) SetPasswordHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -717,9 +719,11 @@ func (app *Application) RefreshTokenHandler(
 }
 
 // LogoutHandler revokes the presented refresh token for the authenticated
-// caller's own session.
+// caller's own session, then revokes the presented access token.
 //
-// Refresh-token validation, ownership checking, and revocation are service-owned.
+// Refresh-token validation, ownership checking, and revocation are
+// service-owned. Access-token revocation goes through the canonical
+// TokenService JTI-revocation boundary.
 func (app *Application) LogoutHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -798,6 +802,12 @@ func (app *Application) LogoutHandler(
 		}
 		return
 	}
+
+	// Refresh-session revocation above is the primary control. Also revoke
+	// the access token this request was authenticated with so the ended
+	// session cannot keep calling protected routes until the access token's
+	// natural expiry.
+	app.revokePresentedAccessToken(ctx, r, logger)
 
 	if auditErr := app.recordUserAudit(
 		ctx,

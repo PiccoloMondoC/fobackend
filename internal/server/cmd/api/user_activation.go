@@ -352,7 +352,7 @@ func (app *Application) ResendActivationLinkHandler(
 			activationURL, urlErr := buildActivationURL(
 				app.Config.Bootstrap.BaseURL,
 				token,
-				app.activationURLPolicy(),
+				app.credentialLinkURLPolicy(),
 			)
 			if urlErr != nil {
 				logger.Error(
@@ -629,10 +629,15 @@ func (app *Application) sendActivationNotification(
 	}
 }
 
-// activationURLPolicy returns the explicit activation-link policy derived from
-// the already-validated canonical runtime environment. The zero value remains
-// production-safe; only dev/test may opt into HTTP on loopback hosts.
-func (app *Application) activationURLPolicy() notificationservices.ActivationURLPolicy {
+// credentialLinkURLPolicy returns the explicit link policy for emailed bearer
+// credential URLs (account activation and password reset), derived from the
+// already-validated canonical runtime environment.
+//
+// The zero value remains production-safe; only dev/test may opt into HTTP on
+// loopback hosts. This mirrors the policy derivation in
+// notification_services/runtime so link construction here and link
+// validation inside the email sender always agree.
+func (app *Application) credentialLinkURLPolicy() notificationservices.ActivationURLPolicy {
 	if app == nil {
 		return notificationservices.ActivationURLPolicy{}
 	}
@@ -657,25 +662,56 @@ func buildActivationURL(
 	token string,
 	policy notificationservices.ActivationURLPolicy,
 ) (string, error) {
+	return buildCredentialLinkURL(
+		baseURL,
+		activationPath,
+		token,
+		policy,
+	)
+}
+
+// buildCredentialLinkURL constructs and validates an emailed bearer-credential
+// link: baseURL + path with the credential in the "token" query parameter.
+//
+// It is shared by account activation and password reset so both links obey
+// one construction and validation contract. The result carries plaintext
+// bearer material; callers must never log, audit, trace, or persist it.
+//
+// Validation reuses notificationservices.ValidateActivationURLWithPolicy,
+// the canonical credential-link validator. Its name predates password reset;
+// the rules it enforces (absolute URL, HTTPS outside loopback dev/test, no
+// user-info) apply identically to both link types.
+func buildCredentialLinkURL(
+	baseURL string,
+	path string,
+	token string,
+	policy notificationservices.ActivationURLPolicy,
+) (string, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	token = strings.TrimSpace(token)
 
 	if baseURL == "" {
 		return "", errors.New(
-			"activation base URL is required",
+			"credential link base URL is required",
+		)
+	}
+
+	if !strings.HasPrefix(path, "/") {
+		return "", errors.New(
+			"credential link path must be absolute",
 		)
 	}
 
 	if token == "" {
 		return "", errors.New(
-			"activation token is required",
+			"credential link token is required",
 		)
 	}
 
 	parsed, err := url.Parse(baseURL)
 	if err != nil {
 		return "", fmt.Errorf(
-			"parse activation base URL: %w",
+			"parse credential link base URL: %w",
 			err,
 		)
 	}
@@ -683,7 +719,7 @@ func buildActivationURL(
 	if !parsed.IsAbs() ||
 		parsed.Hostname() == "" {
 		return "", errors.New(
-			"activation base URL must be absolute",
+			"credential link base URL must be absolute",
 		)
 	}
 
@@ -691,7 +727,7 @@ func buildActivationURL(
 		strings.TrimRight(
 			parsed.Path,
 			"/",
-		) + activationPath
+		) + path
 	parsed.RawPath = ""
 	parsed.Fragment = ""
 
@@ -709,7 +745,7 @@ func buildActivationURL(
 		)
 	if err != nil {
 		return "", fmt.Errorf(
-			"validate activation URL: %w",
+			"validate credential link URL: %w",
 			err,
 		)
 	}

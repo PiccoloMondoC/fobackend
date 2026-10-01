@@ -768,6 +768,9 @@ const (
 		('set_password', 'Establish an initial password for a user account'),
 		('refresh_auth_tokens', 'Rotate a refresh token and issue replacement authentication tokens'),
 		('logout', 'Log out a user and revoke authentication tokens'),
+		('request_password_reset', 'Issue a password reset credential for a user account'),
+		('reset_password', 'Reset a user account password using a password reset credential'),
+		('change_password', 'Change the authenticated user''s password'),
 
 		-- Users
 		('delete_own_account', 'Delete own user account'),

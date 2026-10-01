@@ -9,7 +9,9 @@
 //	Reason:
 //	  Users are release-critical identity and account lifecycle infrastructure.
 //	  This file owns canonical user persistence, signup persistence,
-//	  authentication, OAuth account linking, password-hash persistence,
+//	  authentication, OAuth account linking, password-hash persistence
+//	  (including the locked credential read used by authenticated password
+//	  change),
 //	  primary-role read projection, contact-info lookup, active-state
 //	  control, and account soft-delete cascade behavior required by the
 //	  initial Platform release spine.
@@ -271,8 +273,16 @@ func (m *UserModel) Authenticate(ctx context.Context, email, password, googleID,
 	}
 
 	if email != "" && password != "" {
-		if user.PasswordHash == "" || !security.CheckPasswordHash(password, user.PasswordHash) {
-			logger.Warn("invalid password", "user_id", user.ID)
+		if err := security.VerifyPassword(password, user.PasswordHash); err != nil {
+			// Every verification failure is a credential rejection at this
+			// boundary. A corrupt stored hash is additionally logged at error
+			// level so it is visible to operators without being disclosed to
+			// the caller.
+			if errors.Is(err, security.ErrPasswordHashInvalid) {
+				logger.Error("stored password hash is invalid", "user_id", user.ID, "error", err)
+			} else {
+				logger.Warn("invalid password", "user_id", user.ID)
+			}
 			return nil, ErrInvalidCredentials
 		}
 	}
@@ -1024,6 +1034,68 @@ func (m *UserModel) LockActiveUserTx(
 	}
 
 	return nil
+}
+
+// LockActiveUserPasswordHashTx locks a canonical active, non-deleted user row
+// within the caller-owned transaction and returns its current protected
+// password hash.
+//
+// This is the eligibility and credential-read primitive for authenticated
+// password change. Returning the hash from the same FOR UPDATE read that
+// establishes eligibility lets the workflow verify the existing credential and
+// replace it without a read-then-write race: a concurrent change for the same
+// account blocks on this lock until the first transaction commits, then
+// observes the replacement hash.
+//
+// An empty string is returned (with a nil error) when the account is live but
+// has no password established, so the caller can route it to initial-password
+// establishment rather than ordinary password change.
+//
+// A missing, inactive, or deleted user is reported uniformly as
+// ErrUserNotFound. This method performs no mutation, never receives plaintext
+// password material, and never logs the returned hash.
+func (m *UserModel) LockActiveUserPasswordHashTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	userID uuid.UUID,
+) (string, error) {
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("LockActiveUserPasswordHashTx")
+
+	if tx == nil {
+		return "", errors.New("transaction is required")
+	}
+	if userID == uuid.Nil {
+		return "", errors.New("user ID is required")
+	}
+
+	const query = `
+		SELECT COALESCE(password_hash, '')
+		FROM users
+		WHERE id = $1
+		  AND deleted_at IS NULL
+		  AND is_active = TRUE
+		FOR UPDATE
+	`
+
+	var passwordHash string
+
+	if err := tx.QueryRow(ctx, query, userID).Scan(&passwordHash); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+
+		logger.Error(
+			"active-user password lock failed",
+			"user_id", userID,
+			"error", err,
+		)
+
+		return "", fmt.Errorf("lock active user password hash: %w", err)
+	}
+
+	return passwordHash, nil
 }
 
 // ActivateUserTx performs the canonical inactive-to-active account transition
