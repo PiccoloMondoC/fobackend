@@ -27,7 +27,9 @@ package email
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"mime"
@@ -247,13 +249,9 @@ func prepareSMTPMessage(message Message) (fromEnvelope, toEnvelope string, paylo
 		return "", "", nil, ErrSMTPMessageInvalid
 	}
 
-	var body strings.Builder
-	qp := quotedprintable.NewWriter(&body)
-	if _, err := qp.Write([]byte(normalizeSMTPBodyLineEndings(message.Body))); err != nil {
-		return "", "", nil, ErrSMTPMessageInvalid
-	}
-	if err := qp.Close(); err != nil {
-		return "", "", nil, ErrSMTPMessageInvalid
+	textBody, err := quotedPrintableBody(message.Body)
+	if err != nil {
+		return "", "", nil, err
 	}
 
 	var b strings.Builder
@@ -261,12 +259,67 @@ func prepareSMTPMessage(message Message) (fromEnvelope, toEnvelope string, paylo
 	b.WriteString("To: " + toAddr.String() + "\r\n")
 	b.WriteString("Subject: " + mime.QEncoding.Encode("utf-8", message.Subject) + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
+
+	if message.HTMLBody == "" {
+		b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+		b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
+		b.WriteString("\r\n")
+		b.WriteString(textBody)
+
+		return fromAddr.Address, toAddr.Address, []byte(b.String()), nil
+	}
+
+	htmlBody, err := quotedPrintableBody(message.HTMLBody)
+	if err != nil {
+		return "", "", nil, err
+	}
+
+	boundary, err := newMIMEBoundary()
+	if err != nil {
+		return "", "", nil, ErrSMTPMessageInvalid
+	}
+
+	// multipart/alternative: plain text first, preferred HTML last
+	// (RFC 2046 section 5.1.4).
+	b.WriteString("Content-Type: multipart/alternative; boundary=\"" + boundary + "\"\r\n")
+	b.WriteString("\r\n")
+	b.WriteString("--" + boundary + "\r\n")
 	b.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
 	b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
 	b.WriteString("\r\n")
-	b.WriteString(body.String())
+	b.WriteString(textBody)
+	b.WriteString("\r\n--" + boundary + "\r\n")
+	b.WriteString("Content-Type: text/html; charset=\"utf-8\"\r\n")
+	b.WriteString("Content-Transfer-Encoding: quoted-printable\r\n")
+	b.WriteString("\r\n")
+	b.WriteString(htmlBody)
+	b.WriteString("\r\n--" + boundary + "--\r\n")
 
 	return fromAddr.Address, toAddr.Address, []byte(b.String()), nil
+}
+
+// quotedPrintableBody normalizes line endings and quoted-printable encodes a
+// MIME part body.
+func quotedPrintableBody(body string) (string, error) {
+	var out strings.Builder
+	qp := quotedprintable.NewWriter(&out)
+	if _, err := qp.Write([]byte(normalizeSMTPBodyLineEndings(body))); err != nil {
+		return "", ErrSMTPMessageInvalid
+	}
+	if err := qp.Close(); err != nil {
+		return "", ErrSMTPMessageInvalid
+	}
+	return out.String(), nil
+}
+
+// newMIMEBoundary returns a random multipart boundary. 128 random bits make a
+// collision with part content implausible.
+func newMIMEBoundary() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return "sagrenti-alt-" + hex.EncodeToString(raw), nil
 }
 
 func normalizeSMTPBodyLineEndings(body string) string {

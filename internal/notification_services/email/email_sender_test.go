@@ -2,7 +2,7 @@
 //
 // Tests for the provider-neutral EmailService boundary: construction,
 // validation before any provider call, provider-failure wrapping,
-// activation-link policy, and an end-to-end check that an emailed
+// confirmation-link policy, and an end-to-end check that an emailed
 // password-reset link survives SMTP message encoding intact.
 package email
 
@@ -162,21 +162,28 @@ func TestSendEmailContextWrapsProviderFailure(t *testing.T) {
 	}
 }
 
-func TestSendActivationEmailContextEnforcesURLPolicy(t *testing.T) {
-	const devLink = "http://localhost:4200/activate?token=abc"
+func TestSendEmailConfirmationContextEnforcesURLPolicy(t *testing.T) {
+	const devToken = "abc-link-token"
+	const devLink = "http://localhost:4200/confirm-email?token=" + devToken
+
+	content := notificationservices.EmailConfirmationContent{
+		ConfirmURL:   devLink,
+		CodeEntryURL: "http://localhost:4200/confirm-email",
+		Code:         "123456",
+	}
 
 	strictProvider := &recordingProvider{}
 	strict := newTestService(t, strictProvider, notificationservices.ActivationURLPolicy{})
 
-	if err := strict.SendActivationEmailContext(
+	if err := strict.SendEmailConfirmationContext(
 		context.Background(),
 		"user@example.com",
-		devLink,
+		content,
 	); !errors.Is(err, ErrInvalidActivationURL) {
 		t.Fatalf("production-safe policy: expected ErrInvalidActivationURL, got %v", err)
 	}
 	if len(strictProvider.messages) != 0 {
-		t.Fatalf("rejected activation link reached the provider")
+		t.Fatalf("rejected confirmation link reached the provider")
 	}
 
 	devProvider := &recordingProvider{}
@@ -186,20 +193,26 @@ func TestSendActivationEmailContextEnforcesURLPolicy(t *testing.T) {
 		notificationservices.ActivationURLPolicy{AllowHTTPOnLoopback: true},
 	)
 
-	if err := dev.SendActivationEmailContext(
+	if err := dev.SendEmailConfirmationContext(
 		context.Background(),
 		"user@example.com",
-		devLink,
+		content,
 	); err != nil {
-		t.Fatalf("dev policy rejected loopback activation link: %v", err)
+		t.Fatalf("dev policy rejected loopback confirmation link: %v", err)
 	}
 
 	got := devProvider.messages[0]
 	if got.Subject != activationEmailSubject {
-		t.Errorf("unexpected activation subject: %q", got.Subject)
+		t.Errorf("unexpected confirmation subject: %q", got.Subject)
 	}
-	if !strings.Contains(got.Body, devLink) {
-		t.Errorf("activation body does not contain the link")
+	if !strings.Contains(got.HTMLBody, `href="`+devLink+`"`) {
+		t.Errorf("HTML body does not carry the link in the button href")
+	}
+	if strings.Contains(got.Body, devToken) || strings.Contains(got.Body, devLink) {
+		t.Errorf("plain-text body exposes the confirmation link or token")
+	}
+	if !strings.Contains(got.Body, "123 456") {
+		t.Errorf("plain-text body lacks the six-digit code")
 	}
 }
 

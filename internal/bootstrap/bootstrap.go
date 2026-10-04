@@ -24,6 +24,9 @@
 //	Preserve canonical validated values for downstream consumers.
 //	Preserve validated activation-token and password-reset-token lifetime
 //	configuration for internal services.
+//	Preserve FrontendURL as the single authoritative browser origin for
+//	emailed links; never derive browser links from BaseURL.
+//	Preserve validated email-confirmation code and resend policy.
 //	Preserve fail-fast staging/prod HTTPS and SMTP transport-security invariants.
 //	Block deployment if this file breaks application startup,
 //	database configuration, JWT configuration, timeout validation,
@@ -36,6 +39,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -55,6 +59,23 @@ const (
 	defaultLocalJWTIssuer   = "sd-auth"
 	defaultLocalJWTAudience = "sd-api"
 	defaultLocalJWTKeyID    = "local-dev-ed25519"
+
+	// defaultLocalFrontendURL is the Angular dev-server origin used only when
+	// FRONTEND_URL is unset in dev or test. staging and prod must set it.
+	defaultLocalFrontendURL = "http://localhost:4200"
+
+	// Email-confirmation code defaults. Implementation defaults, not settled
+	// product policy; override per environment.
+	defaultActivationCodeTTL              = 15 * time.Minute
+	minActivationCodeTTL                  = 1 * time.Minute
+	maxActivationCodeTTL                  = 1 * time.Hour
+	defaultActivationCodeMaxAttempts      = 5
+	maxActivationCodeMaxAttempts          = 10
+	defaultActivationCodeMaxTotalFailures = 20
+	maxActivationCodeMaxTotalFailures     = 50
+	defaultActivationResendCooldown       = 60 * time.Second
+	minActivationResendCooldown           = 1 * time.Second
+	maxActivationResendCooldown           = 1 * time.Hour
 
 	pemTypePrivateKey = "PRIVATE KEY"
 	pemTypePublicKey  = "PUBLIC KEY"
@@ -85,8 +106,15 @@ type Config struct {
 	// Env is the canonical runtime environment: dev, test, staging, or prod.
 	Env string
 
-	// BaseURL is the canonical externally visible service base URL.
+	// BaseURL is the canonical externally visible service (API) base URL.
 	BaseURL string
+
+	// FrontendURL is the canonical browser-facing application origin (the
+	// Angular application). Every link emailed to a person — email
+	// confirmation, password reset — is built from this value, never from
+	// BaseURL. Loaded from FRONTEND_URL; defaults to the local Angular dev
+	// server only in dev/test.
+	FrontendURL string
 
 	// WebPort is the validated HTTP listener port.
 	WebPort string
@@ -144,6 +172,23 @@ type Config struct {
 	// credentials. It is non-secret operational configuration.
 	PasswordResetTokenTTL time.Duration
 
+	// ActivationCodeTTL is the lifetime of the manual six-digit
+	// email-confirmation code (ACTIVATION_CODE_TTL, default 15m).
+	ActivationCodeTTL time.Duration
+
+	// ActivationCodeMaxAttempts is the wrong-guess limit per issued code
+	// (ACTIVATION_CODE_MAX_ATTEMPTS, default 5).
+	ActivationCodeMaxAttempts int
+
+	// ActivationCodeMaxTotalFailures is the wrong-guess limit across reissues
+	// for one pending account (ACTIVATION_CODE_MAX_TOTAL_FAILURES, default 20).
+	ActivationCodeMaxTotalFailures int
+
+	// ActivationResendCooldown is the minimum interval between public resend
+	// issuances for one pending account (ACTIVATION_RESEND_COOLDOWN,
+	// default 60s).
+	ActivationResendCooldown time.Duration
+
 	// EmailProvider selects the runtime outbound email implementation.
 	EmailProvider string
 
@@ -174,6 +219,11 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 	if err := validateBaseURLForEnv(env, baseURL); err != nil {
+		return nil, err
+	}
+
+	frontendURL, err := loadFrontendURL(env)
+	if err != nil {
 		return nil, err
 	}
 
@@ -218,6 +268,46 @@ func LoadConfig() (*Config, error) {
 	}
 
 	passwordResetTokenTTL, err := requiredPositiveDuration("PASSWORD_RESET_TOKEN_TTL")
+	if err != nil {
+		return nil, err
+	}
+
+	activationCodeTTL, err := loadDuration(
+		"ACTIVATION_CODE_TTL",
+		defaultActivationCodeTTL,
+		minActivationCodeTTL,
+		maxActivationCodeTTL,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	activationCodeMaxAttempts, err := loadIntInRange(
+		"ACTIVATION_CODE_MAX_ATTEMPTS",
+		defaultActivationCodeMaxAttempts,
+		1,
+		maxActivationCodeMaxAttempts,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	activationCodeMaxTotalFailures, err := loadIntInRange(
+		"ACTIVATION_CODE_MAX_TOTAL_FAILURES",
+		defaultActivationCodeMaxTotalFailures,
+		activationCodeMaxAttempts,
+		maxActivationCodeMaxTotalFailures,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	activationResendCooldown, err := loadDuration(
+		"ACTIVATION_RESEND_COOLDOWN",
+		defaultActivationResendCooldown,
+		minActivationResendCooldown,
+		maxActivationResendCooldown,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -280,31 +370,36 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return &Config{
-		Env:                     env,
-		BaseURL:                 baseURL,
-		WebPort:                 webPort,
-		DBHost:                  dbHost,
-		DBPort:                  dbPort,
-		DBUser:                  dbUser,
-		DBPass:                  dbPass,
-		DBName:                  dbName,
-		DBTimeout:               dbTimeout,
-		ActivationTokenTTL:      activationTokenTTL,
-		PasswordResetTokenTTL:   passwordResetTokenTTL,
-		EmailProvider:           emailProvider,
-		SMTPHost:                smtpCfg.Host,
-		SMTPPort:                smtpCfg.Port,
-		SMTPUsername:            smtpCfg.Username,
-		SMTPPassword:            smtpCfg.Password,
-		SMTPFrom:                smtpCfg.From,
-		SMTPSecurity:            smtpCfg.Security,
-		OAuthWebClientSecret:    oauthWebClientSecret,
-		OAuthMobileClientSecret: oauthMobileClientSecret,
-		JWTIssuer:               jwtIssuer,
-		JWTAudience:             jwtAudience,
-		JWTKeyID:                jwtKeyID,
-		JWTPrivateKey:           jwtPrivateKey,
-		JWTPublicKey:            jwtPublicKey,
+		Env:                            env,
+		BaseURL:                        baseURL,
+		FrontendURL:                    frontendURL,
+		WebPort:                        webPort,
+		DBHost:                         dbHost,
+		DBPort:                         dbPort,
+		DBUser:                         dbUser,
+		DBPass:                         dbPass,
+		DBName:                         dbName,
+		DBTimeout:                      dbTimeout,
+		ActivationTokenTTL:             activationTokenTTL,
+		PasswordResetTokenTTL:          passwordResetTokenTTL,
+		ActivationCodeTTL:              activationCodeTTL,
+		ActivationCodeMaxAttempts:      activationCodeMaxAttempts,
+		ActivationCodeMaxTotalFailures: activationCodeMaxTotalFailures,
+		ActivationResendCooldown:       activationResendCooldown,
+		EmailProvider:                  emailProvider,
+		SMTPHost:                       smtpCfg.Host,
+		SMTPPort:                       smtpCfg.Port,
+		SMTPUsername:                   smtpCfg.Username,
+		SMTPPassword:                   smtpCfg.Password,
+		SMTPFrom:                       smtpCfg.From,
+		SMTPSecurity:                   smtpCfg.Security,
+		OAuthWebClientSecret:           oauthWebClientSecret,
+		OAuthMobileClientSecret:        oauthMobileClientSecret,
+		JWTIssuer:                      jwtIssuer,
+		JWTAudience:                    jwtAudience,
+		JWTKeyID:                       jwtKeyID,
+		JWTPrivateKey:                  jwtPrivateKey,
+		JWTPublicKey:                   jwtPublicKey,
 	}, nil
 }
 
@@ -315,9 +410,10 @@ func (c *Config) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Config{Env:%q BaseURL:%q WebPort:%q DBHost:%q DBPort:%q DBUser:%q DBPass:%s DBName:%q DBTimeout:%s ActivationTokenTTL:%s PasswordResetTokenTTL:%s EmailProvider:%q SMTPHost:%q SMTPPort:%q SMTPUsername:%s SMTPPassword:%s SMTPFrom:%q SMTPSecurity:%q OAuthWebClientSecret:%s OAuthMobileClientSecret:%s JWTIssuer:%q JWTAudience:%q JWTKeyID:%q JWTPrivateKey:%s JWTPublicKey:%s}",
+		"Config{Env:%q BaseURL:%q FrontendURL:%q WebPort:%q DBHost:%q DBPort:%q DBUser:%q DBPass:%s DBName:%q DBTimeout:%s ActivationTokenTTL:%s PasswordResetTokenTTL:%s ActivationCodeTTL:%s ActivationCodeMaxAttempts:%d ActivationCodeMaxTotalFailures:%d ActivationResendCooldown:%s EmailProvider:%q SMTPHost:%q SMTPPort:%q SMTPUsername:%s SMTPPassword:%s SMTPFrom:%q SMTPSecurity:%q OAuthWebClientSecret:%s OAuthMobileClientSecret:%s JWTIssuer:%q JWTAudience:%q JWTKeyID:%q JWTPrivateKey:%s JWTPublicKey:%s}",
 		c.Env,
 		c.BaseURL,
+		c.FrontendURL,
 		c.WebPort,
 		c.DBHost,
 		c.DBPort,
@@ -327,6 +423,10 @@ func (c *Config) String() string {
 		c.DBTimeout,
 		c.ActivationTokenTTL,
 		c.PasswordResetTokenTTL,
+		c.ActivationCodeTTL,
+		c.ActivationCodeMaxAttempts,
+		c.ActivationCodeMaxTotalFailures,
+		c.ActivationResendCooldown,
 		c.EmailProvider,
 		c.SMTPHost,
 		c.SMTPPort,
@@ -356,59 +456,69 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 	}
 
 	type redactedConfig struct {
-		Env                     string        `json:"env"`
-		BaseURL                 string        `json:"base_url"`
-		WebPort                 string        `json:"web_port"`
-		DBHost                  string        `json:"db_host"`
-		DBPort                  string        `json:"db_port"`
-		DBUser                  string        `json:"db_user"`
-		DBPass                  string        `json:"db_pass"`
-		DBName                  string        `json:"db_name"`
-		DBTimeout               time.Duration `json:"db_timeout"`
-		ActivationTokenTTL      time.Duration `json:"activation_token_ttl"`
-		PasswordResetTokenTTL   time.Duration `json:"password_reset_token_ttl"`
-		EmailProvider           string        `json:"email_provider"`
-		SMTPHost                string        `json:"smtp_host"`
-		SMTPPort                string        `json:"smtp_port"`
-		SMTPUsername            string        `json:"smtp_username"`
-		SMTPPassword            string        `json:"smtp_password"`
-		SMTPFrom                string        `json:"smtp_from"`
-		SMTPSecurity            string        `json:"smtp_security"`
-		OAuthWebClientSecret    string        `json:"oauth_web_client_secret"`
-		OAuthMobileClientSecret string        `json:"oauth_mobile_client_secret"`
-		JWTIssuer               string        `json:"jwt_issuer"`
-		JWTAudience             string        `json:"jwt_audience"`
-		JWTKeyID                string        `json:"jwt_key_id"`
-		JWTPrivateKey           string        `json:"jwt_private_key"`
-		JWTPublicKey            string        `json:"jwt_public_key"`
+		Env                            string        `json:"env"`
+		BaseURL                        string        `json:"base_url"`
+		FrontendURL                    string        `json:"frontend_url"`
+		WebPort                        string        `json:"web_port"`
+		DBHost                         string        `json:"db_host"`
+		DBPort                         string        `json:"db_port"`
+		DBUser                         string        `json:"db_user"`
+		DBPass                         string        `json:"db_pass"`
+		DBName                         string        `json:"db_name"`
+		DBTimeout                      time.Duration `json:"db_timeout"`
+		ActivationTokenTTL             time.Duration `json:"activation_token_ttl"`
+		PasswordResetTokenTTL          time.Duration `json:"password_reset_token_ttl"`
+		ActivationCodeTTL              time.Duration `json:"activation_code_ttl"`
+		ActivationCodeMaxAttempts      int           `json:"activation_code_max_attempts"`
+		ActivationCodeMaxTotalFailures int           `json:"activation_code_max_total_failures"`
+		ActivationResendCooldown       time.Duration `json:"activation_resend_cooldown"`
+		EmailProvider                  string        `json:"email_provider"`
+		SMTPHost                       string        `json:"smtp_host"`
+		SMTPPort                       string        `json:"smtp_port"`
+		SMTPUsername                   string        `json:"smtp_username"`
+		SMTPPassword                   string        `json:"smtp_password"`
+		SMTPFrom                       string        `json:"smtp_from"`
+		SMTPSecurity                   string        `json:"smtp_security"`
+		OAuthWebClientSecret           string        `json:"oauth_web_client_secret"`
+		OAuthMobileClientSecret        string        `json:"oauth_mobile_client_secret"`
+		JWTIssuer                      string        `json:"jwt_issuer"`
+		JWTAudience                    string        `json:"jwt_audience"`
+		JWTKeyID                       string        `json:"jwt_key_id"`
+		JWTPrivateKey                  string        `json:"jwt_private_key"`
+		JWTPublicKey                   string        `json:"jwt_public_key"`
 	}
 
 	return json.Marshal(redactedConfig{
-		Env:                     c.Env,
-		BaseURL:                 c.BaseURL,
-		WebPort:                 c.WebPort,
-		DBHost:                  c.DBHost,
-		DBPort:                  c.DBPort,
-		DBUser:                  c.DBUser,
-		DBPass:                  redactedProtectedValueLabel,
-		DBName:                  c.DBName,
-		DBTimeout:               c.DBTimeout,
-		ActivationTokenTTL:      c.ActivationTokenTTL,
-		PasswordResetTokenTTL:   c.PasswordResetTokenTTL,
-		EmailProvider:           c.EmailProvider,
-		SMTPHost:                c.SMTPHost,
-		SMTPPort:                c.SMTPPort,
-		SMTPUsername:            redactedProtectedValueLabel,
-		SMTPPassword:            redactedProtectedValueLabel,
-		SMTPFrom:                c.SMTPFrom,
-		SMTPSecurity:            c.SMTPSecurity,
-		OAuthWebClientSecret:    redactedProtectedValueLabel,
-		OAuthMobileClientSecret: redactedProtectedValueLabel,
-		JWTIssuer:               c.JWTIssuer,
-		JWTAudience:             c.JWTAudience,
-		JWTKeyID:                c.JWTKeyID,
-		JWTPrivateKey:           redactedProtectedValueLabel,
-		JWTPublicKey:            fmt.Sprintf("%x", []byte(c.JWTPublicKey)),
+		Env:                            c.Env,
+		BaseURL:                        c.BaseURL,
+		FrontendURL:                    c.FrontendURL,
+		WebPort:                        c.WebPort,
+		DBHost:                         c.DBHost,
+		DBPort:                         c.DBPort,
+		DBUser:                         c.DBUser,
+		DBPass:                         redactedProtectedValueLabel,
+		DBName:                         c.DBName,
+		DBTimeout:                      c.DBTimeout,
+		ActivationTokenTTL:             c.ActivationTokenTTL,
+		PasswordResetTokenTTL:          c.PasswordResetTokenTTL,
+		ActivationCodeTTL:              c.ActivationCodeTTL,
+		ActivationCodeMaxAttempts:      c.ActivationCodeMaxAttempts,
+		ActivationCodeMaxTotalFailures: c.ActivationCodeMaxTotalFailures,
+		ActivationResendCooldown:       c.ActivationResendCooldown,
+		EmailProvider:                  c.EmailProvider,
+		SMTPHost:                       c.SMTPHost,
+		SMTPPort:                       c.SMTPPort,
+		SMTPUsername:                   redactedProtectedValueLabel,
+		SMTPPassword:                   redactedProtectedValueLabel,
+		SMTPFrom:                       c.SMTPFrom,
+		SMTPSecurity:                   c.SMTPSecurity,
+		OAuthWebClientSecret:           redactedProtectedValueLabel,
+		OAuthMobileClientSecret:        redactedProtectedValueLabel,
+		JWTIssuer:                      c.JWTIssuer,
+		JWTAudience:                    c.JWTAudience,
+		JWTKeyID:                       c.JWTKeyID,
+		JWTPrivateKey:                  redactedProtectedValueLabel,
+		JWTPublicKey:                   fmt.Sprintf("%x", []byte(c.JWTPublicKey)),
 	})
 }
 
@@ -421,6 +531,7 @@ func (c *Config) LogValue() slog.Value {
 	return slog.GroupValue(
 		slog.String("env", c.Env),
 		slog.String("base_url", c.BaseURL),
+		slog.String("frontend_url", c.FrontendURL),
 		slog.String("web_port", c.WebPort),
 		slog.String("db_host", c.DBHost),
 		slog.String("db_port", c.DBPort),
@@ -430,6 +541,10 @@ func (c *Config) LogValue() slog.Value {
 		slog.Duration("db_timeout", c.DBTimeout),
 		slog.Duration("activation_token_ttl", c.ActivationTokenTTL),
 		slog.Duration("password_reset_token_ttl", c.PasswordResetTokenTTL),
+		slog.Duration("activation_code_ttl", c.ActivationCodeTTL),
+		slog.Int("activation_code_max_attempts", c.ActivationCodeMaxAttempts),
+		slog.Int("activation_code_max_total_failures", c.ActivationCodeMaxTotalFailures),
+		slog.Duration("activation_resend_cooldown", c.ActivationResendCooldown),
 		slog.String("email_provider", c.EmailProvider),
 		slog.String("smtp_host", c.SMTPHost),
 		slog.String("smtp_port", c.SMTPPort),
@@ -516,6 +631,13 @@ func requiredURL(key string) (string, error) {
 		return "", err
 	}
 
+	return canonicalURL(key, raw)
+}
+
+// canonicalURL validates raw as an absolute http(s) origin/base URL without
+// credentials, query, fragment, or traversal, and returns it without a
+// trailing slash.
+func canonicalURL(key, raw string) (string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
 		return "", fmt.Errorf("%s is invalid: %w", key, err)
@@ -550,9 +672,15 @@ func requiredURL(key string) (string, error) {
 }
 
 func validateBaseURLForEnv(env, raw string) error {
+	return validatePublicURLForEnv("BASE_URL", env, raw)
+}
+
+// validatePublicURLForEnv enforces HTTPS everywhere except loopback HTTP in
+// dev/test.
+func validatePublicURLForEnv(key, env, raw string) error {
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return fmt.Errorf("BASE_URL is invalid: %w", err)
+		return fmt.Errorf("%s is invalid: %w", key, err)
 	}
 
 	switch parsed.Scheme {
@@ -563,12 +691,67 @@ func validateBaseURLForEnv(env, raw string) error {
 			return nil
 		}
 		if env == "staging" || env == "prod" {
-			return fmt.Errorf("BASE_URL must use https in %s", env)
+			return fmt.Errorf("%s must use https in %s", key, env)
 		}
-		return fmt.Errorf("BASE_URL may use http only for localhost or a loopback IP in %s", env)
+		return fmt.Errorf("%s may use http only for localhost or a loopback IP in %s", key, env)
 	default:
-		return fmt.Errorf("BASE_URL must use http or https")
+		return fmt.Errorf("%s must use http or https", key)
 	}
+}
+
+// loadFrontendURL loads FRONTEND_URL, the authoritative browser origin for
+// emailed links. dev/test fall back to the local Angular dev server;
+// staging/prod must set it explicitly.
+func loadFrontendURL(env string) (string, error) {
+	raw := strings.TrimSpace(os.Getenv("FRONTEND_URL"))
+	if raw == "" {
+		if env != "dev" && env != "test" {
+			return "", fmt.Errorf("FRONTEND_URL is required for %s environment", env)
+		}
+		raw = defaultLocalFrontendURL
+	}
+
+	frontendURL, err := canonicalURL("FRONTEND_URL", raw)
+	if err != nil {
+		return "", err
+	}
+
+	if err := validatePublicURLForEnv("FRONTEND_URL", env, frontendURL); err != nil {
+		return "", err
+	}
+
+	parsed, err := url.Parse(frontendURL)
+	if err != nil {
+		return "", fmt.Errorf("FRONTEND_URL is invalid: %w", err)
+	}
+	if parsed.EscapedPath() != "" && parsed.EscapedPath() != "/" {
+		return "", errors.New("FRONTEND_URL must be an origin without a path")
+	}
+
+	return strings.TrimRight(frontendURL, "/"), nil
+}
+
+// loadIntInRange loads an optional integer setting, applying fallback when
+// unset and rejecting values outside [minValue, maxValue].
+func loadIntInRange(key string, fallback, minValue, maxValue int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		if fallback < minValue || fallback > maxValue {
+			return 0, fmt.Errorf("%s default %d is outside %d..%d", key, fallback, minValue, maxValue)
+		}
+		return fallback, nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s is invalid: %w", key, err)
+	}
+
+	if value < minValue || value > maxValue {
+		return 0, fmt.Errorf("%s must be between %d and %d", key, minValue, maxValue)
+	}
+
+	return value, nil
 }
 
 func hasTraversalPathSegment(escapedPath string) bool {

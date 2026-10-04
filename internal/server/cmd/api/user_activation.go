@@ -8,11 +8,13 @@
 //	Layer: 2.2 Identity / Auth Domain
 //	Release Class: SPINE
 //	Reason:
-//	  User activation is release-critical identity infrastructure. This file
-//	  owns the HTTP boundary for activation-credential redemption and
-//	  authenticated activation-status reads, together with controlled
-//	  activation-link construction, delivery, and audit helpers used by the
-//	  surrounding identity workflow.
+//	  User activation is release-critical identity infrastructure. Users meet
+//	  it as "email confirmation"; the domain keeps the activation name. This
+//	  file owns the HTTP boundary for link-token redemption, manual
+//	  confirmation-code redemption, non-enumerating resend, and authenticated
+//	  activation-status reads, together with controlled confirmation-link
+//	  construction (from the authoritative FrontendURL), delivery, and audit
+//	  helpers used by the surrounding identity workflow.
 //
 //	  Cross-model activation orchestration does not belong here. The canonical
 //	  internal service layer owns the transaction that composes
@@ -45,6 +47,11 @@
 //	Do not dynamically create audit actions or entity types during requests.
 //	Do not expose a general HTTP endpoint that returns newly generated
 //	activation bearer credentials.
+//	Build every emailed browser link from Config.Bootstrap.FrontendURL, never
+//	from the API BaseURL.
+//	Collapse every manual-code failure (unknown account, already verified,
+//	wrong, expired, attempts exhausted) into one public outcome.
+//	Absorb resend cooldown silently; resend responses never vary.
 //	Block deployment if this file breaks activation redemption,
 //	activation-status reads, protected token handling, notification boundaries,
 //	or activation audit integrity.
@@ -60,12 +67,17 @@ import (
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/services"
 
 	"github.com/google/uuid"
 )
 
 const (
-	activationPath = "/activate"
+	// confirmEmailPath is the Angular route that redeems an emailed
+	// confirmation link (?token=) and accepts the manual code. The legacy
+	// /activate route redirects there in the browser, so links sent before
+	// this change keep working.
+	confirmEmailPath = "/confirm-email"
 
 	activationChannelEmail = "email"
 	activationChannelSMS   = "sms"
@@ -248,7 +260,7 @@ func (app *Application) ActivateUserHandler(
 		http.StatusOK,
 		jsonResponse{
 			Error:   false,
-			Message: "User activated successfully",
+			Message: "Email verified",
 			Data: struct {
 				UserID uuid.UUID `json:"user_id"`
 			}{
@@ -282,8 +294,10 @@ type resendActivationInput struct {
 // delivery onto the durable async/outbox foundation would close this gap and
 // should be revisited there. Per-caller rate limiting is also IP-scoped only
 // (see RateLimitMiddleware); it does not throttle repeated resend requests
-// against the same target email from different source IPs. A per-email
-// issuance cooldown belongs in IssueUserActivationTokenInternal.
+// against the same target email from different source IPs. A per-account
+// issuance cooldown (ACTIVATION_RESEND_COOLDOWN) is enforced by
+// IssueUserEmailConfirmationInternal and absorbed silently here, so repeated
+// resends neither flood the inbox nor reset code-attempt budgets.
 func (app *Application) ResendActivationLinkHandler(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -337,49 +351,42 @@ func (app *Application) ResendActivationLinkHandler(
 		user.ID != uuid.Nil &&
 		!user.IsActive {
 
-		token, issueErr :=
-			app.InternalServices.IssueUserActivationTokenInternal(
+		credentials, issueErr :=
+			app.InternalServices.IssueUserEmailConfirmationInternal(
 				ctx,
 				user.ID,
+				services.IssueEmailConfirmationOptions{
+					EnforceResendCooldown: true,
+				},
 			)
-		if issueErr != nil {
+		switch {
+		case errors.Is(issueErr, services.ErrEmailConfirmationResendCooldown):
+			// Silently absorbed: the previous message is still the newest.
+		case issueErr != nil:
 			logger.Warn(
-				"activation resend token issuance failed",
+				"confirmation resend credential issuance failed",
 				"user_id", user.ID,
 				"error", issueErr,
 			)
-		} else {
-			activationURL, urlErr := buildActivationURL(
-				app.Config.Bootstrap.BaseURL,
-				token,
-				app.credentialLinkURLPolicy(),
-			)
-			if urlErr != nil {
-				logger.Error(
-					"activation resend URL construction failed",
-					"user_id", user.ID,
-					"error", urlErr,
-				)
-			} else {
-				// The account was resolved by its canonical email address.
-				// Resend is therefore deliberately email-addressed and does not
-				// reinterpret another preferred channel from unauthenticated input.
-				contact := &data.UserContactInfo{
-					Email: user.Email,
-				}
+		default:
+			// The account was resolved by its canonical email address.
+			// Resend is therefore deliberately email-addressed and does not
+			// reinterpret another preferred channel from unauthenticated input.
+			contact := &data.UserContactInfo{
+				Email: user.Email,
+			}
 
-				if _, sendErr := app.sendActivationNotification(
-					ctx,
-					user.ID,
-					contact,
-					activationURL,
-				); sendErr != nil {
-					logger.Warn(
-						"activation resend delivery failed",
-						"user_id", user.ID,
-						"error", sendErr,
-					)
-				}
+			if _, sendErr := app.sendActivationNotification(
+				ctx,
+				user.ID,
+				contact,
+				credentials,
+			); sendErr != nil {
+				logger.Warn(
+					"confirmation resend delivery failed",
+					"user_id", user.ID,
+					"error", sendErr,
+				)
 			}
 		}
 	} else if err != nil &&
@@ -403,7 +410,156 @@ func (app *Application) ResendActivationLinkHandler(
 		http.StatusAccepted,
 		jsonResponse{
 			Error:   false,
-			Message: "If the account is eligible for activation, a new activation message will be sent",
+			Message: "If the account is waiting for email confirmation, a new confirmation email will be sent",
+		},
+	)
+}
+
+type confirmEmailCodeInput struct {
+	Email string `json:"email"`
+	Code  string `json:"code"`
+}
+
+// confirmationCodeRejectedMessage is the single public outcome for every
+// manual-code failure. It must not vary by account existence or state.
+const confirmationCodeRejectedMessage = "confirmation code is invalid or expired"
+
+// ConfirmEmailCodeHandler confirms a pending account's email address with the
+// manual six-digit code from the confirmation email.
+//
+// The endpoint is public because an unconfirmed account cannot sign in. It is
+// rate-limited by RateLimitMiddleware and, authoritatively, by the per-code
+// and per-record failure limits enforced in the service/data layers.
+//
+// Public privacy invariant: unknown email, already-verified account, wrong
+// code, expired code, and exhausted attempts all produce the same 401 body.
+// Only request-shape problems (no email, a code that is not six digits) are
+// reported as 400, because they reveal nothing about any account.
+func (app *Application) ConfirmEmailCodeHandler(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	logger := app.Logger.
+		GetLoggerWithContext(r).
+		WithFunctionName("ConfirmEmailCodeHandler")
+
+	var input confirmEmailCodeInput
+	if err := app.readJSON(w, r, &input); err != nil {
+		app.respondWithError(
+			w,
+			errors.New("invalid request body"),
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	email := strings.TrimSpace(input.Email)
+	code, codeOK := services.NormalizeActivationCode(input.Code)
+
+	if email == "" || !codeOK {
+		app.respondWithError(
+			w,
+			errors.New("email and a 6-digit confirmation code are required"),
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(
+		r.Context(),
+		cfgTimeout,
+	)
+	defer cancel()
+
+	if app.InternalServices == nil {
+		logger.Error("internal activation service is unavailable")
+		app.respondWithError(
+			w,
+			errors.New("confirmation service is unavailable"),
+			http.StatusServiceUnavailable,
+		)
+		return
+	}
+
+	userID, err :=
+		app.InternalServices.RedeemUserEmailConfirmationCodeInternal(
+			ctx,
+			email,
+			code,
+		)
+	if err != nil {
+		// Never log the code or the email address.
+		switch {
+		case errors.Is(err, data.ErrUserNotFound),
+			errors.Is(err, data.ErrUserAlreadyActive),
+			errors.Is(err, data.ErrActivationCodeRequired),
+			errors.Is(err, data.ErrActivationCodeInvalid),
+			errors.Is(err, data.ErrActivationCodeExpired),
+			errors.Is(err, data.ErrActivationCodeAttemptsExceeded),
+			errors.Is(err, data.ErrActivationTokenNotFound):
+			logger.Warn(
+				"email confirmation by code rejected",
+				"error", err,
+			)
+			app.respondWithError(
+				w,
+				errors.New(confirmationCodeRejectedMessage),
+				http.StatusUnauthorized,
+			)
+
+		case errors.Is(err, context.Canceled),
+			errors.Is(err, context.DeadlineExceeded):
+			app.respondWithError(
+				w,
+				errors.New("confirmation request timed out"),
+				http.StatusGatewayTimeout,
+			)
+
+		default:
+			logger.Error(
+				"email confirmation by code failed",
+				"error", err,
+			)
+			app.respondWithError(
+				w,
+				errors.New("confirmation failed"),
+				http.StatusInternalServerError,
+			)
+		}
+
+		return
+	}
+
+	if auditErr := app.recordUserAudit(
+		ctx,
+		nil,
+		actionActivateUser,
+		"Confirm a user email address with a confirmation code",
+		userID,
+	); auditErr != nil {
+		logger.Warn(
+			"email verified but audit insertion failed",
+			"user_id", userID,
+			"error", auditErr,
+		)
+	}
+
+	logger.Info(
+		"email verified by confirmation code",
+		"user_id", userID,
+	)
+
+	app.respondWithJSON(
+		w,
+		http.StatusOK,
+		jsonResponse{
+			Error:   false,
+			Message: "Email verified",
+			Data: struct {
+				UserID uuid.UUID `json:"user_id"`
+			}{
+				UserID: userID,
+			},
 		},
 	)
 }
@@ -530,8 +686,13 @@ func (app *Application) GetUserActivationStatusHandler(
 	)
 }
 
-// sendActivationNotification delivers an already-constructed activation URL
-// through the user's canonical preferred contact channel.
+// sendActivationNotification builds the browser confirmation links for an
+// issued credential pair and delivers them through the user's canonical
+// preferred contact channel.
+//
+// Email receives the full confirmation message (button link plus the manual
+// six-digit code). SMS behavior is unchanged and out of scope for this
+// capability: it receives the link only.
 //
 // This is an internal API-layer helper, not an HTTP handler. Registration and
 // any future explicitly designed activation-link resend workflow may call this
@@ -545,11 +706,19 @@ func (app *Application) sendActivationNotification(
 	ctx context.Context,
 	userID uuid.UUID,
 	contact *data.UserContactInfo,
-	activationURL string,
+	credentials data.ActivationCredentials,
 ) (string, error) {
 	if contact == nil {
 		return "", errors.New(
 			"activation contact information is required",
+		)
+	}
+
+	content, err := app.emailConfirmationContent(credentials)
+	if err != nil {
+		return "", fmt.Errorf(
+			"build confirmation links: %w",
+			err,
 		)
 	}
 
@@ -580,7 +749,7 @@ func (app *Application) sendActivationNotification(
 			SendActivationSMSContextWithOptions(
 				ctx,
 				phone,
-				activationURL,
+				content.ConfirmURL,
 				notificationservices.SendOptions{
 					CorrelationID: userID.String(),
 					Flow: notificationservices.
@@ -610,10 +779,10 @@ func (app *Application) sendActivationNotification(
 		}
 
 		err := app.EmailService.
-			SendActivationEmailContext(
+			SendEmailConfirmationContext(
 				ctx,
 				email,
-				activationURL,
+				content,
 			)
 		if err != nil {
 			return activationChannelEmail, err
@@ -627,6 +796,103 @@ func (app *Application) sendActivationNotification(
 			preferredMethod,
 		)
 	}
+}
+
+// frontendBaseURL returns the authoritative browser-facing origin used for
+// every emailed link. It is configuration (FRONTEND_URL), never the API
+// BaseURL and never a hard-coded development origin.
+func (app *Application) frontendBaseURL() string {
+	if app == nil {
+		return ""
+	}
+	return app.Config.Bootstrap.FrontendURL
+}
+
+// emailConfirmationContent builds the browser confirmation link (carrying the
+// link token, for the HTML button href only) and the bearer-free
+// confirmation page URL for an issued credential pair, plus the distinct
+// link and code expiry inputs. The activation-link TTL is passed through
+// unchanged from ActivationTokenTTL.
+//
+// The result carries plaintext credentials; never log, audit, or persist it.
+func (app *Application) emailConfirmationContent(
+	credentials data.ActivationCredentials,
+) (notificationservices.EmailConfirmationContent, error) {
+	var none notificationservices.EmailConfirmationContent
+
+	confirmURL, err := buildActivationURL(
+		app.frontendBaseURL(),
+		credentials.LinkToken,
+		app.credentialLinkURLPolicy(),
+	)
+	if err != nil {
+		return none, err
+	}
+
+	content := notificationservices.EmailConfirmationContent{
+		ConfirmURL: confirmURL,
+	}
+
+	if app.InternalServices != nil && app.InternalServices.Cfg != nil {
+		content.LinkValidFor = app.InternalServices.Cfg.ActivationTokenTTL
+		content.CodeValidFor = app.InternalServices.Cfg.EffectiveActivationCodeTTL()
+	}
+
+	// The six-digit code is mandatory: the plain-text alternative is
+	// link-free, so the code is the text reader's way to confirm.
+	if credentials.Code == "" {
+		return none, errors.New("confirmation code is required")
+	}
+
+	codeEntryURL, err := buildFrontendPageURL(
+		app.frontendBaseURL(),
+		confirmEmailPath,
+		app.credentialLinkURLPolicy(),
+	)
+	if err != nil {
+		return none, err
+	}
+
+	content.CodeEntryURL = codeEntryURL
+	content.Code = credentials.Code
+
+	return content, nil
+}
+
+// buildFrontendPageURL constructs and validates a bearer-free browser page
+// URL: baseURL + path with no query string.
+func buildFrontendPageURL(
+	baseURL string,
+	path string,
+	policy notificationservices.ActivationURLPolicy,
+) (string, error) {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		return "", errors.New("frontend base URL is required")
+	}
+
+	if !strings.HasPrefix(path, "/") {
+		return "", errors.New("frontend page path must be absolute")
+	}
+
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("parse frontend base URL: %w", err)
+	}
+
+	if !parsed.IsAbs() || parsed.Hostname() == "" {
+		return "", errors.New("frontend base URL must be absolute")
+	}
+
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + path
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+
+	return notificationservices.ValidateActivationURLWithPolicy(
+		parsed.String(),
+		policy,
+	)
 }
 
 // credentialLinkURLPolicy returns the explicit link policy for emailed bearer
@@ -652,7 +918,8 @@ func (app *Application) credentialLinkURLPolicy() notificationservices.Activatio
 	}
 }
 
-// buildActivationURL constructs and validates an account-activation URL.
+// buildActivationURL constructs and validates the browser email-confirmation
+// link (FrontendURL + /confirm-email?token=...).
 //
 // The token is placed in the encoded query string only for controlled delivery
 // to the intended user. Callers must never log, audit, trace, or persist the
@@ -664,7 +931,7 @@ func buildActivationURL(
 ) (string, error) {
 	return buildCredentialLinkURL(
 		baseURL,
-		activationPath,
+		confirmEmailPath,
 		token,
 		policy,
 	)

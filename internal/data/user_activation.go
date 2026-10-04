@@ -9,11 +9,13 @@
 //	Release Class: SPINE
 //	Reason:
 //	  Activation-token persistence is release-critical identity infrastructure.
-//	  It owns activation-token generation, protected token-hash persistence,
-//	  non-locking owner discovery required for canonical cross-model lock
-//	  ordering, transactional token locking and expiry validation,
-//	  transactional token consumption, and expired-token cleanup required by
-//	  the v1 account activation lifecycle.
+//	  It owns activation-credential generation (the high-entropy link token and
+//	  the independent short manual confirmation code), protected hash
+//	  persistence for both, non-locking owner discovery required for canonical
+//	  cross-model lock ordering, transactional token locking and expiry
+//	  validation, transactional attempt-limited code verification,
+//	  transactional consumption, and expired-credential cleanup required by the
+//	  v1 account activation (user-facing: email confirmation) lifecycle.
 //
 //	  Canonical user state is not owned here. User existence, deletion state,
 //	  activation eligibility, and users.is_active belong to UserModel. Atomic
@@ -24,8 +26,16 @@
 //
 //	Keep compiling.
 //	Keep production-ready.
-//	Preserve plaintext activation tokens only at controlled inputs and outputs.
-//	Persist only protected token hashes; never persist or log plaintext tokens.
+//	Preserve plaintext activation tokens and codes only at controlled inputs
+//	and outputs.
+//	Persist only protected hashes; never persist or log plaintext tokens or
+//	codes.
+//	Preserve the link token and the manual code as separate, independently
+//	generated credentials; never derive one from the other.
+//	Preserve reissue as replacement of both credentials, so the newest issuance
+//	supersedes every earlier credential for the account.
+//	Preserve code_failed_total across reissue so reissue cannot mint unlimited
+//	code guesses.
 //	Preserve DB-owned activation-token expiry and lifecycle timestamps.
 //	Preserve expires_at <= NOW() as the canonical expired-token boundary.
 //	Preserve hard deletion for transient expired activation-token material.
@@ -43,6 +53,7 @@ package data
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -56,18 +67,61 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// Email-confirmation code classifications are owned by the activation data
+// domain alongside the persistence operations that produce them. Public HTTP
+// boundaries collapse these classifications into a single non-enumerating
+// response.
+var (
+	ErrActivationCodeRequired         = errors.New("activation code is required")
+	ErrActivationCodeInvalid          = errors.New("invalid activation code")
+	ErrActivationCodeExpired          = errors.New("activation code expired")
+	ErrActivationCodeAttemptsExceeded = errors.New("activation code attempts exceeded")
+)
+
 // ActivationToken represents the canonical persisted activation-token record.
 //
 // Plaintext activation credentials are never persisted or exposed through this
 // structure. TokenHash contains only the one-way hash stored in
 // activation_tokens.
 type ActivationToken struct {
-	ID        uuid.UUID `json:"id" db:"id"`
-	UserID    uuid.UUID `json:"user_id" db:"user_id"`
-	TokenHash string    `json:"-" db:"token_hash"`
-	ExpiresAt time.Time `json:"expires_at" db:"expires_at"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	ID                 uuid.UUID  `json:"id" db:"id"`
+	UserID             uuid.UUID  `json:"user_id" db:"user_id"`
+	TokenHash          string     `json:"-" db:"token_hash"`
+	ExpiresAt          time.Time  `json:"expires_at" db:"expires_at"`
+	CodeHash           *string    `json:"-" db:"code_hash"`
+	CodeExpiresAt      *time.Time `json:"code_expires_at,omitempty" db:"code_expires_at"`
+	CodeFailedAttempts int        `json:"code_failed_attempts" db:"code_failed_attempts"`
+	CodeFailedTotal    int        `json:"code_failed_total" db:"code_failed_total"`
+	LastResentAt       *time.Time `json:"last_resent_at,omitempty" db:"last_resent_at"`
+	CreatedAt          time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// ActivationCredentials is the plaintext credential pair produced by one
+// issuance. Both values exist only at the controlled delivery boundary and
+// must never be logged, audited, traced, or persisted.
+type ActivationCredentials struct {
+	// LinkToken is the high-entropy bearer credential embedded in the
+	// emailed confirmation link.
+	LinkToken string
+
+	// Code is the independent short manual confirmation code.
+	Code string
+}
+
+// ActivationCodePolicy carries the operational limits applied to manual
+// confirmation-code verification. Values are supplied by validated service
+// configuration rather than hard-coded here.
+type ActivationCodePolicy struct {
+	// MaxAttempts is the number of failed attempts allowed against one issued
+	// code before that code is discarded.
+	MaxAttempts int
+
+	// MaxTotalFailures is the number of failed attempts allowed across all
+	// codes issued to one pending account (reissue does not reset it). Once
+	// reached, code verification is unavailable for that pending record; the
+	// emailed link continues to work.
+	MaxTotalFailures int
 }
 
 // ActivationTokenModel owns persistence for activation_tokens.
@@ -90,51 +144,84 @@ func hashActivationToken(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// CreateActivationTokenTx generates and persists an activation token for userID
-// within a caller-owned transaction.
+// activationCodeHashDomain separates manual-code hashes from every other
+// hashed credential in the platform.
+const activationCodeHashDomain = "sagrenti:activation-code:v1"
+
+// hashActivationCode returns the protected hash of a manual confirmation code
+// bound to its owning account.
+//
+// Binding the user ID into the hash means a stored code hash is meaningful
+// only for its own account, and lookup is always by user_id rather than by a
+// low-entropy code value. A six-digit code is not secret against offline
+// guessing if this hash leaks; its protection is the short lifetime, the
+// per-code and per-record attempt limits, and the account binding.
+func hashActivationCode(userID uuid.UUID, code string) string {
+	sum := sha256.Sum256(
+		[]byte(activationCodeHashDomain + ":" + userID.String() + ":" + code),
+	)
+	return hex.EncodeToString(sum[:])
+}
+
+// CreateActivationCredentialsTx generates and persists a fresh activation
+// credential pair for userID within a caller-owned transaction: a high-entropy
+// link token and an independently generated manual confirmation code.
 //
 // The caller must establish through UserModel, within the same transaction,
 // that userID is eligible to receive an activation credential. This method does
 // not inspect users and does not decide activation eligibility.
 //
-// validFor is an operational input supplied by the owning workflow/service.
-// The database remains authoritative for persisted lifecycle time: expires_at
-// is calculated from PostgreSQL NOW(), not from an application clock.
+// Reissue replaces both credentials on the account's single pending record, so
+// any previously issued link token or code stops working immediately. The
+// per-code failure counter resets with the new code; code_failed_total is
+// deliberately preserved so repeated reissue cannot mint unlimited guesses.
 //
-// Only the protected token hash is persisted. The plaintext token is returned
+// markResent records this issuance as a public resend (last_resent_at =
+// NOW()) for the resend cooldown. Signup and trusted internal issuance pass
+// false and leave any previous resend time unchanged.
+//
+// linkValidFor and codeValidFor are operational inputs supplied by the owning
+// workflow/service. PostgreSQL owns persisted lifecycle time: both expiries are
+// calculated from NOW(), and the code never outlives the link.
+//
+// Only protected hashes are persisted. The plaintext credentials are returned
 // once to the caller for controlled delivery.
-func (m *ActivationTokenModel) CreateActivationTokenTx(
+func (m *ActivationTokenModel) CreateActivationCredentialsTx(
 	ctx context.Context,
 	tx pgx.Tx,
 	userID uuid.UUID,
-	validFor time.Duration,
-) (string, error) {
+	linkValidFor time.Duration,
+	codeValidFor time.Duration,
+	markResent bool,
+) (ActivationCredentials, error) {
+	var none ActivationCredentials
+
 	logger := m.Logger.
 		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("CreateActivationTokenTx")
+		WithFunctionName("CreateActivationCredentialsTx")
 
 	if tx == nil {
 		err := errors.New("transaction is required")
 		logger.Error("validation failed", "error", err)
-		return "", err
+		return none, err
 	}
 
 	if userID == uuid.Nil {
 		err := errors.New("user ID is required")
 		logger.Error("validation failed", "error", err)
-		return "", err
+		return none, err
 	}
 
-	if validFor <= 0 {
+	if linkValidFor <= 0 || codeValidFor <= 0 {
 		err := errors.New(
-			"activation token validity duration must be positive",
+			"activation credential validity durations must be positive",
 		)
 		logger.Error(
 			"validation failed",
 			"error", err,
 			"user_id", userID,
 		)
-		return "", err
+		return none, err
 	}
 
 	plainToken, err := security.GenerateRandomToken(32)
@@ -144,63 +231,370 @@ func (m *ActivationTokenModel) CreateActivationTokenTx(
 			"error", err,
 			"user_id", userID,
 		)
-		return "", fmt.Errorf(
+		return none, fmt.Errorf(
 			"generate activation token: %w",
 			err,
 		)
 	}
 
-	tokenHash := hashActivationToken(plainToken)
+	plainCode, err := security.GenerateNumericCode(
+		security.ActivationCodeDigits,
+	)
+	if err != nil {
+		logger.Error(
+			"activation code generation failed",
+			"error", err,
+			"user_id", userID,
+		)
+		return none, fmt.Errorf(
+			"generate activation code: %w",
+			err,
+		)
+	}
 
-	// PostgreSQL owns the persisted expiry timestamp. The duration is supplied
-	// by the workflow rather than hard-coded here as operational policy.
+	tokenHash := hashActivationToken(plainToken)
+	codeHash := hashActivationCode(userID, plainCode)
+
+	// PostgreSQL owns the persisted expiry timestamps. The durations are
+	// supplied by the workflow rather than hard-coded here as policy.
 	const query = `
 		INSERT INTO activation_tokens (
 			user_id,
 			token_hash,
 			expires_at,
+			code_hash,
+			code_expires_at,
+			code_failed_attempts,
+			code_failed_total,
+			last_resent_at,
 			updated_at
 		)
 		VALUES (
 			$1,
 			$2,
 			NOW() + make_interval(secs => $3),
+			$4,
+			NOW() + make_interval(secs => LEAST($3, $5)),
+			0,
+			0,
+			CASE WHEN $6 THEN NOW() ELSE NULL END,
 			NOW()
 		)
 		ON CONFLICT (user_id) DO UPDATE
 		SET token_hash = EXCLUDED.token_hash,
 			expires_at = EXCLUDED.expires_at,
+			code_hash = EXCLUDED.code_hash,
+			code_expires_at = EXCLUDED.code_expires_at,
+			code_failed_attempts = 0,
+			code_failed_total = activation_tokens.code_failed_total,
+			last_resent_at = CASE
+				WHEN $6 THEN NOW()
+				ELSE activation_tokens.last_resent_at
+			END,
 			updated_at = NOW()
-		RETURNING expires_at
+		RETURNING expires_at, code_expires_at
 	`
 
-	var expiresAt time.Time
+	var (
+		expiresAt     time.Time
+		codeExpiresAt time.Time
+	)
 
 	if err := tx.QueryRow(
 		ctx,
 		query,
 		userID,
 		tokenHash,
-		validFor.Seconds(),
-	).Scan(&expiresAt); err != nil {
+		linkValidFor.Seconds(),
+		codeHash,
+		codeValidFor.Seconds(),
+		markResent,
+	).Scan(&expiresAt, &codeExpiresAt); err != nil {
 		logger.Error(
-			"activation token persistence failed",
+			"activation credential persistence failed",
 			"error", err,
 			"user_id", userID,
 		)
-		return "", fmt.Errorf(
-			"persist activation token: %w",
+		return none, fmt.Errorf(
+			"persist activation credentials: %w",
 			err,
 		)
 	}
 
 	logger.Info(
-		"activation token created",
+		"activation credentials created",
 		"user_id", userID,
 		"expires_at", expiresAt,
+		"code_expires_at", codeExpiresAt,
 	)
 
-	return plainToken, nil
+	return ActivationCredentials{
+		LinkToken: plainToken,
+		Code:      plainCode,
+	}, nil
+}
+
+// ActivationResentWithinTx reports whether userID's pending activation record
+// was last reissued by a public resend less than window ago, using PostgreSQL
+// time.
+//
+// It supports the resend cooldown. Signup issuance does not count, so the
+// first resend after signup (for example when the signup email could not be
+// delivered) always proceeds. A missing record reports false. The
+// caller must already hold the canonical users row lock so this read cannot
+// race a concurrent issuance outside the users-before-activation_tokens order.
+func (m *ActivationTokenModel) ActivationResentWithinTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	userID uuid.UUID,
+	window time.Duration,
+) (bool, error) {
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("ActivationResentWithinTx")
+
+	if tx == nil {
+		err := errors.New("transaction is required")
+		logger.Error("validation failed", "error", err)
+		return false, err
+	}
+
+	if userID == uuid.Nil {
+		return false, errors.New("user ID is required")
+	}
+
+	if window <= 0 {
+		return false, nil
+	}
+
+	const query = `
+		SELECT COALESCE(last_resent_at > NOW() - make_interval(secs => $2), FALSE)
+		FROM activation_tokens
+		WHERE user_id = $1
+	`
+
+	var recent bool
+
+	if err := tx.QueryRow(
+		ctx,
+		query,
+		userID,
+		window.Seconds(),
+	).Scan(&recent); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+
+		logger.Error(
+			"activation issuance recency lookup failed",
+			"error", err,
+			"user_id", userID,
+		)
+
+		return false, fmt.Errorf(
+			"lookup activation issuance recency: %w",
+			err,
+		)
+	}
+
+	return recent, nil
+}
+
+// VerifyActivationCodeTx locks userID's pending activation record and checks
+// plainCode against its current manual confirmation code within a
+// caller-owned transaction.
+//
+// The caller must already hold the canonical users row lock for userID
+// (users before activation_tokens).
+//
+// On success the exact activation-record ID is returned so the workflow can
+// perform the lifecycle transition and consume the record, which also
+// invalidates the link token.
+//
+// On a wrong code the failure counters are incremented in the same
+// transaction, and the current code is discarded once the per-code or
+// per-record limit is reached. The caller MUST commit the transaction after a
+// counted failure (ErrActivationCodeInvalid or ErrActivationCodeAttemptsExceeded
+// returned from a mismatch); rolling back would erase the attempt and defeat
+// the limit.
+//
+// The plaintext code is never logged or persisted.
+func (m *ActivationTokenModel) VerifyActivationCodeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	userID uuid.UUID,
+	plainCode string,
+	policy ActivationCodePolicy,
+) (uuid.UUID, error) {
+	logger := m.Logger.
+		GetLoggerWithContextFromContext(ctx).
+		WithFunctionName("VerifyActivationCodeTx")
+
+	if tx == nil {
+		err := errors.New("transaction is required")
+		logger.Error("validation failed", "error", err)
+		return uuid.Nil, err
+	}
+
+	if userID == uuid.Nil {
+		return uuid.Nil, errors.New("user ID is required")
+	}
+
+	if plainCode == "" {
+		return uuid.Nil, ErrActivationCodeRequired
+	}
+
+	if policy.MaxAttempts <= 0 || policy.MaxTotalFailures <= 0 {
+		return uuid.Nil, errors.New(
+			"activation code policy limits must be positive",
+		)
+	}
+
+	const lockQuery = `
+		SELECT
+			id,
+			code_hash,
+			code_expires_at IS NOT NULL AND code_expires_at <= NOW() AS code_expired,
+			code_failed_attempts,
+			code_failed_total
+		FROM activation_tokens
+		WHERE user_id = $1
+		FOR UPDATE
+	`
+
+	var (
+		recordID       uuid.UUID
+		storedCodeHash *string
+		codeExpired    bool
+		failedAttempts int
+		failedTotal    int
+	)
+
+	if err := tx.QueryRow(
+		ctx,
+		lockQuery,
+		userID,
+	).Scan(
+		&recordID,
+		&storedCodeHash,
+		&codeExpired,
+		&failedAttempts,
+		&failedTotal,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrActivationCodeInvalid
+		}
+
+		logger.Error(
+			"activation code record lock failed",
+			"error", err,
+			"user_id", userID,
+		)
+
+		return uuid.Nil, fmt.Errorf(
+			"lock activation code record: %w",
+			err,
+		)
+	}
+
+	if storedCodeHash == nil {
+		return uuid.Nil, ErrActivationCodeInvalid
+	}
+
+	if failedTotal >= policy.MaxTotalFailures {
+		if err := m.discardActivationCodeTx(ctx, tx, recordID); err != nil {
+			return uuid.Nil, err
+		}
+		return uuid.Nil, ErrActivationCodeAttemptsExceeded
+	}
+
+	if codeExpired {
+		return uuid.Nil, ErrActivationCodeExpired
+	}
+
+	presentedHash := hashActivationCode(userID, plainCode)
+
+	if subtle.ConstantTimeCompare(
+		[]byte(presentedHash),
+		[]byte(*storedCodeHash),
+	) == 1 {
+		return recordID, nil
+	}
+
+	nextAttempts := failedAttempts + 1
+	nextTotal := failedTotal + 1
+	exhausted := nextAttempts >= policy.MaxAttempts ||
+		nextTotal >= policy.MaxTotalFailures
+
+	const failQuery = `
+		UPDATE activation_tokens
+		SET code_failed_attempts = $2,
+			code_failed_total = $3,
+			code_hash = CASE WHEN $4 THEN NULL ELSE code_hash END,
+			code_expires_at = CASE WHEN $4 THEN NULL ELSE code_expires_at END,
+			updated_at = NOW()
+		WHERE id = $1
+	`
+
+	if _, err := tx.Exec(
+		ctx,
+		failQuery,
+		recordID,
+		nextAttempts,
+		nextTotal,
+		exhausted,
+	); err != nil {
+		logger.Error(
+			"activation code failure recording failed",
+			"error", err,
+			"user_id", userID,
+		)
+
+		return uuid.Nil, fmt.Errorf(
+			"record activation code failure: %w",
+			err,
+		)
+	}
+
+	logger.Warn(
+		"activation code mismatch",
+		"user_id", userID,
+		"code_failed_attempts", nextAttempts,
+		"code_failed_total", nextTotal,
+		"code_discarded", exhausted,
+	)
+
+	if exhausted {
+		return uuid.Nil, ErrActivationCodeAttemptsExceeded
+	}
+
+	return uuid.Nil, ErrActivationCodeInvalid
+}
+
+// discardActivationCodeTx removes the current manual code from a locked
+// activation record without touching the link token.
+func (m *ActivationTokenModel) discardActivationCodeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	recordID uuid.UUID,
+) error {
+	const query = `
+		UPDATE activation_tokens
+		SET code_hash = NULL,
+			code_expires_at = NULL,
+			updated_at = NOW()
+		WHERE id = $1
+		  AND code_hash IS NOT NULL
+	`
+
+	if _, err := tx.Exec(ctx, query, recordID); err != nil {
+		return fmt.Errorf(
+			"discard activation code: %w",
+			err,
+		)
+	}
+
+	return nil
 }
 
 // LookupActivationTokenOwnerTx returns the canonical user ID currently

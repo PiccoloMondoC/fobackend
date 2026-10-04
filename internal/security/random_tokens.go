@@ -3,27 +3,29 @@
 // focodebase/fobackend/internal/security/random_tokens.go
 //
 // GTM:
-//   Layer: 2.2 Identity / Auth Domain
-//   Release Class: SPINE
-//   Reason:
-//     Secure random token generation is release-critical authentication
-//     infrastructure. It supports activation tokens, password reset tokens,
-//     verification flows, one-time credential material, refresh tokens, and
-//     other security boundaries required by the initial Platform release
-//     spine.
+//
+//	Layer: 2.2 Identity / Auth Domain
+//	Release Class: SPINE
+//	Reason:
+//	  Secure random token generation is release-critical authentication
+//	  infrastructure. It supports activation tokens, password reset tokens,
+//	  verification flows, one-time credential material, refresh tokens, and
+//	  other security boundaries required by the initial Platform release
+//	  spine.
 //
 // SPINE Rule:
-//   Keep compiling.
-//   Keep production-ready.
-//   Preserve crypto/rand-backed token generation.
-//   Preserve URL-safe token encoding.
-//   Preserve caller-controlled token length behavior with a security-owned
-//   minimum entropy floor.
-//   Preserve canonical token-size constants for known auth workflows.
-//   Preserve error surfacing from entropy generation.
-//   Block deployment if this file breaks build, random token generation,
-//   activation-token creation, password-reset token creation,
-//   refresh-token creation, or authentication integrity.
+//
+//	Keep compiling.
+//	Keep production-ready.
+//	Preserve crypto/rand-backed token generation.
+//	Preserve URL-safe token encoding.
+//	Preserve caller-controlled token length behavior with a security-owned
+//	minimum entropy floor.
+//	Preserve canonical token-size constants for known auth workflows.
+//	Preserve error surfacing from entropy generation.
+//	Block deployment if this file breaks build, random token generation,
+//	activation-token creation, password-reset token creation,
+//	refresh-token creation, or authentication integrity.
 package security
 
 import (
@@ -32,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 )
 
 const (
@@ -56,6 +59,17 @@ const (
 	// 33 raw entropy bytes, encodes them to 44 URL-safe base64 characters, and
 	// returns the first 43 characters.
 	PasswordResetTokenSize = 43
+
+	// ActivationCodeDigits is the canonical length of the short manual
+	// email-confirmation code. It is a separate, independently generated
+	// credential from the high-entropy activation link token and is only
+	// acceptable because its use is short-lived, attempt-limited, and bound to
+	// one pending account.
+	ActivationCodeDigits = 6
+
+	// minNumericCodeDigits and maxNumericCodeDigits bound GenerateNumericCode.
+	minNumericCodeDigits = 6
+	maxNumericCodeDigits = 10
 )
 
 var (
@@ -72,6 +86,10 @@ var (
 	// entropy from crypto/rand. Callers may wrap or map this error at service or
 	// API boundaries, but the low-level security package owns the sentinel.
 	ErrRandomTokenGenerationFailed = errors.New("security: random token generation failed")
+
+	// ErrInvalidNumericCodeLength reports a numeric-code length outside the
+	// security-owned bounds.
+	ErrInvalidNumericCodeLength = errors.New("security: numeric code length is out of bounds")
 )
 
 // GenerateRandomToken generates URL-safe cryptographic bearer material with the
@@ -137,4 +155,35 @@ func GenerateRefreshToken() (string, error) {
 // bytes.
 func rawBytesForBase64Length(encodedLength int) int {
 	return (encodedLength*6 + 7) / 8
+}
+
+// GenerateNumericCode returns a uniformly distributed decimal code of exactly
+// digits characters, including leading zeros, drawn from crypto/rand.
+//
+// A numeric code is low-entropy by design. It must never be used as a bearer
+// credential on its own: callers must bind it to one account, store only a
+// protected hash, keep it short-lived, and enforce strict attempt limits.
+func GenerateNumericCode(digits int) (string, error) {
+	if digits < minNumericCodeDigits || digits > maxNumericCodeDigits {
+		return "", fmt.Errorf(
+			"%w: got %d, want %d..%d",
+			ErrInvalidNumericCodeLength,
+			digits,
+			minNumericCodeDigits,
+			maxNumericCodeDigits,
+		)
+	}
+
+	upper := big.NewInt(1)
+	ten := big.NewInt(10)
+	for i := 0; i < digits; i++ {
+		upper.Mul(upper, ten)
+	}
+
+	n, err := rand.Int(rand.Reader, upper)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrRandomTokenGenerationFailed, err)
+	}
+
+	return fmt.Sprintf("%0*d", digits, n.Int64()), nil
 }

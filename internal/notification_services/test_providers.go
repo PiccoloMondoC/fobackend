@@ -44,7 +44,9 @@ type EmailMessage struct {
 	To      string
 	Subject string
 	Body    string
-	SentAt  time.Time
+	// HTMLBody is set for messages that carry an HTML alternative.
+	HTMLBody string
+	SentAt   time.Time
 }
 
 type SMSMessage struct {
@@ -111,9 +113,13 @@ func (s *TestEmailService) SendEmailContext(ctx context.Context, to, subject, bo
 	return nil
 }
 
-func (s *TestEmailService) SendActivationEmailContext(
+// SendEmailConfirmationContext composes the confirmation message through the
+// shared composer and captures it, so tests observe exactly what a real
+// provider would be handed.
+func (s *TestEmailService) SendEmailConfirmationContext(
 	ctx context.Context,
-	toEmail, activationURL string,
+	toEmail string,
+	content EmailConfirmationContent,
 ) error {
 	if ctx == nil {
 		return context.Canceled
@@ -126,29 +132,22 @@ func (s *TestEmailService) SendActivationEmailContext(
 	if err != nil {
 		return fmt.Errorf("test email service: %w", err)
 	}
-	validatedURL, err := ValidateActivationURLWithPolicy(activationURL, s.policy)
-	if err != nil {
-		return fmt.Errorf("test email service: %w", err)
-	}
 
-	subject, err := ValidateEmailSubject("Activate your account")
-	if err != nil {
-		return fmt.Errorf("test email service: %w", err)
-	}
-	body, err := ValidateEmailBody(fmt.Sprintf("Activate your account: %s", validatedURL))
+	message, err := ComposeEmailConfirmationEmail(content, s.policy)
 	if err != nil {
 		return fmt.Errorf("test email service: %w", err)
 	}
 
 	s.record(EmailMessage{
-		To:      addr,
-		Subject: subject,
-		Body:    body,
-		SentAt:  timeutil.Now(),
+		To:       addr,
+		Subject:  message.Subject,
+		Body:     message.Text,
+		HTMLBody: message.HTML,
+		SentAt:   timeutil.Now(),
 	})
 
 	if s.logger != nil {
-		s.logger.Info("activation email captured",
+		s.logger.Info("email confirmation captured",
 			"component", LogComponentNotificationEmailTest,
 			"flow", FlowAccountActivation,
 		)

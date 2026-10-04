@@ -215,36 +215,26 @@ func (app *Application) SignupUserHandler(
 	activationDelivery := "pending"
 
 	if result.ActivationToken != "" {
-		activationURL, urlErr := buildActivationURL(
-			app.Config.Bootstrap.BaseURL,
-			result.ActivationToken,
-			app.credentialLinkURLPolicy(),
-		)
-		if urlErr == nil {
-			contact := &data.UserContactInfo{
-				Email: input.Email,
-			}
+		contact := &data.UserContactInfo{
+			Email: input.Email,
+		}
 
-			_, sendErr := app.sendActivationNotification(
-				ctx,
-				result.UserID,
-				contact,
-				activationURL,
-			)
-			if sendErr == nil {
-				activationDelivery = "sent"
-			} else {
-				logger.Warn(
-					"signup completed but activation delivery failed",
-					"user_id", result.UserID,
-					"error", sendErr,
-				)
-			}
+		_, sendErr := app.sendActivationNotification(
+			ctx,
+			result.UserID,
+			contact,
+			data.ActivationCredentials{
+				LinkToken: result.ActivationToken,
+				Code:      result.ActivationCode,
+			},
+		)
+		if sendErr == nil {
+			activationDelivery = "sent"
 		} else {
-			logger.Error(
-				"signup completed but activation URL construction failed",
+			logger.Warn(
+				"signup completed but confirmation email delivery failed",
 				"user_id", result.UserID,
-				"error", urlErr,
+				"error", sendErr,
 			)
 		}
 	}
@@ -270,7 +260,7 @@ func (app *Application) SignupUserHandler(
 		http.StatusCreated,
 		jsonResponse{
 			Error:   false,
-			Message: "Account created successfully; activation is required",
+			Message: "Account created successfully; email confirmation is required",
 			Data: struct {
 				UserID             uuid.UUID `json:"user_id"`
 				ActivationRequired bool      `json:"activation_required"`

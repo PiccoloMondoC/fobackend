@@ -1,3 +1,4 @@
+// focodebase/fobackend/internal/notification_services/email/smtp_provider_test.go
 package email
 
 import (

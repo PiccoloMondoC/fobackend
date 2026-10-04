@@ -93,6 +93,11 @@ type SignupUserInput struct {
 type SignupUserResult struct {
 	UserID          uuid.UUID
 	ActivationToken string
+
+	// ActivationCode is the independent manual email-confirmation code issued
+	// alongside ActivationToken. Same handling rules: plaintext only at the
+	// controlled delivery boundary; never logged, audited, traced, or persisted.
+	ActivationCode string
 }
 
 // UserSession contains the bearer credentials returned by successful
@@ -279,7 +284,11 @@ func (s *Service) SignupUserInternal(
 
 	// Activation owns this second transaction. Do not widen the signup
 	// transaction around activation-token generation.
-	token, err := s.IssueUserActivationTokenInternal(ctx, userID)
+	credentials, err := s.IssueUserEmailConfirmationInternal(
+		ctx,
+		userID,
+		IssueEmailConfirmationOptions{},
+	)
 	if err != nil {
 		logger.Warn(
 			"user account created but activation initialization failed",
@@ -294,7 +303,8 @@ func (s *Service) SignupUserInternal(
 		)
 	}
 
-	result.ActivationToken = token
+	result.ActivationToken = credentials.LinkToken
+	result.ActivationCode = credentials.Code
 
 	logger.Info(
 		"user signup completed",

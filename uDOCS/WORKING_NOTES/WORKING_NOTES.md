@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "update backend files for frontend live authentication all layers"
+git commit -m "implement email confirmation all layers"
 git push
 
 | data layer | handler layer | service layer |

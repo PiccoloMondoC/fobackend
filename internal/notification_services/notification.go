@@ -95,9 +95,17 @@ type SendOptions struct {
 
 // EmailSender is the application-facing, context-aware contract for outbound
 // email delivery.
+//
+// SendEmailConfirmationContext is the only account-activation (email
+// confirmation) delivery path. It sends the message composed by
+// ComposeEmailConfirmationEmail: an HTML confirmation button carrying the
+// link token in its href, and a link-free plain-text alternative carrying the
+// confirmation page and the six-digit code. The former link-only
+// SendActivationEmailContext was removed because a link-only plain-text email
+// would have to expose the raw token as visible copy.
 type EmailSender interface {
 	SendEmailContext(ctx context.Context, to, subject, body string) error
-	SendActivationEmailContext(ctx context.Context, toEmail, activationURL string) error
+	SendEmailConfirmationContext(ctx context.Context, toEmail string, content EmailConfirmationContent) error
 }
 
 // SMSSender is the application-facing, context-aware, options-aware contract

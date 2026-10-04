@@ -185,7 +185,7 @@ func TestBuildCredentialLinkURLPlacesEncodedTokenOnPath(t *testing.T) {
 	}
 }
 
-func TestBuildActivationURLUsesActivationPath(t *testing.T) {
+func TestBuildActivationURLUsesConfirmEmailPath(t *testing.T) {
 	t.Parallel()
 
 	got, err := buildActivationURL(
@@ -196,8 +196,8 @@ func TestBuildActivationURLUsesActivationPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasPrefix(got, "https://app.sagrenti.example/activate?") {
-		t.Errorf("activation URL = %q", got)
+	if !strings.HasPrefix(got, "https://app.sagrenti.example/confirm-email?") {
+		t.Errorf("confirmation URL = %q", got)
 	}
 }
 

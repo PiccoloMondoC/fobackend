@@ -341,8 +341,10 @@ func (app *Application) deliverPasswordReset(
 	email string,
 	resetToken string,
 ) {
+	// Reset links open the Angular /reset-password page, so they are built
+	// from the authoritative browser origin, not the API BaseURL.
 	resetURL, err := buildCredentialLinkURL(
-		app.Config.Bootstrap.BaseURL,
+		app.frontendBaseURL(),
 		passwordResetPath,
 		resetToken,
 		app.credentialLinkURLPolicy(),

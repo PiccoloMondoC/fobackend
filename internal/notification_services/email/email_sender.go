@@ -15,7 +15,9 @@
 //	Keep compiling.
 //	Keep production-ready.
 //	Preserve centralized outbound email boundary.
-//	Preserve activation-email delivery path.
+//	Preserve the activation (email-confirmation) delivery path.
+//	Preserve the email-confirmation message as multipart text + HTML composed
+//	only by notificationservices.ComposeEmailConfirmationEmail.
 //	Preserve provider-agnostic service abstraction.
 //	Preserve reuse of root notification validators.
 //	Preserve explicit activation URL policy injection.
@@ -33,7 +35,9 @@ import (
 	notificationservices "github.com/PiccoloMondoC/focodebase/fobackend/internal/notification_services"
 )
 
-const activationEmailSubject = "Activate Your Account"
+// activationEmailSubject is the subject of the account-activation message,
+// presented to users as email confirmation.
+const activationEmailSubject = notificationservices.EmailConfirmationSubject
 
 var (
 	ErrNilContext                 = errors.New("email: context must not be nil")
@@ -44,11 +48,15 @@ var (
 )
 
 // Message is the canonical provider-neutral outbound email payload.
+//
+// Body is the plain-text part. HTMLBody is optional; when set, the message is
+// sent as multipart/alternative with Body as the text alternative.
 type Message struct {
-	From    string
-	To      string
-	Subject string
-	Body    string
+	From     string
+	To       string
+	Subject  string
+	Body     string
+	HTMLBody string
 }
 
 // Provider is implemented by concrete delivery transports.
@@ -96,6 +104,11 @@ func (e *EmailService) SendEmail(to, subject, body string) error {
 
 // SendEmailContext validates and sends a provider-neutral email message.
 func (e *EmailService) SendEmailContext(ctx context.Context, to, subject, body string) error {
+	return e.send(ctx, to, subject, body, "")
+}
+
+// send validates and delivers a message with an optional HTML alternative.
+func (e *EmailService) send(ctx context.Context, to, subject, body, htmlBody string) error {
 	if ctx == nil {
 		return ErrNilContext
 	}
@@ -121,11 +134,18 @@ func (e *EmailService) SendEmailContext(ctx context.Context, to, subject, body s
 		return err
 	}
 
+	if htmlBody != "" {
+		if htmlBody, err = notificationservices.ValidateEmailBody(htmlBody); err != nil {
+			return err
+		}
+	}
+
 	msg := Message{
-		From:    e.defaultFrom,
-		To:      recipient,
-		Subject: validSubject,
-		Body:    validBody,
+		From:     e.defaultFrom,
+		To:       recipient,
+		Subject:  validSubject,
+		Body:     validBody,
+		HTMLBody: htmlBody,
 	}
 
 	if err := e.provider.Send(ctx, msg); err != nil {
@@ -135,14 +155,15 @@ func (e *EmailService) SendEmailContext(ctx context.Context, to, subject, body s
 	return nil
 }
 
-// SendActivationEmail preserves the legacy activation-email path.
-func (e *EmailService) SendActivationEmail(toEmail, activationURL string) error {
-	return e.SendActivationEmailContext(context.Background(), toEmail, activationURL)
-}
-
-// SendActivationEmailContext validates and sends an account-activation email.
-// The activation URL is never logged by this package.
-func (e *EmailService) SendActivationEmailContext(ctx context.Context, toEmail, activationURL string) error {
+// SendEmailConfirmationContext composes and sends the email-confirmation
+// message as multipart text + HTML. The raw link token appears only in the
+// HTML button href; the text part is link-free. URLs and code are never
+// logged.
+func (e *EmailService) SendEmailConfirmationContext(
+	ctx context.Context,
+	toEmail string,
+	content notificationservices.EmailConfirmationContent,
+) error {
 	if ctx == nil {
 		return ErrNilContext
 	}
@@ -150,20 +171,12 @@ func (e *EmailService) SendActivationEmailContext(ctx context.Context, toEmail, 
 		return ErrEmailProviderNotConfigured
 	}
 
-	validatedURL, err := notificationservices.ValidateActivationURLWithPolicy(
-		activationURL,
-		e.policy,
-	)
+	message, err := notificationservices.ComposeEmailConfirmationEmail(content, e.policy)
 	if err != nil {
 		return ErrInvalidActivationURL
 	}
 
-	body := fmt.Sprintf(
-		"Click the link below to activate your Sagrenti account:\n\n%s\n\nIf you did not request this account, you can ignore this email.",
-		validatedURL,
-	)
-
-	return e.SendEmailContext(ctx, toEmail, activationEmailSubject, body)
+	return e.send(ctx, toEmail, message.Subject, message.Text, message.HTML)
 }
 
 func normalizeSenderEmail(value string) (string, error) {

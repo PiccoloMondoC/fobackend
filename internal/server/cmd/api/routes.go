@@ -65,12 +65,10 @@ func (app *Application) Routes() http.Handler {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	var allowedOrigins []string
-	if isDevelopmentEnvironment(app.Config.Bootstrap.Env) {
-		allowedOrigins = []string{"http://localhost:4200"}
-	} else {
-		allowedOrigins = []string{"https://your-production-domain.com"}
-	}
+	// FRONTEND_URL is the canonical browser origin for both emailed browser
+	// links and credentialed CORS. Bootstrap validates it before the API starts,
+	// so routing never carries an independent development/production origin.
+	allowedOrigins := []string{app.Config.Bootstrap.FrontendURL}
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: allowedOrigins,
@@ -143,6 +141,19 @@ func (app *Application) Routes() http.Handler {
 		app.registerPublic(
 			"POST",
 			"/api/v1/user/activation/resend",
+		)
+
+		// Manual email confirmation by six-digit code. Public, rate-limited,
+		// and non-enumerating; per-code and per-account failure limits are
+		// enforced authoritatively in the service/data layers.
+		v1.With(app.RateLimitMiddleware).
+			Post(
+				"/user/activation/confirm-code",
+				app.ConfirmEmailCodeHandler,
+			)
+		app.registerPublic(
+			"POST",
+			"/api/v1/user/activation/confirm-code",
 		)
 
 		v1.With(app.AuthMiddleware).

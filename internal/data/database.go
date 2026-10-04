@@ -493,13 +493,33 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		ON oauth_login_states(state_hash, expires_at)
 		WHERE consumed_at IS NULL;
 
+	-- One pending email-confirmation record per account. It carries two
+	-- independent credentials for the same pending account:
+	--   token_hash: hash of the high-entropy link token (bearer credential)
+	--   code_hash:  hash of the short manual code, bound to user_id
+	-- Reissue replaces both credentials in place; successful redemption by
+	-- either credential deletes the row, invalidating the other.
+	-- code_failed_attempts counts failures against the current code and is
+	-- reset on reissue; code_failed_total counts failures across reissues and
+	-- is never reset while the row exists, so reissue cannot mint unlimited
+	-- guesses. last_resent_at records the last public resend (not signup
+	-- issuance) for the resend cooldown.
 	CREATE TABLE IF NOT EXISTS activation_tokens (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
 		token_hash TEXT NOT NULL UNIQUE,
 		expires_at TIMESTAMPTZ NOT NULL,
+		code_hash TEXT,
+		code_expires_at TIMESTAMPTZ,
+		code_failed_attempts INTEGER NOT NULL DEFAULT 0
+			CHECK (code_failed_attempts >= 0),
+		code_failed_total INTEGER NOT NULL DEFAULT 0
+			CHECK (code_failed_total >= 0),
+		last_resent_at TIMESTAMPTZ,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		CONSTRAINT activation_tokens_code_pair_chk
+			CHECK ((code_hash IS NULL) = (code_expires_at IS NULL))
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_activation_tokens_expires_at
