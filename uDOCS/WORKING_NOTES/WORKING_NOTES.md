@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "implement email confirmation all layers"
+git commit -m "write auth completion changes, all layers"
 git push
 
 | data layer | handler layer | service layer |
@@ -171,3 +171,9 @@ BEG §18.6D requires that we ask ourselves: Does this implementation unnecessari
 
 
 BEG §27.11 requires us to treat existing implementation is evidence, not authority. If one of your engineers identifies a genuine best-practice correction and independent CE review confirms it, existing code must move—not the engineering standard.
+
+
+CE Quality Preservation Rule
+
+When authoring code, reason through the complete workflow with production-grade care, including lock ordering, concurrency, rollback behavior, error semantics, credential consumption, logging, and session consequences where applicable.
+Filling a missing implementation gap does not justify simplifying away engineering quality already established elsewhere in the codebase. New or replacement code must preserve or improve the existing quality standard, never regress it.

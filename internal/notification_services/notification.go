@@ -106,6 +106,9 @@ type SendOptions struct {
 type EmailSender interface {
 	SendEmailContext(ctx context.Context, to, subject, body string) error
 	SendEmailConfirmationContext(ctx context.Context, toEmail string, content EmailConfirmationContent) error
+	// SendPasswordResetContext composes and sends the password-reset message
+	// (multipart text + HTML). Implementations never log the reset URL.
+	SendPasswordResetContext(ctx context.Context, toEmail string, content PasswordResetContent) error
 }
 
 // SMSSender is the application-facing, context-aware, options-aware contract

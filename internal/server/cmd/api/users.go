@@ -712,8 +712,13 @@ func (app *Application) RefreshTokenHandler(
 // caller's own session, then revokes the presented access token.
 //
 // Refresh-token validation, ownership checking, and revocation are
-// service-owned. Access-token revocation goes through the canonical
-// TokenService JTI-revocation boundary.
+// service-owned. Logout is idempotent at the service boundary: a refresh token
+// that has already ended (revoked, expired, rotated away) is success, so the
+// presented access token is still revoked and the caller is told it is signed
+// out. A 401 from this route therefore only ever means AuthMiddleware rejected
+// the access token, which the client recovers from by refreshing once.
+// Access-token revocation goes through the canonical TokenService
+// JTI-revocation boundary.
 func (app *Application) LogoutHandler(
 	w http.ResponseWriter,
 	r *http.Request,

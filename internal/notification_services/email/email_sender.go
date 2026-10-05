@@ -179,6 +179,29 @@ func (e *EmailService) SendEmailConfirmationContext(
 	return e.send(ctx, toEmail, message.Subject, message.Text, message.HTML)
 }
 
+// SendPasswordResetContext composes and sends the password-reset message as
+// multipart text + HTML. In the HTML part the reset link appears only in the
+// button href. The reset URL is never logged.
+func (e *EmailService) SendPasswordResetContext(
+	ctx context.Context,
+	toEmail string,
+	content notificationservices.PasswordResetContent,
+) error {
+	if ctx == nil {
+		return ErrNilContext
+	}
+	if e == nil || e.provider == nil {
+		return ErrEmailProviderNotConfigured
+	}
+
+	message, err := notificationservices.ComposePasswordResetMessage(content, e.policy)
+	if err != nil {
+		return err
+	}
+
+	return e.send(ctx, toEmail, message.Subject, message.Text, message.HTML)
+}
+
 func normalizeSenderEmail(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" || strings.ContainsAny(value, "\r\n") {

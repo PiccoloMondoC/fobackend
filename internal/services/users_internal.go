@@ -500,6 +500,14 @@ func (s *Service) RefreshUserSessionInternal(
 //
 // Logout uses canonical revocation rather than hard deletion so token lifecycle
 // provenance remains available to the security subsystem.
+//
+// Logout is idempotent. A presented refresh token that is already revoked,
+// expired, consumed by a concurrent rotation, or unknown describes a session
+// that has already ended, so there is nothing left to revoke and the call
+// succeeds. This keeps the HTTP contract unambiguous: a 401 from logout can
+// only mean the access token was rejected by AuthMiddleware, which is exactly
+// the condition the client recovers from by refreshing. A live refresh token
+// that belongs to a different account is still refused.
 func (s *Service) LogoutUserSessionInternal(
 	ctx context.Context,
 	actorUserID uuid.UUID,
@@ -528,7 +536,14 @@ func (s *Service) LogoutUserSessionInternal(
 		plainRefreshToken,
 	)
 	if err != nil {
-		return ErrUsersSessionInvalid
+		if errors.Is(err, data.ErrRefreshTokenInvalid) {
+			// Already ended: nothing to revoke.
+			return nil
+		}
+		return fmt.Errorf(
+			"logout user session: validate refresh token: %w",
+			err,
+		)
 	}
 
 	if token == nil || token.UserID != actorUserID {
@@ -539,6 +554,11 @@ func (s *Service) LogoutUserSessionInternal(
 		ctx,
 		plainRefreshToken,
 	); err != nil {
+		if errors.Is(err, data.ErrRefreshTokenNotFound) {
+			// A concurrent rotation or logout revoked it between the
+			// ownership check and this update. The session is ended.
+			return nil
+		}
 		return fmt.Errorf(
 			"logout user session: revoke refresh token: %w",
 			err,

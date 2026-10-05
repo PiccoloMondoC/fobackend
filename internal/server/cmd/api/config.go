@@ -41,6 +41,7 @@
 package main
 
 import (
+	"sync"
 	"time"
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/auth"
@@ -73,6 +74,10 @@ type Application struct {
 
 	// Tracks public, unauthenticated endpoints for display at "/".
 	publicRoutes *endpointRegistry
+
+	// notifications tracks detached credential-email deliveries so graceful
+	// shutdown can let them finish. See notification_dispatch.go.
+	notifications sync.WaitGroup
 }
 
 type Config struct {

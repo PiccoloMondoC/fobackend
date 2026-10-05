@@ -230,10 +230,18 @@ func TestPasswordResetEmailSurvivesSMTPEncoding(t *testing.T) {
 
 	policy := notificationservices.ActivationURLPolicy{AllowHTTPOnLoopback: true}
 
-	subject, body, err := notificationservices.ComposePasswordResetEmail(resetURL, policy)
+	message, err := notificationservices.ComposePasswordResetMessage(
+		notificationservices.PasswordResetContent{
+			ResetURL: resetURL,
+		},
+		policy,
+	)
 	if err != nil {
 		t.Fatalf("compose reset email: %v", err)
 	}
+
+	subject := message.Subject
+	body := message.HTML
 
 	provider := &recordingProvider{}
 	service := newTestService(t, provider, policy)

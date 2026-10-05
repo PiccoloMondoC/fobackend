@@ -286,13 +286,12 @@ type resendActivationInput struct {
 // notification delivery. Activation-token issuance remains owned by the
 // canonical internal activation service.
 //
-// Known residual risk (tracked for the services/infrastructure layer, not
-// fixable here): this handler does materially more work — a database write
-// plus a synchronous outbound notification-provider call — when the account
-// exists and is inactive than when it does not, which creates a timing
-// side-channel even though the response body is always identical. Moving
-// delivery onto the durable async/outbox foundation would close this gap and
-// should be revisited there. Per-caller rate limiting is also IP-scoped only
+// Timing: email delivery runs detached from the request (see
+// notification_dispatch.go), so the outbound provider call no longer makes
+// existing inactive accounts measurably slower. A small residual difference
+// remains from the credential-issuance database write, which must commit
+// before the response so replacement invalidation is never lost. A durable
+// outbox would remove even that and remains the long-term home. Per-caller rate limiting is also IP-scoped only
 // (see RateLimitMiddleware); it does not throttle repeated resend requests
 // against the same target email from different source IPs. A per-account
 // issuance cooldown (ACTIVATION_RESEND_COOLDOWN) is enforced by
@@ -372,22 +371,30 @@ func (app *Application) ResendActivationLinkHandler(
 			// The account was resolved by its canonical email address.
 			// Resend is therefore deliberately email-addressed and does not
 			// reinterpret another preferred channel from unauthenticated input.
+			//
+			// The replacement credential is already committed (and the
+			// previous one invalidated). Delivery runs off the request path
+			// so this branch costs about the same time as the no-account
+			// branch; see notification_dispatch.go.
 			contact := &data.UserContactInfo{
 				Email: user.Email,
 			}
+			userID := user.ID
 
-			if _, sendErr := app.sendActivationNotification(
+			app.dispatchCredentialNotification(
 				ctx,
-				user.ID,
-				contact,
-				credentials,
-			); sendErr != nil {
-				logger.Warn(
-					"confirmation resend delivery failed",
-					"user_id", user.ID,
-					"error", sendErr,
-				)
-			}
+				logger,
+				notificationservices.FlowAccountActivation,
+				func(deliveryCtx context.Context) error {
+					_, sendErr := app.sendActivationNotification(
+						deliveryCtx,
+						userID,
+						contact,
+						credentials,
+					)
+					return sendErr
+				},
+			)
 		}
 	} else if err != nil &&
 		!errors.Is(err, data.ErrUserNotFound) &&

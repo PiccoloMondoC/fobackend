@@ -29,6 +29,7 @@ package data
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -257,6 +258,30 @@ func (m *TokenModel) RevokeAllTokens(ctx context.Context, userID uuid.UUID) erro
 	}
 
 	logger.Info("revoke all refresh tokens successful", "user_id", userID, "rows_affected", res.RowsAffected())
+	return nil
+}
+
+// RevokeAllTokensTx revokes every active refresh token for userID inside a
+// caller-owned transaction. Password reset/change use this form so the password
+// mutation and refresh-session invalidation commit or roll back together.
+func (m *TokenModel) RevokeAllTokensTx(ctx context.Context, tx pgx.Tx, userID uuid.UUID) error {
+	if tx == nil {
+		return errors.New("transaction is required")
+	}
+	if userID == uuid.Nil {
+		return errors.New("user ID is required")
+	}
+
+	_, err := tx.Exec(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = NOW()
+		WHERE user_id = $1
+		  AND revoked_at IS NULL
+	`, userID)
+	if err != nil {
+		return fmt.Errorf("revoke all refresh tokens (tx): %w", err)
+	}
+
 	return nil
 }
 

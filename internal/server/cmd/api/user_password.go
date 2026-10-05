@@ -49,6 +49,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -270,7 +271,18 @@ func (app *Application) RequestPasswordResetHandler(
 		)
 		switch {
 		case issueErr == nil:
-			app.deliverPasswordReset(ctx, logger, user.ID, user.Email, token)
+			// The credential is committed (replacing any earlier one).
+			// Delivery runs off the request path so an existing account is
+			// not measurably slower to answer than an unknown address.
+			userID, email := user.ID, user.Email
+			app.dispatchCredentialNotification(
+				ctx,
+				logger,
+				notificationservices.FlowPasswordReset,
+				func(deliveryCtx context.Context) error {
+					return app.deliverPasswordReset(deliveryCtx, userID, email, token)
+				},
+			)
 
 			// Public reset requests are not authenticated actor identity.
 			if auditErr := app.recordUserAudit(
@@ -325,24 +337,17 @@ func (app *Application) RequestPasswordResetHandler(
 	)
 }
 
-// deliverPasswordReset builds the reset link for an issued credential and
-// emails it to the account's canonical stored address.
+// deliverPasswordReset builds the reset link from the authoritative browser
+// origin (FRONTEND_URL, never the API BaseURL) and sends the reset message.
 //
-// Content is composed by the notification package and delivered through the
-// existing EmailSender.SendEmailContext contract. Failures are logged with
-// the account ID only; the credential, URL, and body are never logged.
+// The link carries plaintext bearer material: it is passed straight to the
+// EmailSender and never logged. Errors describe the stage only.
 func (app *Application) deliverPasswordReset(
 	ctx context.Context,
-	logger interface {
-		Warn(msg string, keysAndValues ...interface{})
-		Error(msg string, keysAndValues ...interface{})
-	},
 	userID uuid.UUID,
 	email string,
 	resetToken string,
-) {
-	// Reset links open the Angular /reset-password page, so they are built
-	// from the authoritative browser origin, not the API BaseURL.
+) error {
 	resetURL, err := buildCredentialLinkURL(
 		app.frontendBaseURL(),
 		passwordResetPath,
@@ -350,47 +355,27 @@ func (app *Application) deliverPasswordReset(
 		app.credentialLinkURLPolicy(),
 	)
 	if err != nil {
-		logger.Error(
-			"password reset URL construction failed",
-			"user_id", userID,
-			"error", err,
-		)
-		return
-	}
-
-	subject, body, err := notificationservices.ComposePasswordResetEmail(
-		resetURL,
-		app.credentialLinkURLPolicy(),
-	)
-	if err != nil {
-		logger.Error(
-			"password reset email composition failed",
-			"user_id", userID,
-			"error", err,
-		)
-		return
+		return fmt.Errorf("user %s: build password reset link: %w", userID, err)
 	}
 
 	if app.EmailService == nil {
-		logger.Error(
-			"password reset email service is unavailable",
-			"user_id", userID,
-		)
-		return
+		return fmt.Errorf("user %s: password reset email service is unavailable", userID)
 	}
 
-	if err := app.EmailService.SendEmailContext(
+	content := notificationservices.PasswordResetContent{ResetURL: resetURL}
+	if app.InternalServices != nil && app.InternalServices.Cfg != nil {
+		content.ValidFor = app.InternalServices.Cfg.PasswordResetTokenTTL
+	}
+
+	if err := app.EmailService.SendPasswordResetContext(
 		ctx,
 		strings.TrimSpace(email),
-		subject,
-		body,
+		content,
 	); err != nil {
-		logger.Warn(
-			"password reset delivery failed",
-			"user_id", userID,
-			"error", err,
-		)
+		return fmt.Errorf("user %s: send password reset email: %w", userID, err)
 	}
+
+	return nil
 }
 
 // ResetPasswordHandler redeems a plaintext reset credential and establishes

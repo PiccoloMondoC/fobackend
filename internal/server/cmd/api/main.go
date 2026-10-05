@@ -298,6 +298,12 @@ func main() {
 	} else {
 		logger.Info("server shut down cleanly")
 	}
+
+	// Let detached password-reset and confirmation-resend emails finish
+	// within the same shutdown budget.
+	if !app.WaitForNotifications(shutdownCtx) {
+		logger.Warn("shutdown deadline reached with credential emails still in flight")
+	}
 }
 
 // ───────────────────────────────────────────────────────────────────────────────

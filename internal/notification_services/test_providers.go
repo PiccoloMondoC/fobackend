@@ -155,6 +155,47 @@ func (s *TestEmailService) SendEmailConfirmationContext(
 	return nil
 }
 
+// SendPasswordResetContext composes the password-reset message through the
+// shared composer and captures it.
+func (s *TestEmailService) SendPasswordResetContext(
+	ctx context.Context,
+	toEmail string,
+	content PasswordResetContent,
+) error {
+	if ctx == nil {
+		return context.Canceled
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	addr, err := ValidateEmailAddress(toEmail)
+	if err != nil {
+		return fmt.Errorf("test email service: %w", err)
+	}
+
+	message, err := ComposePasswordResetMessage(content, s.policy)
+	if err != nil {
+		return fmt.Errorf("test email service: %w", err)
+	}
+
+	s.record(EmailMessage{
+		To:       addr,
+		Subject:  message.Subject,
+		Body:     message.Text,
+		HTMLBody: message.HTML,
+		SentAt:   timeutil.Now(),
+	})
+
+	if s.logger != nil {
+		s.logger.Info("password reset email captured",
+			"component", LogComponentNotificationEmailTest,
+			"flow", FlowPasswordReset,
+		)
+	}
+	return nil
+}
+
 func (s *TestEmailService) record(msg EmailMessage) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
