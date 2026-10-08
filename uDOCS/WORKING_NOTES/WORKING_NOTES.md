@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "write auth completion changes, all layers"
+git commit -m "complete administrative identity and governance, all layers"
 git push
 
 | data layer | handler layer | service layer |
@@ -14,6 +14,8 @@ gofmt -w \
   ./internal/services/errors.go \
   ./internal/server/cmd/api/merchant_future_offerings.go
 
+
+cd ../fobackend
 go vet ./internal/data/...
 go vet ./internal/services/...
 go vet ./internal/server/cmd/api/...
@@ -21,6 +23,17 @@ go vet ./internal/server/cmd/api/...
 go test ./internal/data
 go test ./internal/services
 go test ./internal/server/cmd/api
+
+go test ./...
+go test ./...
+go test ./...
+
+docker compose down -v
+docker compose up -d --build
+
+
+cd ../downloads
+zip -r ./input_009/input_009.zip ./input_009
 
 
 ### Vertical Build Strategy
@@ -177,3 +190,7 @@ CE Quality Preservation Rule
 
 When authoring code, reason through the complete workflow with production-grade care, including lock ordering, concurrency, rollback behavior, error semantics, credential consumption, logging, and session consequences where applicable.
 Filling a missing implementation gap does not justify simplifying away engineering quality already established elsewhere in the codebase. New or replacement code must preserve or improve the existing quality standard, never regress it.
+
+
+
+Sagrenti must always have exactly one protected Root Super Admin. Root authority cannot be removed through ordinary administration; it can only be transferred through the governed succession process.

@@ -83,6 +83,23 @@ func (app *Application) respondWithJSON(w http.ResponseWriter, statusCode int, r
 	}
 }
 
+// apiErrorDetail is the data member of a coded error response. Clients branch
+// on Code, never on Message.
+type apiErrorDetail struct {
+	Code string `json:"code"`
+}
+
+// respondWithErrorCode sends the standard error envelope with a stable,
+// machine-readable code in data.code. message must be safe for clients: it
+// must never contain wrapped internal errors or SQL/trigger detail.
+func (app *Application) respondWithErrorCode(w http.ResponseWriter, statusCode int, code, message string) {
+	app.respondWithJSON(w, statusCode, jsonResponse{
+		Error:   true,
+		Message: message,
+		Data:    apiErrorDetail{Code: code},
+	})
+}
+
 // respondWithError wraps an error into the jsonResponse format and sends it as JSON.
 func (app *Application) respondWithError(w http.ResponseWriter, err error, statusCode int) {
 	app.respondWithJSON(w, statusCode, jsonResponse{

@@ -35,6 +35,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+ "net"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,7 +69,7 @@ const ctxMerchantID ctxKey = "merchantID"
 const ctxRoleID ctxKey = "roleID"
 
 // ctxRoleName holds the authenticated user's resolved role name (e.g.
-// "admin", "merchant", "internal_operator"). This is distinct from
+// "super_admin", "admin", "merchant"). This is distinct from
 // ctxRoleID: role identity and role name are different concepts and must not
 // be conflated. AuthMiddleware is the sole writer of this key.
 const ctxRoleName ctxKey = "roleName"
@@ -167,16 +168,16 @@ func (app *Application) RateLimitMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, ok := r.Context().Value(ctxUserID).(uuid.UUID)
 		key := r.RemoteAddr // default = caller IP
+  if host,_,err:=net.SplitHostPort(r.RemoteAddr);err==nil{key=host}
 		if ok && id != uuid.Nil {
 			key = id.String() // user‑specific bucket
 		}
 
 		lim, _ := limiterStore.LoadOrStore(key, NewLimiter())
 		if !lim.(*rate.Limiter).Allow() {
-			if n := trackFailedAttempt(key); n >= 5 {
-				http.Error(w, "rate‑limit exceeded", http.StatusTooManyRequests)
-				return
-			}
+			w.Header().Set("Retry-After","1")
+   http.Error(w,"rate limit exceeded",http.StatusTooManyRequests)
+   return
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -239,6 +240,16 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 			app.serverErrorResponse(logger, w, r, err)
 			return
 		}
+
+  if isInternalRole(role.Name) {
+   gov:=data.NewAdministrativeGovernanceModel(app.Models.DB,app.Logger)
+   rootID,err:=gov.RootUserID(r.Context())
+   if err!=nil{app.serverErrorResponse(logger,w,r,err);return}
+   if rootID==nil {app.respondWithErrorCode(w,http.StatusForbidden,"root_not_established","administrative governance has not been established");return}
+   subject,err:=gov.GetGovernanceSubject(r.Context(),userID)
+   if err!=nil{app.serverErrorResponse(logger,w,r,err);return}
+   if string(subject.ActiveLevel())!=role.Name {app.respondWithErrorCode(w,http.StatusForbidden,"insufficient_authority","administrative standing is not active");return}
+  }
 
 		// 4️⃣  Enrich context. ctxRoleID carries role identity; ctxRoleName
 		// carries the role's display name. These are distinct concepts and
@@ -502,7 +513,7 @@ func (app *Application) GuestSessionMiddleware(next http.Handler) http.Handler {
 
 // RequireInternalRole grants access only to an authenticated internal actor.
 // Internal-role classification is owned exclusively by isInternalRole so that
-// admin, super_admin, and internal_operator semantics cannot drift between
+// super_admin and admin semantics cannot drift between
 // authorization entry points.
 func (app *Application) RequireInternalRole(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -588,7 +599,7 @@ func (app *Application) RequireAuthenticatedUser(next http.Handler) http.Handler
 
 // RequireSelfOrPrivileged blocks the request unless the caller is either:
 //   - the owner of the resource (requesterID == targetID), OR
-//   - an internal user (admin | super_admin | internal_operator) and,
+//   - an administrative user (super_admin | admin) and,
 //     when permission is non-empty, already holds the supplied permission.
 //
 // The "internal actor" classification is not reproduced here: it is owned

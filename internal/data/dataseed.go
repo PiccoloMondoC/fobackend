@@ -46,7 +46,40 @@ type OAuthClientSeedSecrets struct {
 	MobileClientSecret string
 }
 
+// superAdminOnlyPermissionList is the SQL literal list of permissions held by
+// super_admin but never by admin. Hierarchy (Root > Super Admin > Admin) is
+// additionally enforced per target by the governance service; these
+// permissions are the coarse route gate.
+const superAdminOnlyPermissionList = `
+		'appoint_admin',
+		'appoint_super_admin',
+		'demote_administrator',
+		'suspend_administrator',
+		'restore_administrator',
+		'revoke_administrator',
+		'create_role',
+		'update_role',
+		'delete_role',
+		'update_role_permissions'
+	`
+
 const (
+	// ---------------------------------------------------------------
+	// revoke_admin_governance_permissions
+	//
+	// Earlier seeds granted admin every permission. Seeding only adds rows,
+	// so the Super-Admin-tier set is removed from admin explicitly and
+	// idempotently on every startup.
+	// ---------------------------------------------------------------
+	revokeAdminGovernancePermissionsQuery = `
+	DELETE FROM role_permissions rp
+	USING roles r, permissions p
+	WHERE rp.role_id = r.id
+	  AND rp.permission_id = p.id
+	  AND r.name = 'admin'
+	  AND p.name IN (` + superAdminOnlyPermissionList + `);
+	`
+
 	// ---------------------------------------------------------------
 	// role_permissions
 	//
@@ -57,11 +90,21 @@ const (
 	insertRolePermissionsQuery = `
 	INSERT INTO role_permissions (role_id, permission_id)
 
-	-- admin: all permissions
+	-- super_admin: every permission, always (re-run on every startup so new
+	-- permissions are granted automatically). Protected by trigger.
+	SELECT r.id, p.id
+	FROM roles r
+	CROSS JOIN permissions p
+	WHERE r.name = 'super_admin'
+
+	UNION ALL
+
+	-- admin: every permission except the Super-Admin-tier governance set.
 	SELECT r.id, p.id
 	FROM roles r
 	CROSS JOIN permissions p
 	WHERE r.name = 'admin'
+	  AND p.name NOT IN (` + superAdminOnlyPermissionList + `)
 
 	UNION ALL
 
@@ -227,7 +270,8 @@ const (
 	`
 	insertRolesQuery = `
 	INSERT INTO roles (name, description, hierarchy_level, is_internal, assignable_at_signup, approval_required) VALUES
-		('admin', 'Role for managing users, products, merchants, and more.', 3, TRUE, FALSE, FALSE),
+		('super_admin', 'Administrative governance role. Appoints Admins and Super Admins. Held by the Root Super Admin.', 4, TRUE, FALSE, FALSE),
+		('admin', 'Administrative role for operating the platform. Cannot govern administrators.', 3, TRUE, FALSE, FALSE),
 		('editor', 'Role for editing products, coupons, and content, but cannot manage users.', 2, TRUE, FALSE, FALSE),
 		('OfferCurator', 'Role for reviewing, selecting, and tagging good offers. Cannot manage users.', 1, TRUE, FALSE, FALSE),
 		('QualityModerator', 'Role for flagging low-quality or expired content. Cannot manage users.', 1, TRUE, FALSE, FALSE),
@@ -460,16 +504,6 @@ const (
 		('deactivate_platform_setting', 'Allows deactivating a platform setting'),
 		('soft_delete_platform_setting', 'Allows soft-deleting a platform setting'),
 		('hard_delete_platform_setting', 'Allows permanently hard-deleting a platform setting'),
-		-- Platform Settings
-		('create_platform_setting', 'Allows creating a new platform setting'),
-		('ensure_platform_setting', 'Allows idempotently ensuring a platform setting'),
-		('read_platform_setting', 'Allows reading platform setting records'),
-		('list_platform_settings', 'Allows listing platform setting records'),
-		('update_platform_setting', 'Allows updating platform setting value and type'),
-		('activate_platform_setting', 'Allows activating a platform setting'),
-		('deactivate_platform_setting', 'Allows deactivating a platform setting'),
-		('soft_delete_platform_setting', 'Allows soft-deleting a platform setting'),
-		('hard_delete_platform_setting', 'Allows permanently hard-deleting a platform setting'),
 		-- Platform Setting History
 		('read_platform_setting_history', 'Allows privileged reading of one immutable platform-setting history record'),
 		('list_platform_setting_history', 'Allows privileged listing of immutable value-history records for a platform setting'),
@@ -488,9 +522,28 @@ const (
 		('read_user_profiles', 'Allows retrieving multiple user profiles via search or listing'),
 		('soft_delete_user_profile', 'Allows soft deleting a user profile'),
 		('update_user_profile', 'Allows updating a user profile'),
-		-- roles
-		('assign_role', 'Allows assigning a new role to a user'),
+		-- Roles and permissions (route and handler names are identical)
 		('list_roles', 'Allows listing all roles in the system'),
+		('read_role', 'Allows reading one role definition'),
+		('create_role', 'Allows creating a role definition'),
+		('update_role', 'Allows updating a role definition'),
+		('delete_role', 'Allows soft-deleting an unused role definition'),
+		('assign_role', 'Allows assigning a non-administrative role to an account'),
+		('revoke_role', 'Allows revoking a non-administrative role from an account'),
+		('read_user_roles', 'Allows reading the roles held by an account'),
+		('list_permissions', 'Allows listing the permission catalog'),
+		('check_user_permission', 'Allows checking whether an account holds a permission'),
+		('read_role_permissions', 'Allows reading the permissions granted to a role'),
+		('update_role_permissions', 'Allows replacing the permissions granted to a non-governance role'),
+		-- Administrative governance
+		('read_administrators', 'Allows reading administrators, their standing, and governance history'),
+		('read_accounts', 'Allows reading the administrative account directory'),
+		('appoint_admin', 'Allows appointing an Admin'),
+		('appoint_super_admin', 'Allows appointing or promoting a Super Admin'),
+		('demote_administrator', 'Allows demoting a Super Admin to Admin'),
+		('suspend_administrator', 'Allows suspending an administrator'),
+		('restore_administrator', 'Allows restoring a suspended administrator'),
+		('revoke_administrator', 'Allows revoking administrative standing'),
 		-- Users
 		('delete_own_account', 'Allows user to delete own account'),
 		('expel_user', 'Allows admin to delete user account')
@@ -536,6 +589,9 @@ const (
 		('merchants', 'Tracks merchant-related actions.'),
 		('merchant_follow', 'Follow relationship between user and merchant'),
 		('roles', 'User role assignments'),
+		('administrator', 'Administrative standing of an account (appointment lifecycle)'),
+		('root_super_admin', 'The protected Root Super Admin and its succession ledger'),
+		('permissions', 'Permission catalog and role-permission grants'),
 		('system', 'System-wide automation or batch operation'),
 		('user_notification', 'User Notification entity'),
 		('user_profile', 'User profile entity'),
@@ -735,9 +791,33 @@ const (
 		('set_platform_setting_active', 'Set platform setting active state'),
 		('soft_delete_platform_setting', 'Soft delete a platform setting'),
 		('hard_delete_platform_setting', 'Hard delete a platform setting'),
-		-- roles
-		('assign_role', 'Assign a new role to a user'),
+		-- Roles and permissions
 		('list_roles', 'List all roles in the system'),
+		('read_role', 'Read one role definition'),
+		('create_role', 'Create a role definition'),
+		('update_role', 'Update a role definition'),
+		('delete_role', 'Soft-delete a role definition'),
+		('assign_role', 'Assign a role to an account'),
+		('revoke_role', 'Revoke a role from an account'),
+		('read_user_roles', 'Read the roles held by an account'),
+		('list_permissions', 'List the permission catalog'),
+		('check_user_permission', 'Check whether an account holds a permission'),
+		('read_role_permissions', 'Read the permissions granted to a role'),
+		('update_role_permissions', 'Replace the permissions granted to a role'),
+		-- Administrative governance
+		('bootstrap_root_super_admin', 'Establish the initial Root Super Admin'),
+		('reconcile_administrator_appointment', 'Reconcile a pre-governance administrative role assignment'),
+		('appoint_admin', 'Appoint an Admin'),
+		('appoint_super_admin', 'Appoint a Super Admin'),
+		('promote_to_super_admin', 'Promote an Admin to Super Admin'),
+		('demote_super_admin', 'Demote a Super Admin to Admin'),
+		('suspend_administrator', 'Suspend an administrator'),
+		('restore_administrator', 'Restore a suspended administrator'),
+		('revoke_administrator', 'Revoke administrative standing'),
+		('list_administrators', 'List administrators'),
+		('read_administrator_history', 'Read administrative governance history'),
+		('search_accounts', 'Search the administrative account directory'),
+		('read_account', 'Read one account in the administrative directory'),
 		-- system
 		('plan_suggestions_batch', 'Fetch users eligible for suggestion batch'),
 		-- User Notifications
@@ -1149,6 +1229,7 @@ func (m *DBConnectionParamsModel) SeedAllData(
 		{name: "categories_level_3", query: insertCategoryLevel3Query},
 
 		{name: "role_permissions", query: insertRolePermissionsQuery},
+		{name: "revoke_admin_governance_permissions", query: revokeAdminGovernancePermissionsQuery},
 	}
 
 	if webClientSecret != "" || mobileClientSecret != "" {

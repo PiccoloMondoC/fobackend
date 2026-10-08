@@ -732,6 +732,12 @@ func (s *Service) closeAccountTx(
 // CloseOwnAccountInternal performs the canonical self-service account closure
 // workflow.
 //
+// An account holding administrative standing (active or suspended) or the
+// Root cannot close itself: standing must first be revoked by an authorized
+// administrator, so no one can destroy administrative access as a side
+// effect of account closure. The database consistency triggers enforce the
+// same rule at commit if standing changes concurrently.
+//
 // The canonical user cascade and pending activation-token cleanup commit
 // atomically through closeAccountTx. Session revocation follows as defense in
 // depth; authorization is already rendered unusable by account/role lifecycle
@@ -757,12 +763,15 @@ func (s *Service) CloseOwnAccountInternal(
 		GetLoggerWithContextFromContext(ctx).
 		WithFunctionName("CloseOwnAccountInternal")
 
-	if err := s.closeAccountTx(ctx, actorUserID); err != nil {
-		return fmt.Errorf(
-			"close own account: %w",
-			err,
-		)
-	}
+ err:=s.withGovernanceTx(ctx,func(tx pgx.Tx) error {
+  subjects,err:=s.governance().LockGovernanceSubjectsTx(ctx,tx,actorUserID);if err!=nil{return err}
+  subject:=subjects[actorUserID];if subject==nil || subject.IsDeleted{return data.ErrUserNotFound}
+  if subject.IsRoot{return ErrGovernanceRootProtected}
+  if subject.AppointmentStatus()==data.AppointmentStatusActive || subject.AppointmentStatus()==data.AppointmentStatusSuspended{return ErrGovernanceAdministratorSelfClosure}
+  if err:=s.Models.User.SoftDeleteWithCascadeTx(ctx,tx,actorUserID);err!=nil{return err}
+  return s.Models.ActivationToken.DeleteByUserIDTx(ctx,tx,actorUserID)
+ })
+ if err!=nil{return fmt.Errorf("close own account: %w",err)}
 
 	if err := s.Models.Token.RevokeAllTokens(
 		ctx,
@@ -780,13 +789,24 @@ func (s *Service) CloseOwnAccountInternal(
 
 // ExpelUserInternal performs privileged account closure of targetUserID.
 //
-// Authorization remains owned by the trusted calling boundary. The service
-// preserves actor and target as distinct semantic inputs but does not invent an
-// operational prohibition against actorUserID == targetUserID.
+// Authority is decided here, from state read under the governance lock in
+// the same transaction that closes the account (AuthorizeAccountRemoval):
+// self-expulsion, expelling the Root, and expelling any account that holds
+// administrative standing are refused; the actor must hold active
+// administrative standing. The route-level expel_user permission is the
+// coarse gate only.
 //
-// The canonical user cascade and pending activation-token cleanup for
-// targetUserID commit atomically through closeAccountTx, mirroring
-// CloseOwnAccountInternal.
+// Transaction (lock order users -> activation_tokens -> audit_logs):
+//
+//	BEGIN
+//	  lock users rows of actor and target (ascending ID)
+//	  AuthorizeAccountRemoval
+//	  UserModel.SoftDeleteWithCascadeTx(target)
+//	  ActivationTokenModel.DeleteByUserIDTx(target)
+//	  audit expel_user (succeeded)
+//	COMMIT
+//
+// Refusals are audited best-effort. Session revocation follows commit.
 func (s *Service) ExpelUserInternal(
 	ctx context.Context,
 	actorUserID uuid.UUID,
@@ -812,11 +832,59 @@ func (s *Service) ExpelUserInternal(
 		GetLoggerWithContextFromContext(ctx).
 		WithFunctionName("ExpelUserInternal")
 
-	if err := s.closeAccountTx(ctx, targetUserID); err != nil {
-		return fmt.Errorf(
-			"expel user: %w",
-			err,
-		)
+	gov := s.governance()
+
+	err := s.withGovernanceTx(ctx, func(tx pgx.Tx) error {
+		subjects, err := gov.LockGovernanceSubjectsTx(ctx, tx, actorUserID, targetUserID)
+		if err != nil {
+			return err
+		}
+		actor := actorFromSubject(subjects[actorUserID])
+		if actor.UserID == uuid.Nil {
+			actor.UserID = actorUserID
+		}
+		target := targetFromSubject(targetUserID, subjects[targetUserID])
+
+		if err := AuthorizeAccountRemoval(actor, target); err != nil {return err}
+  if err:=gov.RequirePermissionTx(ctx,tx,actorUserID,"expel_user");err!=nil{return err}
+
+		if err := s.Models.User.SoftDeleteWithCascadeTx(ctx, tx, targetUserID); err != nil {
+			return err
+		}
+		if err := s.Models.ActivationToken.DeleteByUserIDTx(ctx, tx, targetUserID); err != nil {
+			return fmt.Errorf("remove pending activation token: %w", err)
+		}
+
+		actorID := actor.UserID
+		return gov.InsertGovernanceAuditTx(ctx, tx, data.GovernanceAuditEntry{
+			ActorID:    &actorID,
+			Action:     "expel_user",
+			EntityType: data.GovernanceEntityUsers,
+			EntityID:   targetUserID.String(),
+			Outcome:    data.GovernanceOutcomeSucceeded,
+			Context:    data.GovernanceAuditContext{Operation: "expel_user"},
+		})
+	})
+	if err != nil {
+		if isAuditableDenial(err) {
+			auditCtx, auditCancel := context.WithTimeout(context.WithoutCancel(ctx), s.Cfg.DBTimeout)
+			actorID := actorUserID
+			if auditErr := gov.InsertGovernanceAuditTx(auditCtx, s.Models.DB, data.GovernanceAuditEntry{
+				ActorID:    &actorID,
+				Action:     "expel_user",
+				EntityType: data.GovernanceEntityUsers,
+				EntityID:   targetUserID.String(),
+				Outcome:    data.GovernanceOutcomeDenied,
+				Context: data.GovernanceAuditContext{
+					Operation:  "expel_user",
+					DenialCode: GovernanceDenialCode(err),
+				},
+			}); auditErr != nil {
+				logger.Warn("expulsion denial could not be audited", "error", auditErr)
+			}
+			auditCancel()
+		}
+		return fmt.Errorf("expel user: %w", err)
 	}
 
 	if err := s.Models.Token.RevokeAllTokens(

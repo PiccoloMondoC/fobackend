@@ -79,6 +79,9 @@ func (app *Application) Routes() http.Handler {
 			"Content-Type",
 			"X-CSRF-Token",
 			"X-Merchant-ID",
+			// Administrative profile operations name their target account
+			// with this header; without it browsers could not reach them.
+			"X-Target-User-ID",
 		},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
@@ -220,25 +223,61 @@ func (app *Application) Routes() http.Handler {
 		// ---- AUTHENTICATED AND PRIVILEGED API ROUTES ----
 
 		// Role & Permission Routes
+		//
+		// Route permission names are identical to the names handlers re-check
+		// and to the seeded permission catalog. Administrative roles
+		// (super_admin, admin) are never assigned or revoked here; they are
+		// governed exclusively through /admin-governance.
 		v1.Route("/roles", func(rr chi.Router) {
-			rr.Use(app.AuthMiddleware)
-			rr.With(app.RequirePermission("role:list")).Get("/", app.ListRolesHandler)
-			rr.With(app.RequirePermission("role:read")).Get("/{roleID}", app.GetRoleByIDHandler)
-			rr.With(app.RequirePermission("role:create")).Post("/", app.CreateRoleHandler)
-			rr.With(app.RequirePermission("role:update")).Patch("/{roleID}", app.UpdateRoleHandler)
-			rr.With(app.RequirePermission("role:delete")).Delete("/{roleID}", app.DeleteRoleHandler)
-			rr.With(app.RequirePermission("role:assign")).Post("/assign", app.AssignRoleToUserHandler)
-			rr.With(app.RequirePermission("role:revoke")).Post("/revoke", app.RevokeRoleFromUserHandler)
-			rr.With(app.RequirePermission("role:view_roles")).Get("/user/{userID}", app.GetRolesForUserHandler)
-			//	rr.With(app.RequirePermission("role:permissions:list")).Get("/{roleID}/permissions", app.GetRolePermissionsHandler)
-			//	rr.With(app.RequirePermission("role:permissions:update")).Patch("/{roleID}/permissions", app.UpdateRolePermissionsHandler)
+			rr.Use(app.AuthMiddleware, app.RequireInternalRole)
+			rr.With(app.RequirePermission("list_roles")).Get("/", app.ListRolesHandler)
+			rr.With(app.RequirePermission("create_role")).Post("/", app.CreateRoleHandler)
+			rr.With(app.RequirePermission("assign_role")).Post("/assign", app.AssignRoleToUserHandler)
+			rr.With(app.RequirePermission("revoke_role")).Post("/revoke", app.RevokeRoleFromUserHandler)
+			rr.With(app.RequirePermission("read_user_roles")).Get("/user/{userID}", app.GetRolesForUserHandler)
+			rr.With(app.RequirePermission("read_role")).Get("/{roleID}", app.GetRoleByIDHandler)
+			rr.With(app.RequirePermission("update_role")).Patch("/{roleID}", app.UpdateRoleHandler)
+			rr.With(app.RequirePermission("delete_role")).Delete("/{roleID}", app.DeleteRoleHandler)
+			rr.With(app.RequirePermission("read_role_permissions")).Get("/{roleID}/permissions", app.GetRolePermissionsHandler)
+			rr.With(app.RequirePermission("update_role_permissions")).Put("/{roleID}/permissions", app.UpdateRolePermissionsHandler)
 		})
 
 		// Permissions
 		v1.Route("/permissions", func(pr chi.Router) {
-			pr.Use(app.AuthMiddleware)
-			pr.With(app.RequirePermission("permission:list")).Get("/", app.ListAllPermissionsHandler)
-			pr.With(app.RequirePermission("permission:check")).Get("/check/{userID}/{permission}", app.CheckUserPermissionHandler)
+			pr.Use(app.AuthMiddleware, app.RequireInternalRole)
+			pr.With(app.RequirePermission("list_permissions")).Get("/", app.ListAllPermissionsHandler)
+			pr.With(app.RequirePermission("check_user_permission")).Get("/check/{userID}/{permission}", app.CheckUserPermissionHandler)
+		})
+
+		// Administrative Governance (Root Super Admin -> Super Admin -> Admin)
+		//
+		// RequireInternalRole admits only administrative actors; permissions
+		// are the coarse gate; hierarchy and Root protection are decided per
+		// target by the governance service under lock. Mutations are rate
+		// limited because Super Admin appointment verifies a password.
+		v1.Route("/admin-governance", func(ag chi.Router) {
+			ag.Use(app.AuthMiddleware, app.RequireInternalRole)
+
+			ag.With(app.RequirePermission("read_administrators")).
+				Get("/administrators", app.ListAdministratorsHandler)
+			ag.With(app.RequirePermission("read_administrators")).
+				Get("/administrators/{userID}/history", app.GetAdministratorHistoryHandler)
+
+			ag.With(app.RateLimitMiddleware).
+				Post("/administrators/{userID}/appoint", app.AppointAdministratorHandler)
+			ag.With(app.RateLimitMiddleware, app.RequirePermission("demote_administrator")).
+				Post("/administrators/{userID}/demote", app.DemoteAdministratorHandler)
+			ag.With(app.RateLimitMiddleware, app.RequirePermission("suspend_administrator")).
+				Post("/administrators/{userID}/suspend", app.SuspendAdministratorHandler)
+			ag.With(app.RateLimitMiddleware, app.RequirePermission("restore_administrator")).
+				Post("/administrators/{userID}/restore", app.RestoreAdministratorHandler)
+			ag.With(app.RateLimitMiddleware, app.RequirePermission("revoke_administrator")).
+				Post("/administrators/{userID}/revoke", app.RevokeAdministratorHandler)
+
+			ag.With(app.RequirePermission("read_accounts")).
+				Get("/accounts", app.SearchAccountsHandler)
+			ag.With(app.RequirePermission("read_accounts")).
+				Get("/accounts/{userID}", app.GetAccountHandler)
 		})
 
 		// Audit Logs
@@ -1243,7 +1282,7 @@ func (app *Application) Routes() http.Handler {
 
 			// GET: Retrieve user notifications by user ID (admin/internal only)
 			un.With(
-				app.RequireInternalRole, // admin or internal_operator
+				app.RequireInternalRole, // super_admin or admin
 				app.RequirePermission("read_user_notifications"),
 			).Get("/by-user", app.GetUserNotificationByUserIDHandler)
 		})

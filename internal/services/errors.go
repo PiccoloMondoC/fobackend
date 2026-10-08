@@ -55,4 +55,22 @@ var (
 	ErrMerchantActorRequired                                          = errors.New("merchant service: actor user ID is required")
 	ErrMerchantResourceRequired                                       = errors.New("merchant service: merchant ID is required")
 	ErrMerchantAccessForbidden                                        = errors.New("merchant service: actor is not authorized for this merchant")
+
+	// Administrative governance. GovernanceDenialCode maps each of these to
+	// the stable client-facing code.
+	ErrGovernanceInputInvalid                = errors.New("governance: invalid request")
+	ErrGovernanceSelfTarget                  = errors.New("governance: administrators cannot govern their own standing")
+	ErrGovernanceInsufficientAuthority       = errors.New("governance: actor lacks authority over the target")
+	ErrGovernanceRootProtected               = errors.New("governance: the Root Super Admin is protected")
+	ErrGovernanceTargetNotFound              = errors.New("governance: target account not found")
+	ErrGovernanceTargetIneligible            = errors.New("governance: target account is not eligible")
+	ErrGovernanceInvalidTransition           = errors.New("governance: transition is not valid for the target's standing")
+	ErrGovernanceAdministratorAccount        = errors.New("governance: administrative standing must be revoked before the account is closed")
+	ErrGovernanceAdministratorSelfClosure    = errors.New("governance: an administrator cannot close their own account")
+	ErrGovernanceReauthenticationFailed      = errors.New("governance: re-authentication failed")
+	ErrGovernanceReauthenticationUnavailable = errors.New("governance: re-authentication requires an account password")
+	ErrGovernanceConfirmationMismatch        = errors.New("governance: confirmation does not match the target account")
+	ErrRootBootstrapConflict                 = errors.New("governance: a different Root Super Admin is already established")
+	ErrRootBootstrapAccountNotFound          = errors.New("governance: bootstrap account not found")
+	ErrRootBootstrapAccountIneligible        = errors.New("governance: bootstrap account is not active (email not confirmed or deactivated)")
 )

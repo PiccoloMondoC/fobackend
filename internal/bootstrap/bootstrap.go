@@ -205,6 +205,15 @@ type Config struct {
 
 	// SMTPSecurity is one of none, starttls, or tls.
 	SMTPSecurity string
+
+	// RootSuperAdminBootstrapEmail names the existing Sagrenti account to be
+	// established as the initial Root Super Admin at startup
+	// (ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL, optional). It is an identifier, not a
+	// credential: bootstrap never accepts or stores a password. Once the Root
+	// exists the value must either match it (no-op) or be removed; a
+	// different value fails startup. Diagnostics report only whether it is
+	// set, never the address.
+	RootSuperAdminBootstrapEmail string
 }
 
 // LoadConfig loads, validates, canonicalizes, and returns startup configuration.
@@ -322,6 +331,11 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	rootSuperAdminBootstrapEmail, err := loadRootSuperAdminBootstrapEmail()
+	if err != nil {
+		return nil, err
+	}
+
 	oauthWebClientSecret := optionalValue("OAUTH_WEB_CLIENT_SECRET", "")
 	oauthMobileClientSecret := optionalValue("OAUTH_MOBILE_CLIENT_SECRET", "")
 
@@ -400,7 +414,39 @@ func LoadConfig() (*Config, error) {
 		JWTKeyID:                       jwtKeyID,
 		JWTPrivateKey:                  jwtPrivateKey,
 		JWTPublicKey:                   jwtPublicKey,
+		RootSuperAdminBootstrapEmail:   rootSuperAdminBootstrapEmail,
 	}, nil
+}
+
+// loadRootSuperAdminBootstrapEmail reads the optional bootstrap identifier.
+// Unset is valid (no bootstrap). A set value must look like a single email
+// address; it is matched against existing accounts case-insensitively.
+func loadRootSuperAdminBootstrapEmail() (string, error) {
+	return validateRootSuperAdminBootstrapEmail(optionalValue("ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL", ""))
+}
+
+func validateRootSuperAdminBootstrapEmail(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", nil
+	}
+	at := strings.LastIndex(value, "@")
+	if len(value) > 254 ||
+		at <= 0 ||
+		at == len(value)-1 ||
+		strings.Count(value, "@") != 1 ||
+		strings.ContainsAny(value, " \t\r\n,;<>\"") ||
+		!strings.Contains(value[at+1:], ".") {
+		return "", fmt.Errorf("ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL must be a single email address")
+	}
+	return value, nil
+}
+
+func presenceLabel(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "unset"
+	}
+	return "set"
 }
 
 // String returns a redacted representation of Config safe for diagnostics.
@@ -410,7 +456,7 @@ func (c *Config) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Config{Env:%q BaseURL:%q FrontendURL:%q WebPort:%q DBHost:%q DBPort:%q DBUser:%q DBPass:%s DBName:%q DBTimeout:%s ActivationTokenTTL:%s PasswordResetTokenTTL:%s ActivationCodeTTL:%s ActivationCodeMaxAttempts:%d ActivationCodeMaxTotalFailures:%d ActivationResendCooldown:%s EmailProvider:%q SMTPHost:%q SMTPPort:%q SMTPUsername:%s SMTPPassword:%s SMTPFrom:%q SMTPSecurity:%q OAuthWebClientSecret:%s OAuthMobileClientSecret:%s JWTIssuer:%q JWTAudience:%q JWTKeyID:%q JWTPrivateKey:%s JWTPublicKey:%s}",
+		"Config{Env:%q BaseURL:%q FrontendURL:%q WebPort:%q DBHost:%q DBPort:%q DBUser:%q DBPass:%s DBName:%q DBTimeout:%s ActivationTokenTTL:%s PasswordResetTokenTTL:%s ActivationCodeTTL:%s ActivationCodeMaxAttempts:%d ActivationCodeMaxTotalFailures:%d ActivationResendCooldown:%s EmailProvider:%q SMTPHost:%q SMTPPort:%q SMTPUsername:%s SMTPPassword:%s SMTPFrom:%q SMTPSecurity:%q OAuthWebClientSecret:%s OAuthMobileClientSecret:%s JWTIssuer:%q JWTAudience:%q JWTKeyID:%q JWTPrivateKey:%s JWTPublicKey:%s RootSuperAdminBootstrapEmail:%s}",
 		c.Env,
 		c.BaseURL,
 		c.FrontendURL,
@@ -441,6 +487,7 @@ func (c *Config) String() string {
 		c.JWTKeyID,
 		redactedProtectedValueLabel,
 		fmt.Sprintf("%x", []byte(c.JWTPublicKey)),
+		presenceLabel(c.RootSuperAdminBootstrapEmail),
 	)
 }
 
@@ -486,6 +533,7 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 		JWTKeyID                       string        `json:"jwt_key_id"`
 		JWTPrivateKey                  string        `json:"jwt_private_key"`
 		JWTPublicKey                   string        `json:"jwt_public_key"`
+		RootSuperAdminBootstrapEmail   string        `json:"root_super_admin_bootstrap_email"`
 	}
 
 	return json.Marshal(redactedConfig{
@@ -519,6 +567,7 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 		JWTKeyID:                       c.JWTKeyID,
 		JWTPrivateKey:                  redactedProtectedValueLabel,
 		JWTPublicKey:                   fmt.Sprintf("%x", []byte(c.JWTPublicKey)),
+		RootSuperAdminBootstrapEmail:   presenceLabel(c.RootSuperAdminBootstrapEmail),
 	})
 }
 
@@ -559,6 +608,7 @@ func (c *Config) LogValue() slog.Value {
 		slog.String("jwt_key_id", c.JWTKeyID),
 		slog.String("jwt_private_key", redactedProtectedValueLabel),
 		slog.String("jwt_public_key", fmt.Sprintf("%x", []byte(c.JWTPublicKey))),
+		slog.String("root_super_admin_bootstrap_email", presenceLabel(c.RootSuperAdminBootstrapEmail)),
 	)
 }
 

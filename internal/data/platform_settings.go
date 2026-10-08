@@ -1041,3 +1041,100 @@ func (m *PlatformSettingModel) ExistsActiveByKey(ctx context.Context, key string
 
 	return exists, nil
 }
+
+
+func (m *PlatformSettingModel) GetByIDTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*PlatformSetting, error) {
+ var row PlatformSetting
+ err := scanPlatformSetting(tx.QueryRow(ctx, `SELECT `+platformSettingSelectColumns+` FROM platform_settings WHERE id=$1 FOR UPDATE`, id), &row)
+ if errors.Is(err, pgx.ErrNoRows) { return nil, ErrPlatformSettingNotFound }
+ if err != nil { return nil, err }
+ return &row, nil
+}
+
+// LockControlSettingsTx is called before a target setting is locked. Policy
+// rows use deterministic key ordering. The advisory mutex also covers absent
+// rows, so recovery by ensure cannot race another administrative mutation.
+func (m *PlatformSettingModel) LockControlSettingsTx(ctx context.Context, tx pgx.Tx) (map[string]*PlatformSetting, error) {
+ rows, err := tx.Query(ctx, `SELECT `+platformSettingSelectColumns+` FROM platform_settings
+ WHERE setting_key IN ('platform_settings_admin_enabled','platform_settings_hard_delete_enabled')
+ ORDER BY setting_key FOR UPDATE`)
+ if err != nil { return nil, err }
+ defer rows.Close()
+ out := make(map[string]*PlatformSetting)
+ for rows.Next() {
+  var row PlatformSetting
+  if err := scanPlatformSetting(rows, &row); err != nil { return nil, err }
+  out[row.SettingKey] = &row
+ }
+ return out, rows.Err()
+}
+
+// ValidateMutationValue reuses the existing strict key/type/JSON validators.
+// It returns only the input sentinel at the boundary, never JSON/parser detail.
+func ValidatePlatformSettingMutation(key string, value json.RawMessage, typ PlatformSettingValueType) error {
+ if _, err := validatePlatformSettingKey(key); err != nil { return ErrPlatformSettingInvalidInput }
+ typ, err := validatePlatformSettingValueType(typ)
+ if err != nil { return ErrPlatformSettingInvalidInput }
+ if err := validatePlatformSettingValue(value, typ); err != nil { return ErrPlatformSettingInvalidInput }
+ return nil
+}
+
+func (m *PlatformSettingModel) CreateTx(ctx context.Context, tx pgx.Tx, input *PlatformSetting, ensure bool) (*PlatformSetting, error) {
+ if input == nil || input.UpdatedBy == nil || *input.UpdatedBy == uuid.Nil { return nil, ErrPlatformSettingInvalidInput }
+ if err := ValidatePlatformSettingMutation(input.SettingKey, input.SettingValue, input.ValueType); err != nil { return nil, err }
+ key := NormalizePlatformSettingKey(input.SettingKey)
+ typ := NormalizePlatformSettingValueType(input.ValueType)
+ conflict := ""
+ if ensure {
+  // Ensure may revive a deleted row, but cannot silently retype a setting.
+  var existingType PlatformSettingValueType
+  err := tx.QueryRow(ctx, `SELECT value_type FROM platform_settings WHERE setting_key=$1 FOR UPDATE`, key).Scan(&existingType)
+  if err != nil && !errors.Is(err, pgx.ErrNoRows) { return nil, err }
+  if err == nil && existingType != typ { return nil, ErrPlatformSettingTypeMismatch }
+  conflict = ` ON CONFLICT(setting_key) DO UPDATE SET setting_value=EXCLUDED.setting_value,
+   description=EXCLUDED.description, is_active=EXCLUDED.is_active,
+   updated_by=EXCLUDED.updated_by, deleted_at=NULL`
+ }
+ var row PlatformSetting
+ err := scanPlatformSetting(tx.QueryRow(ctx, `INSERT INTO platform_settings
+ (setting_key,setting_value,value_type,description,is_active,created_by,updated_by)
+ VALUES($1,$2::jsonb,$3,$4,$5,$6,$6)`+conflict+` RETURNING `+platformSettingSelectColumns,
+ key,string(input.SettingValue),typ,input.Description,input.IsActive,input.UpdatedBy), &row)
+ if IsUniqueViolation(err) { return nil, ErrPlatformSettingAlreadyExists }
+ if IsForeignKeyViolation(err) { return nil, ErrPlatformSettingActorNotFound }
+ if err != nil { return nil, err }
+ return &row,nil
+}
+
+func (m *PlatformSettingModel) UpdateValueTx(ctx context.Context, tx pgx.Tx, current *PlatformSetting, value json.RawMessage, typ PlatformSettingValueType, description string, actor uuid.UUID) (*PlatformSetting,error) {
+ if current == nil || current.DeletedAt != nil { return nil,ErrPlatformSettingNotFound }
+ if err := ValidatePlatformSettingMutation(current.SettingKey,value,typ); err != nil { return nil,err }
+ typ=NormalizePlatformSettingValueType(typ)
+ if typ != current.ValueType { return nil,ErrPlatformSettingTypeMismatch }
+ var row PlatformSetting
+ err:=scanPlatformSetting(tx.QueryRow(ctx,`UPDATE platform_settings SET setting_value=$2::jsonb,
+ description=$3,updated_by=$4 WHERE id=$1 AND deleted_at IS NULL RETURNING `+platformSettingSelectColumns,
+ current.ID,string(value),description,actor),&row)
+ if errors.Is(err,pgx.ErrNoRows) { return nil,ErrPlatformSettingNotFound }
+ if err != nil { return nil,err }
+ return &row,nil
+}
+
+func (m *PlatformSettingModel) SetActiveTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, active bool, actor uuid.UUID) (*PlatformSetting,error) {
+ var row PlatformSetting
+ err:=scanPlatformSetting(tx.QueryRow(ctx,`UPDATE platform_settings SET is_active=$2,updated_by=$3
+ WHERE id=$1 AND deleted_at IS NULL RETURNING `+platformSettingSelectColumns,id,active,actor),&row)
+ if errors.Is(err,pgx.ErrNoRows) { return nil,ErrPlatformSettingNotFound }
+ if err != nil { return nil,err }
+ return &row,nil
+}
+
+func (m *PlatformSettingModel) DeleteTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, actor uuid.UUID, hard bool) error {
+ sql:=`UPDATE platform_settings SET deleted_at=NOW(),updated_by=$2 WHERE id=$1 AND deleted_at IS NULL`
+ args:=[]any{id,actor}
+ if hard { sql=`DELETE FROM platform_settings WHERE id=$1 AND deleted_at IS NOT NULL`;args=[]any{id} }
+ tag,err:=tx.Exec(ctx,sql,args...)
+ if err!=nil { return err }
+ if tag.RowsAffected()!=1 { return ErrPlatformSettingNotFound }
+ return nil
+}

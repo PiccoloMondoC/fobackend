@@ -45,6 +45,28 @@ const (
 
 	// SQLSTATE 23P01: exclusion_violation.
 	sqlStateExclusionViolation = "23P01"
+
+	// SQLSTATE 40001: serialization_failure.
+	sqlStateSerializationFailure = "40001"
+
+	// SQLSTATE 40P01: deadlock_detected.
+	sqlStateDeadlockDetected = "40P01"
+
+	// Sagrenti administrative-governance SQLSTATEs (class SG). These are raised
+	// by the governance triggers in database.go and are the database-level
+	// backstop for invariants the service layer also enforces.
+	//
+	//   SG001  an operation would remove, alter, displace, or duplicate the
+	//          protected Root Super Admin
+	//   SG002  a governance role definition or the Super Admin permission set
+	//          would be altered outside platform seeding
+	//   SG003  administrative appointments and governance role assignments
+	//          would disagree at commit
+	//   SG004  the Root succession ledger is append-only
+	sqlStateRootProtected              = "SG001"
+	sqlStateGovernanceRoleProtected    = "SG002"
+	sqlStateAdministrativeInconsistent = "SG003"
+	sqlStateSuccessionLedgerImmutable  = "SG004"
 )
 
 // Persistence and domain sentinel errors.
@@ -127,6 +149,26 @@ var (
 	ErrRoleNotAssignableAtSignup     = errors.New("role is not assignable at signup")
 	ErrRolePermissionNotFound        = errors.New("role permission not found")
 	ErrRolePermissionAlreadyAssigned = errors.New("role permission already assigned")
+	ErrRoleInactive                  = errors.New("role is inactive")
+	ErrRoleInUse                     = errors.New("role is still assigned to accounts")
+	ErrRoleNameTaken                 = errors.New("role name already exists")
+	ErrRoleInvalidInput              = errors.New("invalid role input")
+	ErrLastActiveRole                = errors.New("assignment is the account's last active role")
+
+	// Administrative governance.
+	//
+	// ErrRootSuperAdminProtected is the persistence-level translation of
+	// SQLSTATE SG001. ErrGovernanceRoleProtected translates SG002.
+	// ErrAdministrativeInconsistency translates SG003.
+	// ErrSuccessionLedgerImmutable translates SG004.
+	ErrRootSuperAdminProtected            = errors.New("root super admin is protected")
+	ErrRootSuperAdminAlreadyEstablished   = errors.New("root super admin is already established")
+	ErrGovernanceRoleProtected            = errors.New("governance role is protected")
+	ErrAdministrativeInconsistency        = errors.New("administrative appointment and role assignment disagree")
+	ErrSuccessionLedgerImmutable          = errors.New("root succession ledger is append-only")
+	ErrGovernanceAuditMetadataMissing     = errors.New("governance audit action or entity type is not seeded")
+	ErrAdministrativeAppointmentNotFound  = errors.New("administrative appointment not found")
+	ErrConcurrentGovernanceChange         = errors.New("concurrent governance change")
 
 	// Audit.
 	ErrAuditLogNotFound         = errors.New("audit log not found")
@@ -503,6 +545,39 @@ func IsExclusionViolation(err error) bool {
 	return IsPgErrorCode(err, sqlStateExclusionViolation)
 }
 
+// IsSerializationOrDeadlock reports whether err is a retryable concurrency
+// failure (serialization failure or detected deadlock).
+func IsSerializationOrDeadlock(err error) bool {
+	return IsPgErrorCode(err, sqlStateSerializationFailure) ||
+		IsPgErrorCode(err, sqlStateDeadlockDetected)
+}
+
+// TranslateGovernanceError converts the governance SQLSTATEs raised by the
+// database backstop triggers, and retryable concurrency failures, into stable
+// data-layer sentinels. Any other error is returned unchanged.
+//
+// The original PostgreSQL message is deliberately not preserved in the
+// returned sentinel: boundary layers must never surface trigger wording or
+// SQL detail to clients.
+func TranslateGovernanceError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case IsPgErrorCode(err, sqlStateRootProtected):
+		return ErrRootSuperAdminProtected
+	case IsPgErrorCode(err, sqlStateGovernanceRoleProtected):
+		return ErrGovernanceRoleProtected
+	case IsPgErrorCode(err, sqlStateAdministrativeInconsistent):
+		return ErrAdministrativeInconsistency
+	case IsPgErrorCode(err, sqlStateSuccessionLedgerImmutable):
+		return ErrSuccessionLedgerImmutable
+	case IsSerializationOrDeadlock(err):
+		return ErrConcurrentGovernanceChange
+	default:
+		return err
+	}
+}
+
 // IsPgErrorCode reports whether err wraps a pgconn.PgError with the supplied SQLSTATE code.
 func IsPgErrorCode(err error, code string) bool {
 	var pgErr *pgconn.PgError
@@ -528,3 +603,10 @@ func IsPgConstraint(err error, constraintName string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.ConstraintName == constraintName
 }
+
+// ErrPlatformSettingInvalidInput is a client-safe mutation input sentinel.
+var ErrPlatformSettingInvalidInput = errors.New("invalid platform setting input")
+
+var ErrAdministrativePermissionDenied = errors.New("administrative permission denied")
+
+var ErrUserProfileInvalidInput=errors.New("invalid profile input")

@@ -879,6 +879,14 @@ func (app *Application) DeleteMeHandler(
 		ctx,
 		*userID,
 	); err != nil {
+		if errors.Is(err, services.ErrGovernanceAdministratorSelfClosure) ||
+			errors.Is(err, services.ErrGovernanceRootProtected) ||
+			errors.Is(err, data.ErrAdministrativeInconsistency) ||
+			errors.Is(err, data.ErrRootSuperAdminProtected) {
+			app.respondWithGovernanceError(w, r, "delete_own_account", err)
+			return
+		}
+
 		if errors.Is(err, data.ErrUserNotFound) {
 			app.respondWithError(
 				w,
@@ -957,55 +965,50 @@ func (app *Application) AdminDeleteUserHandler(
 
 	if !isInternalRole(getRoleFromContext(ctx)) ||
 		!app.HasPermission(ctx, "expel_user") {
-		app.respondWithError(
+		app.respondWithErrorCode(
 			w,
-			errors.New("forbidden"),
 			http.StatusForbidden,
+			"insufficient_permission",
+			"forbidden",
 		)
 		return
 	}
 
 	targetUserID := app.getTargetUserIDFromContext(ctx)
 	if targetUserID == nil || *targetUserID == uuid.Nil {
-		app.respondWithError(
+		app.respondWithErrorCode(
 			w,
-			errors.New("target user ID is required"),
 			http.StatusBadRequest,
+			"invalid_request",
+			"target user ID is required",
 		)
 		return
 	}
 
+	// Hierarchy, Root protection, self-targeting, and the administrator
+	// safeguard are decided by the service under lock; the success audit is
+	// written in the same transaction as the closure.
 	if err := app.InternalServices.ExpelUserInternal(
 		ctx,
 		*actorID,
 		*targetUserID,
 	); err != nil {
+		if errIsGovernance(err) {
+			app.respondWithGovernanceError(w, r, actionExpelUser, err)
+			return
+		}
 		if errors.Is(err, data.ErrUserNotFound) {
-			app.respondWithError(
+			app.respondWithErrorCode(
 				w,
-				errors.New("user not found"),
 				http.StatusNotFound,
+				"account_not_found",
+				"account not found",
 			)
 			return
 		}
 
 		app.serverErrorResponse(logger, w, r, err)
 		return
-	}
-
-	if auditErr := app.recordUserAudit(
-		ctx,
-		actorID,
-		actionExpelUser,
-		"Expel a user account through privileged administration",
-		*targetUserID,
-	); auditErr != nil {
-		logger.Warn(
-			"user expulsion succeeded but audit recording failed",
-			"actor_id", *actorID,
-			"target_user_id", *targetUserID,
-			"error", auditErr,
-		)
 	}
 
 	logger.Info(

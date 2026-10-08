@@ -61,6 +61,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/services"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 )
 
 const (
@@ -110,13 +113,19 @@ type adminConsoleDomains struct {
 	MerchantInvoiceItems                   bool `json:"merchant_invoice_items"`
 	MerchantPaymentMethods                 bool `json:"merchant_payment_methods"`
 	Users                                  bool `json:"users"`
+	Administrators                         bool `json:"administrators"`
 }
 
 // adminConsoleOverviewResponse is the stable presentation DTO returned by the
 // Admin Console overview handler.
+//
+// AdministrativeStanding is the caller's own standing, for presentation only
+// (labels and which controls to offer). Every operation is re-authorized by
+// the backend when requested.
 type adminConsoleOverviewResponse struct {
-	Platform adminConsolePlatformStatus `json:"platform"`
-	Domains  adminConsoleDomains        `json:"domains"`
+	Platform               adminConsolePlatformStatus      `json:"platform"`
+	Domains                adminConsoleDomains             `json:"domains"`
+	AdministrativeStanding services.AdministrativeStanding `json:"administrative_standing"`
 }
 
 // readAdminConsoleBooleanSetting reads one active canonical platform setting
@@ -289,7 +298,24 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 		return
 	}
 
-	overview := adminConsoleOverviewResponse{
+	standing, err := app.InternalServices.GetAdministrativeStandingInternal(ctx, *userID)
+	if err != nil {
+		logger.Error("Read administrative standing failed", "error", err)
+		app.respondWithError(
+			w,
+			errors.New(
+				"failed to retrieve admin console overview",
+			),
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+ if standing.Level==data.AdministrativeLevelNone {
+  app.respondWithErrorCode(w,http.StatusForbidden,"insufficient_authority","administrative standing is required");return
+ }
+ overview := adminConsoleOverviewResponse{
+		AdministrativeStanding: standing,
 		Platform: adminConsolePlatformStatus{
 			FutureOfferingEnabled: futureOfferingEnabled,
 
@@ -315,6 +341,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			MerchantInvoiceItems:                   true,
 			MerchantPaymentMethods:                 true,
 			Users:                                  true,
+			Administrators:                         true,
 		},
 	}
 

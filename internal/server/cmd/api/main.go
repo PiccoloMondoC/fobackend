@@ -234,6 +234,14 @@ func main() {
 		logger.Fatal("platform setting bootstrap failed", "error", err)
 	}
 
+	// Administrative governance bootstrap. Reconciliation first, so any
+	// pre-governance admin role assignment is under the appointment model
+	// before the Root is considered. Both steps are idempotent and fail
+	// startup visibly rather than run with an inconsistent hierarchy.
+	if err := bootstrapAdministrativeGovernance(ctx, logger, svc, cfg.RootSuperAdminBootstrapEmail); err != nil {
+		logger.Fatal("administrative governance bootstrap failed", "error", err)
+	}
+
 	// Construct the HTTP application with the same validated internal service
 	// container used for readiness-critical startup work. Handlers invoke domain
 	// service methods through app.InternalServices; they do not construct service
@@ -377,4 +385,63 @@ func preloadEntityAndActionIDs(
 		EntityTypeIDs: entityIDs,
 		ActionIDs:     actionIDs,
 	}, nil
+}
+
+// bootstrapAdministrativeGovernance reconciles pre-governance administrative
+// role assignments and, when ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL is set,
+// establishes the initial Root Super Admin from that existing account.
+//
+// Outcomes:
+//   - variable unset, Root absent:   warning; platform runs, console is closed
+//   - variable unset, Root present:  nothing to do
+//   - variable set, Root absent:     Root established (audited) or startup fails
+//   - variable set to the Root:      no-op ("already established")
+//   - variable set to anyone else:   startup fails; the Root is never replaced
+//
+// The account's email address is never logged; the user ID is.
+func bootstrapAdministrativeGovernance(
+	ctx context.Context,
+	logger *logging.Logger,
+	svc *services.Service,
+	bootstrapEmail string,
+) error {
+	reconciled, err := svc.ReconcileAdministrativeAppointmentsInternal(ctx)
+	if err != nil {
+		return fmt.Errorf("reconcile administrative appointments: %w", err)
+	}
+	if reconciled > 0 {
+		logger.Warn("reconciled pre-governance administrative role assignments", "accounts", reconciled)
+	}
+
+	if bootstrapEmail == "" {
+		standing, err := rootEstablished(ctx, svc)
+		if err != nil {
+			return err
+		}
+		if !standing {
+			logger.Warn("no Root Super Admin is established; set ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL to establish one")
+		}
+		return nil
+	}
+
+	outcome, rootID, err := svc.EstablishRootSuperAdminInternal(ctx, bootstrapEmail)
+	if err != nil {
+		return fmt.Errorf("establish root super admin: %w", err)
+	}
+
+	switch outcome {
+	case services.RootBootstrapEstablished:
+		logger.Warn("Root Super Admin established; remove ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL from the deployment", "user_id", rootID)
+	case services.RootBootstrapAlreadyEstablished:
+		logger.Info("Root Super Admin already established; ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL can be removed", "user_id", rootID)
+	}
+	return nil
+}
+
+func rootEstablished(ctx context.Context, svc *services.Service) (bool, error) {
+	root, err := data.NewAdministrativeGovernanceModel(svc.Models.DB, svc.Logger).RootUserID(ctx)
+	if err != nil {
+		return false, fmt.Errorf("read root super admin: %w", err)
+	}
+	return root != nil, nil
 }

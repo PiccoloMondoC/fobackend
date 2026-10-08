@@ -485,3 +485,70 @@ func (m *RolePermissionModel) RoleHasPermission(ctx context.Context, roleID, per
 
 	return hasPermission, nil
 }
+
+// ReplacePermissionsForRole atomically replaces the complete permission set
+// of a non-deleted role. Concurrent replacements for the same role are
+// serialized with a transaction-scoped advisory lock keyed by the role, so
+// the final set is exactly one caller's set, never a union.
+//
+// Unknown permission IDs fail the whole replacement with
+// ErrPermissionNotFound. The Super Admin set is protected by trigger
+// (ErrGovernanceRoleProtected); callers also refuse governance roles first.
+func (m *RolePermissionModel) ReplacePermissionsForRole(
+	ctx context.Context,
+	roleID uuid.UUID,
+	permissionIDs []uuid.UUID,
+) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	if roleID == uuid.Nil {
+		return ErrRoleNotFound
+	}
+	if permissionIDs == nil {
+		permissionIDs = []uuid.UUID{}
+	}
+
+	tx, err := m.DB.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext('role_permissions:' || $1::text))`, roleID); err != nil {
+		return err
+	}
+
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM roles WHERE id = $1 AND deleted_at IS NULL)`, roleID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrRoleNotFound
+	}
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM role_permissions
+		WHERE role_id = $1
+		  AND NOT (permission_id = ANY($2::uuid[]))
+	`, roleID, permissionIDs); err != nil {
+		return TranslateGovernanceError(err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO role_permissions (role_id, permission_id)
+		SELECT $1, requested.permission_id
+		FROM unnest($2::uuid[]) AS requested(permission_id)
+		ON CONFLICT (role_id, permission_id) DO NOTHING
+	`, roleID, permissionIDs); err != nil {
+		if IsForeignKeyViolation(err) {
+			return ErrPermissionNotFound
+		}
+		return TranslateGovernanceError(err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return TranslateGovernanceError(err)
+	}
+	return nil
+}

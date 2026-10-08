@@ -274,7 +274,9 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		is_active BOOLEAN NOT NULL DEFAULT TRUE,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		deleted_at TIMESTAMPTZ
+		deleted_at TIMESTAMPTZ,
+		CONSTRAINT chk_roles_internal_not_signup_assignable
+			CHECK (NOT (is_internal AND assignable_at_signup))
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_roles_active_not_deleted
@@ -578,6 +580,516 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		permission_id UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
 		PRIMARY KEY (role_id, permission_id)
 	);
+
+	-- ===============================================================
+	-- Administrative Governance
+	--
+	-- Hierarchy: Root Super Admin -> Super Admin -> Admin.
+	--
+	-- The service layer (internal/services/administrative_governance_internal.go)
+	-- is the primary enforcement point. The objects below are the database
+	-- backstop: no application path, including the generic role and account
+	-- routes, can commit a state that violates these invariants.
+	--
+	-- Custom SQLSTATEs (class SG), translated by data.TranslateGovernanceError:
+	--   SG001  Root Super Admin protection
+	--   SG002  governance role / Super Admin permission-set protection
+	--   SG003  appointment <-> role-assignment consistency
+	--   SG004  succession ledger immutability
+	--
+	-- Governance roles are named literally ('super_admin', 'admin') here and
+	-- in data.RoleNameSuperAdmin / data.RoleNameAdmin. Those two sources are
+	-- the single authoritative definition of internal administrative roles.
+	-- ===============================================================
+
+	-- Append-only ledger of Root authority. Generation 1 is the initial
+	-- bootstrap. Future voluntary transfer and emergency succession append
+	-- generations; no row is ever updated or deleted.
+	CREATE TABLE IF NOT EXISTS root_succession_events (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		succession_generation INTEGER NOT NULL UNIQUE
+			CONSTRAINT chk_root_succession_generation_positive
+			CHECK (succession_generation >= 1),
+		predecessor_user_id UUID REFERENCES users(id) ON DELETE RESTRICT,
+		successor_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+		mechanism TEXT NOT NULL
+			CONSTRAINT chk_root_succession_mechanism
+			CHECK (mechanism IN ('bootstrap', 'voluntary_transfer', 'emergency_succession')),
+		authorization_reference TEXT
+			CONSTRAINT chk_root_succession_authorization_reference_length
+			CHECK (authorization_reference IS NULL OR char_length(authorization_reference) <= 200),
+		occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		CONSTRAINT chk_root_succession_bootstrap_shape
+			CHECK (
+				(mechanism = 'bootstrap') = (succession_generation = 1)
+				AND (mechanism = 'bootstrap') = (predecessor_user_id IS NULL)
+			),
+		CONSTRAINT chk_root_succession_distinct_successor
+			CHECK (predecessor_user_id IS NULL OR predecessor_user_id <> successor_user_id),
+		CONSTRAINT ux_root_succession_generation_successor
+			UNIQUE (succession_generation, successor_user_id)
+	);
+
+	-- The singleton Root. The boolean primary key admits exactly one row, so
+	-- no race can produce two Roots; the protection triggers below mean no
+	-- ordinary operation can remove it, so no race can produce zero Roots once
+	-- bootstrap has committed. The composite foreign key ties the Root to the
+	-- ledger generation that established it.
+	CREATE TABLE IF NOT EXISTS root_super_admin (
+		singleton BOOLEAN PRIMARY KEY DEFAULT TRUE
+			CONSTRAINT chk_root_super_admin_singleton CHECK (singleton),
+		user_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE RESTRICT,
+		succession_generation INTEGER NOT NULL,
+		established_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		CONSTRAINT fk_root_super_admin_succession_event
+			FOREIGN KEY (succession_generation, user_id)
+			REFERENCES root_succession_events (succession_generation, successor_user_id)
+			ON DELETE RESTRICT
+	);
+
+	-- Current administrative standing per account. Suspension lives here and
+	-- never in users.is_active, which carries email-confirmation state.
+	-- Every mutation of a row here happens while the transaction holds the
+	-- owning users row FOR UPDATE (the governance mutex).
+	CREATE TABLE IF NOT EXISTS administrative_appointments (
+		user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		level TEXT NOT NULL
+			CONSTRAINT chk_administrative_appointments_level
+			CHECK (level IN ('admin', 'super_admin')),
+		status TEXT NOT NULL
+			CONSTRAINT chk_administrative_appointments_status
+			CHECK (status IN ('active', 'suspended', 'revoked')),
+		appointed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+		appointed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		status_changed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+		status_changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		status_reason TEXT
+			CONSTRAINT chk_administrative_appointments_reason_length
+			CHECK (status_reason IS NULL OR char_length(status_reason) <= 500),
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		CONSTRAINT chk_administrative_appointments_not_self_appointed
+			CHECK (appointed_by IS NULL OR appointed_by <> user_id),
+		CONSTRAINT chk_administrative_appointments_not_self_governed
+			CHECK (status_changed_by IS NULL OR status_changed_by <> user_id)
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_administrative_appointments_status_level
+		ON administrative_appointments (status, level);
+
+	CREATE OR REPLACE FUNCTION public.is_root_super_admin(candidate UUID)
+	RETURNS BOOLEAN AS $$
+		SELECT EXISTS (
+			SELECT 1 FROM public.root_super_admin WHERE user_id = candidate
+		);
+	$$ LANGUAGE sql STABLE;
+
+	-- Root row: insert-only. Succession will be implemented as a reviewed
+	-- schema change that replaces this function; no escape hatch exists now.
+	CREATE OR REPLACE FUNCTION public.protect_root_super_admin_row()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		RAISE EXCEPTION 'the Root Super Admin record cannot be modified or removed'
+			USING ERRCODE = 'SG001';
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS protect_root_super_admin_row ON root_super_admin;
+	CREATE TRIGGER protect_root_super_admin_row
+	BEFORE UPDATE OR DELETE ON root_super_admin
+	FOR EACH ROW EXECUTE FUNCTION public.protect_root_super_admin_row();
+
+	DROP TRIGGER IF EXISTS protect_root_super_admin_truncate ON root_super_admin;
+	CREATE TRIGGER protect_root_super_admin_truncate
+	BEFORE TRUNCATE ON root_super_admin
+	FOR EACH STATEMENT EXECUTE FUNCTION public.protect_root_super_admin_row();
+
+	-- A Root can only be established for a live account that already holds
+	-- an active Super Admin appointment in the same transaction.
+	CREATE OR REPLACE FUNCTION public.validate_root_super_admin_insert()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		IF NOT EXISTS (
+			SELECT 1 FROM public.users u
+			WHERE u.id = NEW.user_id
+			  AND u.deleted_at IS NULL
+			  AND u.is_active = TRUE
+		) THEN
+			RAISE EXCEPTION 'the Root Super Admin must be an active account'
+				USING ERRCODE = 'SG001';
+		END IF;
+
+		IF NOT EXISTS (
+			SELECT 1 FROM public.administrative_appointments aa
+			WHERE aa.user_id = NEW.user_id
+			  AND aa.level = 'super_admin'
+			  AND aa.status = 'active'
+		) THEN
+			RAISE EXCEPTION 'the Root Super Admin must hold an active Super Admin appointment'
+				USING ERRCODE = 'SG001';
+		END IF;
+
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS validate_root_super_admin_insert ON root_super_admin;
+	CREATE TRIGGER validate_root_super_admin_insert
+	BEFORE INSERT ON root_super_admin
+	FOR EACH ROW EXECUTE FUNCTION public.validate_root_super_admin_insert();
+
+	CREATE OR REPLACE FUNCTION public.protect_root_succession_ledger()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		RAISE EXCEPTION 'the Root succession ledger is append-only'
+			USING ERRCODE = 'SG004';
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS protect_root_succession_ledger ON root_succession_events;
+	CREATE TRIGGER protect_root_succession_ledger
+	BEFORE UPDATE OR DELETE ON root_succession_events
+	FOR EACH ROW EXECUTE FUNCTION public.protect_root_succession_ledger();
+
+	DROP TRIGGER IF EXISTS protect_root_succession_ledger_truncate ON root_succession_events;
+	CREATE TRIGGER protect_root_succession_ledger_truncate
+	BEFORE TRUNCATE ON root_succession_events
+	FOR EACH STATEMENT EXECUTE FUNCTION public.protect_root_succession_ledger();
+
+	-- Root account: never deactivated, suspended, soft-deleted, or deleted.
+	CREATE OR REPLACE FUNCTION public.protect_root_super_admin_account()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		IF NOT public.is_root_super_admin(OLD.id) THEN
+			IF TG_OP = 'DELETE' THEN
+				RETURN OLD;
+			END IF;
+			RETURN NEW;
+		END IF;
+
+		IF TG_OP = 'DELETE' THEN
+			RAISE EXCEPTION 'the Root Super Admin account cannot be deleted'
+				USING ERRCODE = 'SG001';
+		END IF;
+
+		IF NEW.id IS DISTINCT FROM OLD.id
+		   OR NEW.deleted_at IS NOT NULL
+		   OR NEW.is_active IS DISTINCT FROM TRUE THEN
+			RAISE EXCEPTION 'the Root Super Admin account cannot be deactivated or deleted'
+				USING ERRCODE = 'SG001';
+		END IF;
+
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS protect_root_super_admin_account ON users;
+	CREATE TRIGGER protect_root_super_admin_account
+	BEFORE UPDATE OR DELETE ON users
+	FOR EACH ROW EXECUTE FUNCTION public.protect_root_super_admin_account();
+
+	-- Root's governing role: the super_admin assignment stays active and
+	-- primary, and no other role can become the Root's primary role.
+	CREATE OR REPLACE FUNCTION public.protect_root_super_admin_role_assignment()
+	RETURNS TRIGGER AS $$
+	DECLARE
+		super_admin_role_id UUID;
+	BEGIN
+		SELECT id INTO super_admin_role_id
+		FROM public.roles
+		WHERE name = 'super_admin';
+
+		IF TG_OP IN ('UPDATE', 'DELETE')
+		   AND OLD.deleted_at IS NULL
+		   AND OLD.role_id = super_admin_role_id
+		   AND public.is_root_super_admin(OLD.user_id) THEN
+			IF TG_OP = 'DELETE' THEN
+				RAISE EXCEPTION 'the Root Super Admin governing role cannot be removed'
+					USING ERRCODE = 'SG001';
+			END IF;
+
+			IF NEW.user_id IS DISTINCT FROM OLD.user_id
+			   OR NEW.role_id IS DISTINCT FROM OLD.role_id
+			   OR NEW.deleted_at IS NOT NULL
+			   OR NEW.is_primary IS DISTINCT FROM TRUE THEN
+				RAISE EXCEPTION 'the Root Super Admin governing role cannot be revoked or replaced'
+					USING ERRCODE = 'SG001';
+			END IF;
+		END IF;
+
+		IF TG_OP IN ('INSERT', 'UPDATE')
+		   AND NEW.deleted_at IS NULL
+		   AND NEW.is_primary = TRUE
+		   AND NEW.role_id IS DISTINCT FROM super_admin_role_id
+		   AND public.is_root_super_admin(NEW.user_id) THEN
+			RAISE EXCEPTION 'no other role may become the Root Super Admin primary role'
+				USING ERRCODE = 'SG001';
+		END IF;
+
+		IF TG_OP = 'DELETE' THEN
+			RETURN OLD;
+		END IF;
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS protect_root_super_admin_role_assignment ON user_role_assignments;
+	CREATE TRIGGER protect_root_super_admin_role_assignment
+	BEFORE INSERT OR UPDATE OR DELETE ON user_role_assignments
+	FOR EACH ROW EXECUTE FUNCTION public.protect_root_super_admin_role_assignment();
+
+	-- Root appointment: always an active Super Admin appointment.
+	CREATE OR REPLACE FUNCTION public.protect_root_super_admin_appointment()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		IF NOT public.is_root_super_admin(OLD.user_id) THEN
+			IF TG_OP = 'DELETE' THEN
+				RETURN OLD;
+			END IF;
+			RETURN NEW;
+		END IF;
+
+		IF TG_OP = 'DELETE' THEN
+			RAISE EXCEPTION 'the Root Super Admin appointment cannot be removed'
+				USING ERRCODE = 'SG001';
+		END IF;
+
+		IF NEW.user_id IS DISTINCT FROM OLD.user_id
+		   OR NEW.level IS DISTINCT FROM 'super_admin'
+		   OR NEW.status IS DISTINCT FROM 'active' THEN
+			RAISE EXCEPTION 'the Root Super Admin cannot be demoted, suspended, or revoked'
+				USING ERRCODE = 'SG001';
+		END IF;
+
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS protect_root_super_admin_appointment ON administrative_appointments;
+	CREATE TRIGGER protect_root_super_admin_appointment
+	BEFORE UPDATE OR DELETE ON administrative_appointments
+	FOR EACH ROW EXECUTE FUNCTION public.protect_root_super_admin_appointment();
+
+	-- Governance role definitions are seed-owned.
+	CREATE OR REPLACE FUNCTION public.protect_governance_roles()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		IF OLD.name NOT IN ('super_admin', 'admin') THEN
+			IF TG_OP = 'DELETE' THEN
+				RETURN OLD;
+			END IF;
+			RETURN NEW;
+		END IF;
+
+		IF TG_OP = 'DELETE' THEN
+			RAISE EXCEPTION 'governance roles cannot be deleted'
+				USING ERRCODE = 'SG002';
+		END IF;
+
+		IF NEW.name IS DISTINCT FROM OLD.name
+		   OR NEW.hierarchy_level IS DISTINCT FROM OLD.hierarchy_level
+		   OR NEW.is_active IS DISTINCT FROM TRUE
+		   OR NEW.deleted_at IS NOT NULL
+		   OR NEW.is_internal IS DISTINCT FROM TRUE
+		   OR NEW.assignable_at_signup IS DISTINCT FROM FALSE THEN
+			RAISE EXCEPTION 'governance roles cannot be renamed, re-ranked, deactivated, or deleted'
+				USING ERRCODE = 'SG002';
+		END IF;
+
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS protect_governance_roles ON roles;
+	CREATE TRIGGER protect_governance_roles
+	BEFORE UPDATE OR DELETE ON roles
+	FOR EACH ROW EXECUTE FUNCTION public.protect_governance_roles();
+
+	-- The Super Admin permission set is "every permission" and is owned by
+	-- platform seeding. Removing any Super Admin permission (including via a
+	-- cascading permission delete) would weaken the Root, so it is refused.
+	CREATE OR REPLACE FUNCTION public.protect_super_admin_permissions()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		IF EXISTS (
+			SELECT 1 FROM public.roles
+			WHERE id = OLD.role_id
+			  AND name = 'super_admin'
+		) THEN
+			RAISE EXCEPTION 'the Super Admin permission set is owned by platform seeding'
+				USING ERRCODE = 'SG002';
+		END IF;
+
+		IF TG_OP = 'DELETE' THEN
+			RETURN OLD;
+		END IF;
+		RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS protect_super_admin_permissions ON role_permissions;
+	CREATE TRIGGER protect_super_admin_permissions
+	BEFORE UPDATE OR DELETE ON role_permissions
+	FOR EACH ROW EXECUTE FUNCTION public.protect_super_admin_permissions();
+
+	-- A permission identity cannot be renamed/deleted behind the Root's grants.
+ CREATE OR REPLACE FUNCTION public.protect_governing_permission_identity()
+ RETURNS TRIGGER AS $$
+ BEGIN
+  IF TG_OP='DELETE' OR NEW.name IS DISTINCT FROM OLD.name THEN
+   IF EXISTS (SELECT 1 FROM role_permissions rp JOIN roles r ON r.id=rp.role_id
+    WHERE rp.permission_id=OLD.id AND r.name='super_admin') THEN
+    RAISE EXCEPTION 'governing permission identities are seed-owned' USING ERRCODE='SG002';
+   END IF;
+  END IF;
+  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+ END;
+ $$ LANGUAGE plpgsql;
+ DROP TRIGGER IF EXISTS protect_governing_permission_identity ON permissions;
+ CREATE TRIGGER protect_governing_permission_identity BEFORE UPDATE OR DELETE ON permissions
+ FOR EACH ROW EXECUTE FUNCTION public.protect_governing_permission_identity();
+
+	-- Appointment <-> role-assignment consistency, evaluated at commit:
+	--   (a) an active admin/super_admin role assignment requires an active
+	--       appointment at the same level;
+	--   (b) an active appointment requires its governance role to be the
+	--       live account's active primary role.
+	-- Deferral lets a governance transaction reorder its statements freely;
+	-- the check reads current rows, not the NEW image of the firing event.
+	CREATE OR REPLACE FUNCTION public.assert_administrative_consistency(subject UUID)
+	RETURNS VOID AS $$
+	DECLARE
+		appointment_level TEXT;
+		appointment_status TEXT;
+		mismatched INTEGER;
+		primary_matches BOOLEAN;
+	BEGIN
+		IF subject IS NULL THEN
+			RETURN;
+		END IF;
+
+		SELECT aa.level, aa.status
+		INTO appointment_level, appointment_status
+		FROM public.administrative_appointments aa
+		WHERE aa.user_id = subject;
+
+		SELECT COUNT(*)
+		INTO mismatched
+		FROM public.user_role_assignments ura
+		JOIN public.roles r ON r.id = ura.role_id
+		WHERE ura.user_id = subject
+		  AND ura.deleted_at IS NULL
+		  AND r.name IN ('super_admin', 'admin')
+		  AND (
+			appointment_status IS DISTINCT FROM 'active'
+			OR appointment_level IS DISTINCT FROM r.name::text
+		  );
+
+		IF mismatched > 0 THEN
+			RAISE EXCEPTION 'administrative role assignment has no matching active appointment'
+				USING ERRCODE = 'SG003';
+		END IF;
+
+		IF appointment_status = 'active' THEN
+			SELECT EXISTS (
+				SELECT 1
+				FROM public.user_role_assignments ura
+				JOIN public.roles r ON r.id = ura.role_id
+				JOIN public.users u ON u.id = ura.user_id
+				WHERE ura.user_id = subject
+				  AND ura.deleted_at IS NULL
+				  AND ura.is_primary = TRUE
+				  AND r.name::text = appointment_level
+				  AND u.deleted_at IS NULL
+			)
+			INTO primary_matches;
+
+			IF NOT primary_matches THEN
+				RAISE EXCEPTION 'active administrative appointment is not carried by the primary role'
+					USING ERRCODE = 'SG003';
+			END IF;
+		END IF;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	CREATE OR REPLACE FUNCTION public.check_administrative_consistency()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		IF TG_OP IN ('UPDATE', 'DELETE') THEN
+			PERFORM public.assert_administrative_consistency(OLD.user_id);
+		END IF;
+
+		IF TG_OP = 'INSERT'
+		   OR (TG_OP = 'UPDATE' AND NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
+			PERFORM public.assert_administrative_consistency(NEW.user_id);
+		END IF;
+
+		RETURN NULL;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS check_administrative_consistency_assignment ON user_role_assignments;
+	CREATE CONSTRAINT TRIGGER check_administrative_consistency_assignment
+	AFTER INSERT OR UPDATE OR DELETE ON user_role_assignments
+	DEFERRABLE INITIALLY DEFERRED
+	FOR EACH ROW EXECUTE FUNCTION public.check_administrative_consistency();
+
+	DROP TRIGGER IF EXISTS check_administrative_consistency_appointment ON administrative_appointments;
+	CREATE CONSTRAINT TRIGGER check_administrative_consistency_appointment
+	AFTER INSERT OR UPDATE OR DELETE ON administrative_appointments
+	DEFERRABLE INITIALLY DEFERRED
+	FOR EACH ROW EXECUTE FUNCTION public.check_administrative_consistency();
+
+	-- Soft-deleting or hard-deleting an account cascades into its role
+	-- assignments; the users-side constraint trigger re-checks the subject
+	-- so an account with live administrative standing cannot be closed.
+	CREATE OR REPLACE FUNCTION public.check_administrative_consistency_for_account()
+	RETURNS TRIGGER AS $$
+	BEGIN
+		PERFORM public.assert_administrative_consistency(NEW.id);
+		RETURN NULL;
+	END;
+	$$ LANGUAGE plpgsql;
+
+	DROP TRIGGER IF EXISTS check_administrative_consistency_account ON users;
+	CREATE CONSTRAINT TRIGGER check_administrative_consistency_account
+	AFTER UPDATE ON users
+	DEFERRABLE INITIALLY DEFERRED
+	FOR EACH ROW
+	WHEN (OLD.deleted_at IS DISTINCT FROM NEW.deleted_at)
+	EXECUTE FUNCTION public.check_administrative_consistency_for_account();
+
+
+ CREATE OR REPLACE FUNCTION public.protect_administrative_account_removal()
+ RETURNS TRIGGER AS $$
+ BEGIN
+  IF TG_OP='DELETE' OR NEW.deleted_at IS NOT NULL THEN
+   IF EXISTS(SELECT 1 FROM administrative_appointments WHERE user_id=OLD.id AND status IN ('active','suspended')) THEN
+    RAISE EXCEPTION 'revoke administrative standing before closing an account' USING ERRCODE='SG003';
+   END IF;
+  END IF;
+  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+ END;
+ $$ LANGUAGE plpgsql;
+ DROP TRIGGER IF EXISTS protect_administrative_account_removal ON users;
+ CREATE TRIGGER protect_administrative_account_removal BEFORE UPDATE OR DELETE ON users
+ FOR EACH ROW EXECUTE FUNCTION public.protect_administrative_account_removal();
+
+ CREATE OR REPLACE FUNCTION public.refuse_governance_truncate()
+ RETURNS TRIGGER AS $$ BEGIN
+  RAISE EXCEPTION 'administrative authority cannot be removed by truncate' USING ERRCODE='SG002';
+ END; $$ LANGUAGE plpgsql;
+ DROP TRIGGER IF EXISTS refuse_governance_truncate ON administrative_appointments;
+ CREATE TRIGGER refuse_governance_truncate BEFORE TRUNCATE ON administrative_appointments
+ FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_governance_truncate();
+ DROP TRIGGER IF EXISTS refuse_governance_truncate ON user_role_assignments;
+ CREATE TRIGGER refuse_governance_truncate BEFORE TRUNCATE ON user_role_assignments
+ FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_governance_truncate();
+ DROP TRIGGER IF EXISTS refuse_governance_truncate ON role_permissions;
+ CREATE TRIGGER refuse_governance_truncate BEFORE TRUNCATE ON role_permissions
+ FOR EACH STATEMENT EXECUTE FUNCTION public.refuse_governance_truncate();
 
 
 	CREATE TABLE IF NOT EXISTS platform_settings (
@@ -3053,7 +3565,10 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		entity_type_id UUID NOT NULL REFERENCES entity_types(id) ON DELETE RESTRICT,
 		entity_id TEXT NOT NULL,
 		occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		CONSTRAINT audit_logs_entity_composite_key UNIQUE (entity_type_id, entity_id, action_id, occurred_at),
+		-- Governance writers provide an outcome and bounded, secret-free context.
+		-- Other audit writers may leave these fields NULL.
+		outcome TEXT,
+		context JSONB,
 		PRIMARY KEY (id, occurred_at)
 	) PARTITION BY RANGE (occurred_at);
 
@@ -4489,6 +5004,11 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	DROP TRIGGER IF EXISTS set_updated_at_roles ON roles;
 	CREATE TRIGGER set_updated_at_roles
 	BEFORE UPDATE ON roles
+	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+	DROP TRIGGER IF EXISTS set_updated_at_administrative_appointments ON administrative_appointments;
+	CREATE TRIGGER set_updated_at_administrative_appointments
+	BEFORE UPDATE ON administrative_appointments
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_platform_settings ON platform_settings;

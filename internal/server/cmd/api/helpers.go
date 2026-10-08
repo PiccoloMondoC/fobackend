@@ -55,6 +55,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+
 	"github.com/google/uuid"
 )
 
@@ -499,17 +501,17 @@ func (app *Application) IsInternalUser(ctx context.Context) bool {
 	return isInternalRole(getRoleFromContext(ctx))
 }
 
-// isInternalRole is the single canonical definition of "internal actor" for
-// Sagrenti authorization. AuthMiddleware, RequireInternalPermission, and
-// IsInternalUser all delegate to this function so the classification cannot
-// drift out of sync between them.
+// isInternalRole is the API layer's name for the single canonical definition
+// of an internal administrative actor: data.IsAdministrativeRoleName
+// (super_admin or admin). AuthMiddleware, RequireInternalPermission,
+// RequireInternalRole, and IsInternalUser all delegate here.
+//
+// The former "internal_operator" entry named a role that was never seeded and
+// has been removed. Staff roles flagged roles.is_internal (editor, viewer,
+// and similar) are internal in the sense of "never signup-assignable" but
+// are not administrative and do not act on other accounts.
 func isInternalRole(roleName string) bool {
-	switch strings.ToLower(strings.TrimSpace(roleName)) {
-	case "admin", "super_admin", "internal_operator":
-		return true
-	default:
-		return false
-	}
+	return data.IsAdministrativeRoleName(roleName)
 }
 
 // -----------------------------------------------------------------------------

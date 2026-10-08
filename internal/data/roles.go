@@ -760,9 +760,9 @@ func (m *RoleModel) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UU
 		return err
 	}
 	if !userExists {
-		err := errors.New("user does not exist or is deleted")
-		logger.Error("Validation failed", err)
-		return err
+		logger.Warn("Role assignment target not found", "user_id", userID)
+		return ErrUserNotFound
+
 	}
 
 	if err := m.EnsureAssignableRoleTx(ctx, tx, roleID); err != nil {
@@ -803,12 +803,12 @@ func (m *RoleModel) AssignRoleToUser(ctx context.Context, userID, roleID uuid.UU
 	`, userID, roleID, assignedBy, makePrimary)
 	if err != nil {
 		logger.Error("Role assignment failed", err)
-		return err
+		return TranslateGovernanceError(err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		logger.Error("Failed to commit transaction", err)
-		return err
+		return TranslateGovernanceError(err)
 	}
 
 	return nil
@@ -904,7 +904,27 @@ func (m *RoleModel) RevokeRole(
 	)
 	if err != nil {
 		logger.Error("Failed to revoke role assignment", err)
+		return TranslateGovernanceError(err)
+	}
+
+	var remaining int
+	if err := tx.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM user_role_assignments ura
+		INNER JOIN roles r ON r.id = ura.role_id
+		WHERE ura.user_id = $1
+		  AND ura.deleted_at IS NULL
+		  AND r.deleted_at IS NULL
+		  AND r.is_active = TRUE
+	`, userID).Scan(&remaining); err != nil {
+		logger.Error("Failed to count remaining roles", err)
 		return err
+	}
+
+	if remaining == 0 {
+		// The generic revoke route must never leave an account without any
+		// role: AuthMiddleware would then refuse every request it makes.
+		return ErrLastActiveRole
 	}
 
 	if tag.RowsAffected() != 1 {
@@ -951,7 +971,7 @@ func (m *RoleModel) RevokeRole(
 
 	if err := tx.Commit(ctx); err != nil {
 		logger.Error("Failed to commit role revocation", err)
-		return err
+		return TranslateGovernanceError(err)
 	}
 
 	logger.Info(
@@ -1047,6 +1067,7 @@ func (m *RoleModel) ResolveSignupRoleTx(
 		  AND is_active = TRUE
 		  AND deleted_at IS NULL
 		LIMIT 1
+ FOR SHARE
 	`
 
 	if err := tx.QueryRow(ctx, query, roleName).Scan(&roleID); err != nil {
@@ -1075,17 +1096,18 @@ func (m *RoleModel) EnsureAssignableRoleTx(ctx context.Context, tx pgx.Tx, roleI
 		FROM roles
 		WHERE id = $1
 		  AND deleted_at IS NULL
+ FOR SHARE
 	`
 
 	if err := tx.QueryRow(ctx, query, roleID).Scan(&isActive); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return fmt.Errorf("role not found: %s", roleID)
+			return ErrRoleNotFound
 		}
 		return fmt.Errorf("lookup role: %w", err)
 	}
 
 	if !isActive {
-		return errors.New("cannot assign an inactive role")
+		return ErrRoleInactive
 	}
 
 	return nil
@@ -1151,4 +1173,323 @@ func (m *RoleModel) AssignPrimaryRoleTx(
 	}
 
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Administrative-governance and role-lifecycle primitives
+// ---------------------------------------------------------------------------
+
+// ResolveRoleIDByNameTx returns the ID of an active, non-deleted role.
+func (m *RoleModel) ResolveRoleIDByNameTx(ctx context.Context, tx pgx.Tx, roleName string) (uuid.UUID, error) {
+	if tx == nil {
+		return uuid.Nil, errors.New("transaction is required")
+	}
+	roleName = normalizeRoleName(roleName)
+	if roleName == "" {
+		return uuid.Nil, ErrRoleNotFound
+	}
+
+	var id uuid.UUID
+	var isActive bool
+	if err := tx.QueryRow(ctx, `
+		SELECT id, is_active
+		FROM roles
+		WHERE name = $1
+		  AND deleted_at IS NULL
+	`, roleName).Scan(&id, &isActive); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrRoleNotFound
+		}
+		return uuid.Nil, fmt.Errorf("resolve role: %w", err)
+	}
+	if !isActive {
+		return uuid.Nil, ErrRoleInactive
+	}
+	return id, nil
+}
+
+// RevokeRoleAssignmentTx soft-deletes userID's active assignment of roleID
+// inside the caller-owned transaction and reports whether one existed.
+//
+// When the revoked assignment was primary, the highest-hierarchy remaining
+// active role becomes primary. When no active role remains and
+// fallbackPrimaryRoleName is non-empty, that role is assigned as primary so
+// the account keeps an authorization class (a demoted administrator returns
+// to being an ordinary account rather than being locked out).
+//
+// The caller must hold the users row lock for userID (governance mutex).
+func (m *RoleModel) RevokeRoleAssignmentTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	userID uuid.UUID,
+	roleID uuid.UUID,
+	fallbackPrimaryRoleName string,
+) (bool, error) {
+	if tx == nil {
+		return false, errors.New("transaction is required")
+	}
+	if userID == uuid.Nil || roleID == uuid.Nil {
+		return false, errors.New("user ID and role ID are required")
+	}
+
+	var wasPrimary bool
+	if err := tx.QueryRow(ctx, `
+		SELECT is_primary
+		FROM user_role_assignments
+		WHERE user_id = $1
+		  AND role_id = $2
+		  AND deleted_at IS NULL
+		FOR UPDATE
+	`, userID, roleID).Scan(&wasPrimary); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("lock role assignment: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE user_role_assignments
+		SET
+			is_primary = FALSE,
+			deleted_at = NOW(),
+			updated_at = NOW()
+		WHERE user_id = $1
+		  AND role_id = $2
+		  AND deleted_at IS NULL
+	`, userID, roleID); err != nil {
+		return false, fmt.Errorf("revoke role assignment: %w", TranslateGovernanceError(err))
+	}
+
+	if !wasPrimary {
+		return true, nil
+	}
+
+	tag, err := tx.Exec(ctx, `
+		WITH replacement AS (
+			SELECT ura.role_id
+			FROM user_role_assignments ura
+			INNER JOIN roles r ON r.id = ura.role_id
+			WHERE ura.user_id = $1
+			  AND ura.deleted_at IS NULL
+			  AND r.deleted_at IS NULL
+			  AND r.is_active = TRUE
+			ORDER BY r.hierarchy_level DESC, r.name ASC, ura.role_id ASC
+			LIMIT 1
+		)
+		UPDATE user_role_assignments ura
+		SET is_primary = TRUE,
+		    updated_at = NOW()
+		FROM replacement
+		WHERE ura.user_id = $1
+		  AND ura.role_id = replacement.role_id
+		  AND ura.deleted_at IS NULL
+	`, userID)
+	if err != nil {
+		return true, fmt.Errorf("promote replacement primary role: %w", TranslateGovernanceError(err))
+	}
+	if tag.RowsAffected() > 0 || strings.TrimSpace(fallbackPrimaryRoleName) == "" {
+		return true, nil
+	}
+
+	fallbackID, err := m.ResolveRoleIDByNameTx(ctx, tx, fallbackPrimaryRoleName)
+	if err != nil {
+		return true, fmt.Errorf("resolve fallback primary role: %w", err)
+	}
+	if err := m.AssignPrimaryRoleTx(ctx, tx, userID, fallbackID, nil); err != nil {
+		return true, fmt.Errorf("assign fallback primary role: %w", TranslateGovernanceError(err))
+	}
+	return true, nil
+}
+
+// AdministrativeAssignment is an active governance-role assignment.
+type AdministrativeAssignment struct {
+	UserID      uuid.UUID
+	RoleID      uuid.UUID
+	RoleName    string
+	IsPrimary   bool
+	UserDeleted bool
+}
+
+// ListAdministrativeAssignmentsWithoutAppointmentTx returns active
+// admin/super_admin assignments that predate administrative governance (no
+// appointment row). Used only by startup reconciliation.
+func (m *RoleModel) ListAdministrativeAssignmentsWithoutAppointmentTx(ctx context.Context, tx pgx.Tx) ([]AdministrativeAssignment, error) {
+	if tx == nil {
+		return nil, errors.New("transaction is required")
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT ura.user_id, ura.role_id, r.name::text, ura.is_primary, u.deleted_at IS NOT NULL
+		FROM user_role_assignments ura
+		INNER JOIN roles r ON r.id = ura.role_id
+		INNER JOIN users u ON u.id = ura.user_id
+		LEFT JOIN administrative_appointments aa ON aa.user_id = ura.user_id
+		WHERE ura.deleted_at IS NULL
+		  AND r.name IN ('super_admin', 'admin')
+		  AND aa.user_id IS NULL
+		ORDER BY ura.user_id, ura.is_primary DESC, r.hierarchy_level DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("list unreconciled administrative assignments: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]AdministrativeAssignment, 0)
+	for rows.Next() {
+		var a AdministrativeAssignment
+		if err := rows.Scan(&a.UserID, &a.RoleID, &a.RoleName, &a.IsPrimary, &a.UserDeleted); err != nil {
+			return nil, fmt.Errorf("scan administrative assignment: %w", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// SoftDeleteUnused soft-deletes a role only when no live account currently
+// holds it; the usage check and the update are one statement. Governance
+// roles are refused by trigger (SG002 -> ErrGovernanceRoleProtected).
+func (m *RoleModel) SoftDeleteUnused(ctx context.Context, roleID uuid.UUID) error {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	if roleID == uuid.Nil {
+		return ErrRoleInvalidInput
+	}
+
+	tag, err := m.DB.Exec(ctx, `
+		UPDATE roles
+		SET is_active = FALSE,
+		    deleted_at = NOW(),
+		    updated_at = NOW()
+		WHERE id = $1
+		  AND deleted_at IS NULL
+		  AND NOT EXISTS (
+			SELECT 1
+			FROM user_role_assignments ura
+			INNER JOIN users u ON u.id = ura.user_id
+			WHERE ura.role_id = $1
+			  AND ura.deleted_at IS NULL
+			  AND u.deleted_at IS NULL
+		  )
+	`, roleID)
+	if err != nil {
+		return TranslateGovernanceError(err)
+	}
+	if tag.RowsAffected() == 1 {
+		return nil
+	}
+
+	var exists bool
+	if err := m.DB.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM roles WHERE id = $1 AND deleted_at IS NULL)`, roleID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrRoleNotFound
+	}
+	return ErrRoleInUse
+}
+
+// RolePatch carries optional role-definition changes. Nil fields are kept.
+type RolePatch struct {
+	Name               *string
+	Description        *string
+	HierarchyLevel     *int
+	IsInternal         *bool
+	AssignableAtSignup *bool
+	ApprovalRequired   *bool
+	IsActive           *bool
+}
+
+// UpdateRolePartial applies patch to a non-deleted role atomically: the row
+// is locked, merged, validated, and written in one transaction so concurrent
+// partial updates cannot lose each other's fields. Governance roles are
+// protected by trigger (renaming, re-ranking, deactivation, or making them
+// signup-assignable fails with ErrGovernanceRoleProtected); renaming another
+// role onto a governance name collides with the unique name.
+func (m *RoleModel) UpdateRolePartial(ctx context.Context, roleID uuid.UUID, patch RolePatch) (*Role, error) {
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	if roleID == uuid.Nil {
+		return nil, ErrRoleInvalidInput
+	}
+
+	tx, err := m.DB.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var role Role
+	if err := scanRole(tx.QueryRow(ctx, fmt.Sprintf(`
+		SELECT %s FROM roles WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
+	`, roleSelectColumns()), roleID), &role); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrRoleNotFound
+		}
+		return nil, err
+	}
+
+	if patch.Name != nil {
+		role.Name = normalizeRoleName(*patch.Name)
+	}
+	if patch.Description != nil {
+		role.Description = strings.TrimSpace(*patch.Description)
+	}
+	if patch.HierarchyLevel != nil {
+		role.HierarchyLevel = *patch.HierarchyLevel
+	}
+	if patch.IsInternal != nil {
+		role.IsInternal = *patch.IsInternal
+	}
+	if patch.AssignableAtSignup != nil {
+		role.AssignableAtSignup = *patch.AssignableAtSignup
+	}
+	if patch.ApprovalRequired != nil {
+		role.ApprovalRequired = *patch.ApprovalRequired
+	}
+	if patch.IsActive != nil {
+		role.IsActive = *patch.IsActive
+	}
+
+	if role.Name == "" || role.Description == "" || role.HierarchyLevel < 0 ||
+		(role.IsInternal && role.AssignableAtSignup) {
+		return nil, ErrRoleInvalidInput
+	}
+
+	if err := scanRole(tx.QueryRow(ctx, fmt.Sprintf(`
+		UPDATE roles
+		SET
+			name = $2,
+			description = $3,
+			hierarchy_level = $4,
+			is_internal = $5,
+			assignable_at_signup = $6,
+			approval_required = $7,
+			is_active = $8,
+			updated_at = NOW()
+		WHERE id = $1
+		RETURNING %s
+	`, roleSelectColumns()),
+		role.ID,
+		role.Name,
+		role.Description,
+		role.HierarchyLevel,
+		role.IsInternal,
+		role.AssignableAtSignup,
+		role.ApprovalRequired,
+		role.IsActive,
+	), &role); err != nil {
+		if IsUniqueViolation(err) {
+			return nil, ErrRoleNameTaken
+		}
+		if IsCheckViolation(err) {
+			return nil, ErrRoleInvalidInput
+		}
+		return nil, TranslateGovernanceError(err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, TranslateGovernanceError(err)
+	}
+	return &role, nil
 }

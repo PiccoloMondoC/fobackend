@@ -8,644 +8,234 @@
 //	Release Class: SPINE
 //	Reason:
 //	  Permission discovery, permission evaluation, and role-permission
-//	  administration are release-critical authorization infrastructure.
-//	  These handlers expose the canonical permission catalog, support explicit
-//	  user capability checks, and preserve controlled role capability
-//	  assignments required by the initial Platform release spine.
+//	  administration. The role is always named by the URL ({roleID}); the
+//	  caller's own role is never the implicit target. Replacement of a role's
+//	  permission set is atomic. Governance role permission sets (super_admin:
+//	  every permission; admin: every permission except the Super-Admin-tier
+//	  set) are owned by platform seeding and cannot be edited here.
 //
 // SPINE Rule:
 //
 //	Keep compiling.
 //	Keep production-ready.
-//	Preserve canonical permission and role-permission semantics.
-//	Preserve active-role enforcement for permission checks.
-//	Preserve UUID validation through the canonical context and data layers.
-//	Preserve explicit authorization around privileged permission workflows.
+//	Preserve atomic role-permission replacement.
+//	Preserve seed ownership of governance role permission sets.
 //	Preserve auditability for permission reads, checks, and mutations.
-//	Preserve DB-owned lifecycle timestamps.
-//	Do not recreate persistence contracts in the handler layer.
-//	Do not silently continue after role-permission mutation failures.
-//	Do not expose privileged permission administration without route-level
-//	authentication and permission enforcement.
+//	Do not return wrapped internal errors to clients.
 //	Block deployment if this file breaks build, permission lookup,
-//	role-permission assignment, permission evaluation, auditability, or
-//	authorization integrity.
+//	role-permission assignment, or authorization integrity.
 package main
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+ "github.com/jackc/pgx/v5"
 )
 
-// ListAllPermissionsHandler returns the canonical permission catalog.
-func (app *Application) ListAllPermissionsHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName("ListAllPermissionsHandler")
+const (
+	permissionAuditEntityType            = "permissions"
+	permissionAuditEntityTypeDescription = "Permission catalog and role-permission grants"
+)
 
+func (app *Application) auditPermissionAction(ctx context.Context, action, description, entityID string) error {
+	return app.insertGovernanceAudit(
+		ctx,
+		app.getUserIDFromContext(ctx),
+		action,
+		description,
+		permissionAuditEntityType,
+		permissionAuditEntityTypeDescription,
+		entityID,
+	)
+}
+
+// ListAllPermissionsHandler returns the canonical permission catalog.
+//
+//	GET /api/v1/permissions/   list_permissions
+func (app *Application) ListAllPermissionsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
+
+	if !app.HasPermission(ctx, "list_permissions") {
+		app.respondWithErrorCode(w, http.StatusForbidden, "insufficient_permission", "forbidden: insufficient permissions")
+		return
+	}
 
 	permissions, err := app.Models.Permission.GetAllPermissions(ctx)
 	if err != nil {
-		logger.Error(
-			"Fetch permissions failed",
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			errors.New("could not fetch permissions"),
-			http.StatusInternalServerError,
-		)
+		app.respondWithRoleError(w, r, "list_permissions", err)
 		return
 	}
 
-	actionID := app.Preloaded.ActionIDs["list_permissions"]
-	userID := app.getUserIDFromContext(ctx)
-
-	auditLog := &data.AuditLog{
-		ID:           uuid.New(),
-		UserID:       userID,
-		ActionID:     actionID,
-		EntityTypeID: app.Preloaded.EntityTypeIDs["permissions"],
-		EntityID:     "",
+	if err := app.auditPermissionAction(ctx, "list_permissions", "List the permission catalog", "catalog"); err != nil {
+		app.Logger.GetLoggerWithContext(r).Warn("permission catalog read but audit failed", "error", err)
 	}
 
-	auditCtx, auditCancel := context.WithTimeout(
-		context.Background(),
-		cfgTimeout,
-	)
-	defer auditCancel()
-
-	if err := app.Models.AuditLog.Insert(auditCtx, auditLog); err != nil {
-		logger.Warn(
-			"Permission catalog read succeeded but audit insertion failed",
-			"error", err,
-		)
-	}
-
-	logger.Info(
-		"Permissions listed",
-		"permission_count", len(permissions),
-	)
-
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "Permissions listed successfully",
-		Data:    permissions,
-	})
+	app.respondWithJSON(w, http.StatusOK, jsonResponse{Error: false, Message: "Permissions listed successfully", Data: permissions})
 }
 
-// CheckUserPermissionHandler checks whether the context-scoped user currently
-// holds a named permission through an active role.
-func (app *Application) CheckUserPermissionHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName("CheckUserPermissionHandler")
-
+// CheckUserPermissionHandler reports whether the account in the URL holds
+// the named permission through its effective (primary) active role.
+//
+//	GET /api/v1/permissions/check/{userID}/{permission}   check_user_permission
+func (app *Application) CheckUserPermissionHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
 
-	userID := app.getUserIDFromContext(ctx)
-	if userID == nil || *userID == uuid.Nil {
-		logger.Warn("User ID not found in context")
-		app.respondWithError(
-			w,
-			errors.New("missing user ID"),
-			http.StatusBadRequest,
-		)
+	if !app.HasPermission(ctx, "check_user_permission") {
+		app.respondWithErrorCode(w, http.StatusForbidden, "insufficient_permission", "forbidden: insufficient permissions")
 		return
 	}
 
-	var input struct {
-		Permission string `json:"permission"`
+	targetID, err := uuid.Parse(strings.TrimSpace(chi.URLParam(r, "userID")))
+	if err != nil || targetID == uuid.Nil {
+		app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "invalid user ID")
+		return
 	}
-
-	if err := app.readJSON(w, r, &input); err != nil {
-		logger.Warn(
-			"Invalid request payload",
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			fmt.Errorf("invalid request payload: %w", err),
-			http.StatusBadRequest,
-		)
+	permission := strings.TrimSpace(chi.URLParam(r, "permission"))
+	if permission == "" {
+		app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "permission is required")
 		return
 	}
 
-	input.Permission = strings.TrimSpace(input.Permission)
-	if input.Permission == "" {
-		logger.Warn(
-			"Permission name is required",
-			"user_id", *userID,
-		)
-		app.respondWithError(
-			w,
-			errors.New("permission is required"),
-			http.StatusBadRequest,
-		)
+	granted := false
+	role, err := app.Models.Role.GetRoleByUserID(ctx, targetID)
+	switch {
+	case errors.Is(err, data.ErrRoleNotFound):
+		granted = false
+	case err != nil:
+		app.respondWithRoleError(w, r, "check_user_permission", err)
 		return
+	default:
+		granted, err = app.Models.RolePermission.RoleHasPermission(ctx, role.ID.String(), permission)
+		if err != nil {
+			app.respondWithRoleError(w, r, "check_user_permission", err)
+			return
+		}
 	}
 
-	role, err := app.Models.Role.GetRoleByUserID(ctx, *userID)
-	if err != nil {
-		logger.Error(
-			"Retrieve user role failed",
-			"user_id", *userID,
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			errors.New("internal server error"),
-			http.StatusInternalServerError,
-		)
-		return
+	if err := app.auditPermissionAction(ctx, "check_user_permission", "Check whether an account holds a permission", targetID.String()); err != nil {
+		app.Logger.GetLoggerWithContext(r).Warn("permission check performed but audit failed", "error", err)
 	}
-
-	if role == nil {
-		logger.Warn(
-			"User role not found",
-			"user_id", *userID,
-		)
-		app.respondWithError(
-			w,
-			errors.New("user role not found"),
-			http.StatusNotFound,
-		)
-		return
-	}
-
-	if !role.IsActive {
-		logger.Warn(
-			"Inactive role cannot grant permissions",
-			"user_id", *userID,
-			"role_id", role.ID,
-			"role_name", role.Name,
-		)
-		app.respondWithError(
-			w,
-			errors.New("user role is inactive"),
-			http.StatusForbidden,
-		)
-		return
-	}
-
-	hasPermission, err := app.Models.RolePermission.RoleHasPermission(
-		ctx,
-		role.ID.String(),
-		input.Permission,
-	)
-	if err != nil {
-		logger.Error(
-			"Permission check failed",
-			"user_id", *userID,
-			"role_id", role.ID,
-			"permission", input.Permission,
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			errors.New("internal server error"),
-			http.StatusInternalServerError,
-		)
-		return
-	}
-
-	actionID := app.Preloaded.ActionIDs["check_permission"]
-
-	auditLog := &data.AuditLog{
-		ID:           uuid.New(),
-		UserID:       userID,
-		ActionID:     actionID,
-		EntityTypeID: app.Preloaded.EntityTypeIDs["users"],
-		EntityID:     userID.String(),
-	}
-
-	auditCtx, auditCancel := context.WithTimeout(
-		context.Background(),
-		cfgTimeout,
-	)
-	defer auditCancel()
-
-	if err := app.Models.AuditLog.Insert(auditCtx, auditLog); err != nil {
-		logger.Warn(
-			"Permission check succeeded but audit insertion failed",
-			"user_id", *userID,
-			"permission", input.Permission,
-			"error", err,
-		)
-	}
-
-	logger.Info(
-		"Permission check complete",
-		"user_id", *userID,
-		"role_id", role.ID,
-		"permission", input.Permission,
-		"granted", hasPermission,
-	)
 
 	app.respondWithJSON(w, http.StatusOK, jsonResponse{
 		Error:   false,
 		Message: "Permission check complete",
-		Data:    hasPermission,
+		Data: struct {
+			UserID     uuid.UUID `json:"user_id"`
+			Permission string    `json:"permission"`
+			Granted    bool      `json:"granted"`
+		}{targetID, permission, granted},
 	})
 }
 
-// GetRolePermissionsHandler returns all permissions assigned to the
-// context-scoped role.
-func (app *Application) GetRolePermissionsHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName("GetRolePermissionsHandler")
-
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	roleIDPtr := app.getRoleIDFromContext(ctx)
-	if roleIDPtr == nil || *roleIDPtr == uuid.Nil {
-		logger.Warn("Role ID not found in context")
-		app.respondWithError(
-			w,
-			errors.New("missing role ID"),
-			http.StatusBadRequest,
-		)
-		return
-	}
-
-	roleID := roleIDPtr.String()
-
-	permissions, err := app.Models.RolePermission.GetPermissionsByRole(
-		ctx,
-		roleID,
-	)
-	if err != nil {
-		logger.Error(
-			"Retrieve role permissions failed",
-			"role_id", roleID,
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			errors.New("failed to retrieve permissions for role"),
-			http.StatusInternalServerError,
-		)
-		return
-	}
-
-	actionID := app.Preloaded.ActionIDs["view_role_permissions"]
-	userID := app.getUserIDFromContext(ctx)
-
-	auditLog := &data.AuditLog{
-		ID:           uuid.New(),
-		UserID:       userID,
-		ActionID:     actionID,
-		EntityTypeID: app.Preloaded.EntityTypeIDs["roles"],
-		EntityID:     roleID,
-	}
-
-	auditCtx, auditCancel := context.WithTimeout(
-		context.Background(),
-		cfgTimeout,
-	)
-	defer auditCancel()
-
-	if err := app.Models.AuditLog.Insert(auditCtx, auditLog); err != nil {
-		logger.Warn(
-			"Role-permission read succeeded but audit insertion failed",
-			"role_id", roleID,
-			"error", err,
-		)
-	}
-
-	logger.Info(
-		"Role permissions retrieved",
-		"role_id", roleID,
-		"permission_count", len(permissions),
-	)
-
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "Role permissions retrieved successfully",
-		Data:    permissions,
-	})
-}
-
-// UpdateRolePermissionsHandler replaces the complete permission assignment set
-// for the context-scoped role.
+// GetRolePermissionsHandler returns the permissions granted to {roleID}.
 //
-// An empty permissions array removes every current permission from the role.
-// A missing permissions field is rejected because omission must not
-// accidentally remove all authorization capabilities.
-func (app *Application) UpdateRolePermissionsHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName("UpdateRolePermissionsHandler")
-
+//	GET /api/v1/roles/{roleID}/permissions   read_role_permissions
+func (app *Application) GetRolePermissionsHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
 	defer cancel()
 
-	roleIDPtr := app.getRoleIDFromContext(ctx)
-	if roleIDPtr == nil || *roleIDPtr == uuid.Nil {
-		logger.Warn("Role ID not found in context")
-		app.respondWithError(
-			w,
-			errors.New("missing role ID"),
-			http.StatusBadRequest,
-		)
+	if !app.HasPermission(ctx, "read_role_permissions") {
+		app.respondWithErrorCode(w, http.StatusForbidden, "insufficient_permission", "forbidden: insufficient permissions")
+		return
+	}
+	roleID, ok := parseRoleIDParam(r)
+	if !ok {
+		app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "invalid role ID")
+		return
+	}
+	if _, err := app.Models.Role.GetRoleByID(ctx, roleID); err != nil {
+		app.respondWithRoleError(w, r, "read_role_permissions", err)
 		return
 	}
 
-	roleID := roleIDPtr.String()
+	permissions, err := app.Models.RolePermission.GetPermissionsByRole(ctx, roleID.String())
+	if err != nil {
+		app.respondWithRoleError(w, r, "read_role_permissions", err)
+		return
+	}
+
+	if err := app.auditPermissionAction(ctx, "read_role_permissions", "Read the permissions granted to a role", roleID.String()); err != nil {
+		app.Logger.GetLoggerWithContext(r).Warn("role permissions read but audit failed", "error", err)
+	}
+
+	app.respondWithJSON(w, http.StatusOK, jsonResponse{Error: false, Message: "Role permissions retrieved successfully", Data: permissions})
+}
+
+// UpdateRolePermissionsHandler atomically replaces the permission set of a
+// non-governance role. An empty array removes every permission; a missing
+// field is rejected so omission cannot strip a role by accident.
+//
+//	PUT /api/v1/roles/{roleID}/permissions   update_role_permissions (Super Admin tier)
+func (app *Application) UpdateRolePermissionsHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
+	defer cancel()
+
+	if !app.HasPermission(ctx, "update_role_permissions") {
+		app.respondWithErrorCode(w, http.StatusForbidden, "insufficient_permission", "forbidden: insufficient permissions")
+		return
+	}
+	roleID, ok := parseRoleIDParam(r)
+	if !ok {
+		app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "invalid role ID")
+		return
+	}
 
 	var input struct {
-		Permissions []string `json:"permissions"`
+		Permissions *[]string `json:"permissions"`
 	}
-
 	if err := app.readJSON(w, r, &input); err != nil {
-		logger.Warn(
-			"Invalid request payload",
-			"role_id", roleID,
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			fmt.Errorf("invalid request payload: %w", err),
-			http.StatusBadRequest,
-		)
+		app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
-
 	if input.Permissions == nil {
-		logger.Warn(
-			"Permissions array is required",
-			"role_id", roleID,
-		)
-		app.respondWithError(
-			w,
-			errors.New("permissions array is required"),
-			http.StatusBadRequest,
-		)
+		app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "permissions array is required")
 		return
 	}
 
-	desiredPermissionIDs := make(
-		[]string,
-		0,
-		len(input.Permissions),
-	)
-	desiredPermissionSet := make(
-		map[string]struct{},
-		len(input.Permissions),
-	)
-
-	for _, rawPermissionID := range input.Permissions {
-		permissionID := strings.TrimSpace(rawPermissionID)
-		if permissionID == "" {
-			logger.Warn(
-				"Empty permission ID rejected",
-				"role_id", roleID,
-			)
-			app.respondWithError(
-				w,
-				errors.New("permission IDs must not be empty"),
-				http.StatusBadRequest,
-			)
-			return
-		}
-
-		parsedPermissionID, err := uuid.Parse(permissionID)
-		if err != nil {
-			logger.Warn(
-				"Invalid permission ID rejected",
-				"role_id", roleID,
-				"permission_id", permissionID,
-				"error", err,
-			)
-			app.respondWithError(
-				w,
-				fmt.Errorf("invalid permission ID %q", permissionID),
-				http.StatusBadRequest,
-			)
-			return
-		}
-
-		canonicalPermissionID := parsedPermissionID.String()
-
-		if _, exists := desiredPermissionSet[canonicalPermissionID]; exists {
-			logger.Warn(
-				"Duplicate permission ID rejected",
-				"role_id", roleID,
-				"permission_id", canonicalPermissionID,
-			)
-			app.respondWithError(
-				w,
-				fmt.Errorf(
-					"duplicate permission ID %q",
-					canonicalPermissionID,
-				),
-				http.StatusBadRequest,
-			)
-			return
-		}
-
-		// Confirm every requested permission exists before changing any current
-		// role-permission assignments.
-		if _, err := app.Models.Permission.GetPermissionByID(
-			ctx,
-			canonicalPermissionID,
-		); err != nil {
-			if errors.Is(err, data.ErrPermissionNotFound) {
-				logger.Warn(
-					"Requested permission not found",
-					"role_id", roleID,
-					"permission_id", canonicalPermissionID,
-				)
-				app.respondWithError(
-					w,
-					fmt.Errorf(
-						"permission %q not found",
-						canonicalPermissionID,
-					),
-					http.StatusBadRequest,
-				)
-				return
-			}
-
-			logger.Error(
-				"Validate requested permission failed",
-				"role_id", roleID,
-				"permission_id", canonicalPermissionID,
-				"error", err,
-			)
-			app.respondWithError(
-				w,
-				errors.New("failed to validate requested permissions"),
-				http.StatusInternalServerError,
-			)
-			return
-		}
-
-		desiredPermissionSet[canonicalPermissionID] = struct{}{}
-		desiredPermissionIDs = append(
-			desiredPermissionIDs,
-			canonicalPermissionID,
-		)
-	}
-
-	existingPermissions, err := app.Models.RolePermission.GetPermissionsByRole(
-		ctx,
-		roleID,
-	)
+	role, err := app.Models.Role.GetRoleByID(ctx, roleID)
 	if err != nil {
-		logger.Error(
-			"Retrieve existing role permissions failed",
-			"role_id", roleID,
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			errors.New("failed to retrieve existing permissions"),
-			http.StatusInternalServerError,
-		)
+		app.respondWithRoleError(w, r, "update_role_permissions", err)
+		return
+	}
+	if data.IsAdministrativeRoleName(role.Name) {
+		app.respondWithRoleError(w, r, "update_role_permissions", data.ErrGovernanceRoleProtected)
 		return
 	}
 
-	existingPermissionSet := make(
-		map[string]struct{},
-		len(existingPermissions),
-	)
-
-	for _, permission := range existingPermissions {
-		if permission == nil {
-			continue
-		}
-
-		permissionID, err := uuid.Parse(permission.ID)
-		if err != nil {
-			logger.Error(
-				"Stored permission contains invalid UUID",
-				"role_id", roleID,
-				"permission_id", permission.ID,
-				"error", err,
-			)
-			app.respondWithError(
-				w,
-				errors.New("stored permission data is invalid"),
-				http.StatusInternalServerError,
-			)
+	seen := make(map[uuid.UUID]struct{}, len(*input.Permissions))
+	ids := make([]uuid.UUID, 0, len(*input.Permissions))
+	for _, raw := range *input.Permissions {
+		id, err := uuid.Parse(strings.TrimSpace(raw))
+		if err != nil || id == uuid.Nil {
+			app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "permission IDs must be UUIDs")
 			return
 		}
-
-		existingPermissionSet[permissionID.String()] = struct{}{}
-	}
-
-	for permissionID := range existingPermissionSet {
-		if _, remainsAssigned := desiredPermissionSet[permissionID]; remainsAssigned {
-			continue
-		}
-
-		if err := app.Models.RolePermission.RemovePermissionFromRole(
-			ctx,
-			roleID,
-			permissionID,
-		); err != nil {
-			logger.Error(
-				"Remove permission from role failed",
-				"role_id", roleID,
-				"permission_id", permissionID,
-				"error", err,
-			)
-			app.respondWithError(
-				w,
-				errors.New("failed to update role permissions"),
-				http.StatusInternalServerError,
-			)
+		if _, dup := seen[id]; dup {
+			app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "permission IDs must be unique")
 			return
 		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
 	}
 
-	for _, permissionID := range desiredPermissionIDs {
-		if _, alreadyAssigned := existingPermissionSet[permissionID]; alreadyAssigned {
-			continue
-		}
-
-		if err := app.Models.RolePermission.AssignPermissionToRole(
-			ctx,
-			roleID,
-			permissionID,
-		); err != nil {
-			logger.Error(
-				"Assign permission to role failed",
-				"role_id", roleID,
-				"permission_id", permissionID,
-				"error", err,
-			)
-			app.respondWithError(
-				w,
-				errors.New("failed to update role permissions"),
-				http.StatusInternalServerError,
-			)
-			return
-		}
+	actorID,ok:=app.governanceActor(w,ctx);if !ok{return}
+ if err := app.InternalServices.WithRoleAdministrationInternal(ctx,actorID,"update_role_permissions","update_role_permissions",roleID.String(),func(ctx context.Context,tx pgx.Tx) error {
+ return app.Models.RolePermission.ReplacePermissionsForRoleTx(ctx,tx,roleID,ids)
+ }); err != nil {
+		app.respondWithRoleError(w, r, "update_role_permissions", err)
+		return
 	}
 
-	actionID := app.Preloaded.ActionIDs["update_role_permissions"]
-	userID := app.getUserIDFromContext(ctx)
-
-	auditLog := &data.AuditLog{
-		ID:           uuid.New(),
-		UserID:       userID,
-		ActionID:     actionID,
-		EntityTypeID: app.Preloaded.EntityTypeIDs["roles"],
-		EntityID:     roleID,
-	}
-
-	auditCtx, auditCancel := context.WithTimeout(
-		context.Background(),
-		cfgTimeout,
-	)
-	defer auditCancel()
-
-	if err := app.Models.AuditLog.Insert(auditCtx, auditLog); err != nil {
-		logger.Warn(
-			"Role-permission update succeeded but audit insertion failed",
-			"role_id", roleID,
-			"error", err,
-		)
-	}
-
-	logger.Info(
-		"Role permissions updated",
-		"role_id", roleID,
-		"permission_count", len(desiredPermissionIDs),
-	)
-
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "Role permissions updated successfully",
-		Data: map[string]any{
-			"role_id":        roleID,
-			"permission_ids": desiredPermissionIDs,
-		},
-	})
+	var auditErr error
+	app.respondRoleMutation(w, r, http.StatusOK, "Role permissions updated successfully",
+		map[string]any{"role_id": roleID, "permission_ids": ids}, auditErr)
 }
