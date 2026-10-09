@@ -497,6 +497,34 @@ func (m *PlatformSettingModel) Ensure(
 	return &setting, nil
 }
 
+// EnsureMissing inserts a canonical default only when its key does not exist.
+// Existing active, inactive, and soft-deleted rows remain unchanged.
+// The unique setting_key constraint makes concurrent startup insertions safe.
+func (m *PlatformSettingModel) EnsureMissing(
+ ctx context.Context, key string, value json.RawMessage,
+ valueType PlatformSettingValueType, description string, isActive bool,
+) (*PlatformSetting, error) {
+ ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+ defer cancel()
+ var err error
+ key, err = validatePlatformSettingKey(key)
+ if err != nil { return nil, err }
+ valueType, err = validatePlatformSettingValueType(valueType)
+ if err != nil { return nil, err }
+ if err = validatePlatformSettingValue(value, valueType); err != nil { return nil, err }
+ _, err = m.DB.Exec(ctx, `
+  INSERT INTO platform_settings (setting_key, setting_value, value_type, description, is_active)
+  VALUES ($1, $2, $3, $4, $5)
+  ON CONFLICT (setting_key) DO NOTHING
+ `, key, value, valueType, description, isActive)
+ if err != nil { return nil, fmt.Errorf("insert missing platform setting %q: %w", key, err) }
+ // A second statement observes a concurrent committed winner under READ COMMITTED.
+ setting, err := m.GetByKeyIncludingDeleted(ctx, key)
+ if err != nil { return nil, err }
+ if setting == nil { return nil, fmt.Errorf("platform setting %q missing after ensure", key) }
+ return setting, nil
+}
+
 // GetByID retrieves a non-deleted platform setting by ID.
 func (m *PlatformSettingModel) GetByID(ctx context.Context, id uuid.UUID) (*PlatformSetting, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)

@@ -137,14 +137,13 @@ func (s *Service) EnsureDefaultPlatformSettingsInternal(ctx context.Context) err
 	for _, def := range canonicalPlatformSettingDefaults() {
 		dbCtx, cancel := context.WithTimeout(ctx, s.Cfg.DBTimeout)
 
-		setting, err := s.Models.PlatformSetting.Ensure(
+		setting, err := s.Models.PlatformSetting.EnsureMissing(
 			dbCtx,
 			def.Key,
 			def.RawValue,
 			def.ValueType,
 			def.Description,
 			def.IsActive,
-			nil,
 		)
 		cancel()
 

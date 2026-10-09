@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "complete administrative identity and governance, all layers"
+git commit -m "rewrite platform_settings.go data and service layers"
 git push
 
 | data layer | handler layer | service layer |
@@ -33,7 +33,7 @@ docker compose up -d --build
 
 
 cd ../downloads
-zip -r ./input_009/input_009.zip ./input_009
+zip -r ./input_010/input_010.zip ./input_010
 
 
 ### Vertical Build Strategy
