@@ -571,6 +571,8 @@ func TranslateGovernanceError(err error) error {
 		return ErrAdministrativeInconsistency
 	case IsPgErrorCode(err, sqlStateSuccessionLedgerImmutable):
 		return ErrSuccessionLedgerImmutable
+	case IsPgErrorCode(err, "SG007"):
+        return ErrContinuityConflict
 	case IsPgErrorCode(err, "SG006"):
 		return ErrInstallationProtected
 	case IsSerializationOrDeadlock(err):

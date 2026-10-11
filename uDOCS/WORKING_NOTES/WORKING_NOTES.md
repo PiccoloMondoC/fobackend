@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "write one-time bootstrap root admin installer all layers"
+git commit -m "write root plus admin continuity all layers"
 git push
 
 | data layer | handler layer | service layer |

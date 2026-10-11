@@ -199,6 +199,7 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		_ = tx.Rollback(context.Background())
 	}()
 
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(7301195001)`); err != nil { return err }
 	_, err = tx.Exec(ctx, `
 
 	CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -5376,6 +5377,10 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	if err != nil {
 		m.Logger.Error("Failed to execute schema initialization SQL", "error", err)
 		return fmt.Errorf("execute schema initialization sql: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, rootContinuitySchema); err != nil {
+		return fmt.Errorf("initialize Root continuity schema: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {

@@ -355,6 +355,18 @@ func (app *Application) Routes() http.Handler {
 			)
 		})
 
+        v1.Route("/root-continuity", func(rc chi.Router) {
+            rc.Use(app.AuthMiddleware)
+            rc.With(app.RateLimitMiddleware).Get("/", app.GetRootContinuityHandler)
+            rc.With(app.RateLimitMiddleware).Post("/ceremonies", app.ExecuteRootContinuityHandler)
+        })
+        v1.Route("/consulting", func(c chi.Router) {
+            c.Use(app.AuthMiddleware)
+            c.With(app.RateLimitMiddleware).Get("/",app.ConsultingHandler)
+            c.With(app.RateLimitMiddleware).Get("/{capability}",app.ConsultingHandler)
+            c.With(app.RateLimitMiddleware).Get("/{capability}/{targetID}",app.ConsultingHandler)
+        })
+
 		// Platform Settings
 		v1.Route("/platform-settings", func(ps chi.Router) {
 			ps.Use(app.AuthMiddleware)

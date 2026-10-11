@@ -88,7 +88,8 @@ const MaxGovernanceReasonLength = 500
 type GovernanceActor struct {
 	UserID uuid.UUID
 	Level  data.AdministrativeLevel // active level only
-	IsRoot bool
+	IsRoot bool // ordinary Root authority: incumbent or appointed co-Root
+ IsIncumbent bool // constitutional appointment authority; never inferred from IsRoot
 }
 
 // GovernanceTarget is the target account's state, read under lock.
@@ -98,6 +99,8 @@ type GovernanceTarget struct {
 	IsActive  bool
 	IsDeleted bool
 	IsRoot    bool
+ IsCoRoot bool
+ SuccessionRank int
 	Level     data.AdministrativeLevel // appointment level regardless of status
 	Status    data.AppointmentStatus
 }
@@ -106,7 +109,7 @@ func actorFromSubject(s *data.GovernanceSubject) GovernanceActor {
 	if s == nil {
 		return GovernanceActor{}
 	}
-	return GovernanceActor{UserID: s.UserID, Level: s.ActiveLevel(), IsRoot: s.IsRoot && s.ActiveLevel() == data.AdministrativeLevelSuperAdmin}
+	return GovernanceActor{UserID: s.UserID, Level: s.ActiveLevel(), IsRoot: (s.IsRoot || s.IsCoRoot) && s.ActiveLevel() == data.AdministrativeLevelSuperAdmin, IsIncumbent:s.IsRoot && s.ActiveLevel()==data.AdministrativeLevelSuperAdmin}
 }
 
 func targetFromSubject(id uuid.UUID, s *data.GovernanceSubject) GovernanceTarget {
@@ -119,6 +122,7 @@ func targetFromSubject(id uuid.UUID, s *data.GovernanceSubject) GovernanceTarget
 		IsActive:  s.IsActive,
 		IsDeleted: s.IsDeleted,
 		IsRoot:    s.IsRoot,
+ IsCoRoot:s.IsCoRoot, SuccessionRank:s.SuccessionRank,
 		Level:     s.AppointmentLevel(),
 		Status:    s.AppointmentStatus(),
 	}
@@ -160,6 +164,7 @@ func AuthorizeGovernanceOperation(actor GovernanceActor, target GovernanceTarget
 	if target.IsRoot {
 		return ErrGovernanceRootProtected
 	}
+ if target.SuccessionRank>0 || target.IsCoRoot {return data.ErrContinuityConflict}
 	if !target.Exists || target.IsDeleted {
 		return ErrGovernanceTargetNotFound
 	}
@@ -225,6 +230,7 @@ func AuthorizeAccountRemoval(actor GovernanceActor, target GovernanceTarget) err
 	if target.IsRoot {
 		return ErrGovernanceRootProtected
 	}
+ if target.SuccessionRank>0 || target.IsCoRoot {return data.ErrContinuityConflict}
 	if !target.Exists || target.IsDeleted {
 		return ErrGovernanceTargetNotFound
 	}
@@ -290,6 +296,8 @@ func AvailableGovernanceActions(actor GovernanceActor, target GovernanceTarget) 
 // to clients. It never contains target state beyond what the code implies.
 func GovernanceDenialCode(err error) string {
 	switch {
+ case errors.Is(err,data.ErrContinuityConflict):return "succession_standing_protected"
+ case errors.Is(err,data.ErrContinuityForbidden):return "insufficient_authority"
 	case errors.Is(err, ErrGovernanceSelfTarget):
 		return "self_governance_refused"
 	case errors.Is(err, ErrGovernanceRootProtected), errors.Is(err, data.ErrRootSuperAdminProtected):
@@ -326,7 +334,7 @@ func GovernanceDenialCode(err error) string {
 // isAuditableDenial reports whether a refusal is security-significant enough
 // to record (attempts against authority, the Root, or re-authentication).
 func isAuditableDenial(err error) bool {
-	return errors.Is(err, ErrGovernanceSelfTarget) ||
+	return errors.Is(err,data.ErrContinuityConflict) || errors.Is(err,data.ErrContinuityForbidden) || errors.Is(err, ErrGovernanceSelfTarget) ||
 		errors.Is(err, ErrGovernanceRootProtected) ||
 		errors.Is(err, data.ErrRootSuperAdminProtected) ||
 		errors.Is(err, ErrGovernanceInsufficientAuthority) ||
@@ -792,7 +800,7 @@ func (s *Service) ensureNotAdministratorForSelfClosure(ctx context.Context, user
 		}
 		return fmt.Errorf("check administrative standing: %w", err)
 	}
-	if subject.IsRoot {
+	if subject.IsRoot || subject.IsCoRoot || subject.SuccessionRank>0 {
 		return ErrGovernanceRootProtected
 	}
 	switch subject.AppointmentStatus() {
@@ -847,6 +855,7 @@ func targetFromAdministrator(r *data.AdministratorRecord) GovernanceTarget {
 		Exists:   true,
 		IsActive: r.AccountActive,
 		IsRoot:   r.IsRoot,
+ IsCoRoot:r.IsCoRoot, SuccessionRank:r.SuccessionRank,
 		Level:    r.Level,
 		Status:   r.Status,
 	}
@@ -858,6 +867,7 @@ func targetFromAccount(r *data.AccountRecord) GovernanceTarget {
 		Exists:   true,
 		IsActive: r.AccountActive,
 		IsRoot:   r.IsRoot,
+ IsCoRoot:r.IsCoRoot, SuccessionRank:r.SuccessionRank,
 		Level:    r.AdministrativeLevel,
 		Status:   r.AppointmentStatus,
 	}

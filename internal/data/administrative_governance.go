@@ -28,7 +28,7 @@
 //	3. administrative_appointments (written only under (2))
 //	4. user_role_assignments (via RoleModel Tx primitives)
 //	5. activation_tokens (account closure only; preserves users-first order)
-//	6. root_super_admin / root_succession_events (bootstrap only)
+//	6. Root / continuity records and immutable evidence (ceremony-specific)
 //	7. audit_logs (append)
 //
 // SPINE Rule:
@@ -179,13 +179,15 @@ func scanAppointment(row scannableRow) (*AdministrativeAppointment, error) {
 // read while that account's users row is locked (or as a snapshot for
 // presentation when read outside a transaction).
 type GovernanceSubject struct {
- PasswordHash string // never serialized; credential version checked after step-up
+ PasswordHash string `json:"-"` // never serialized; credential version checked after step-up
 
 	UserID      uuid.UUID
 	Email       string
 	IsActive    bool
 	IsDeleted   bool
 	IsRoot      bool
+ IsCoRoot bool
+ SuccessionRank int
 	Appointment *AdministrativeAppointment
 }
 
@@ -223,6 +225,8 @@ type AdministratorRecord struct {
 	Email            string              `json:"email"`
 	AccountActive    bool                `json:"account_active"`
 	IsRoot           bool                `json:"is_root"`
+ IsCoRoot bool `json:"is_co_root"`
+ SuccessionRank int `json:"succession_rank"`
 	Level            AdministrativeLevel `json:"level"`
 	Status           AppointmentStatus   `json:"status"`
 	AppointedAt      time.Time           `json:"appointed_at"`
@@ -240,6 +244,8 @@ type AccountRecord struct {
 	CreatedAt           time.Time           `json:"created_at"`
 	PrimaryRole         string              `json:"primary_role"`
 	IsRoot              bool                `json:"is_root"`
+ IsCoRoot bool `json:"is_co_root"`
+ SuccessionRank int `json:"succession_rank"`
 	AdministrativeLevel AdministrativeLevel `json:"administrative_level"`
 	AppointmentStatus   AppointmentStatus   `json:"appointment_status"`
 }
@@ -470,6 +476,7 @@ func (m *AdministrativeGovernanceModel) hydrateSubjects(
 
 	for id, subject := range subjects {
 		subject.IsRoot = rootID != nil && *rootID == id
+        if err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM root_co_holder WHERE user_id=$1), COALESCE((SELECT rank FROM root_successor_designations WHERE user_id=$1),0)`,id).Scan(&subject.IsCoRoot,&subject.SuccessionRank); err != nil { return err }
 
 		appointment, err := scanAppointment(q.QueryRow(ctx,
 			`SELECT `+appointmentColumns+` FROM administrative_appointments WHERE user_id = $1`,
@@ -676,6 +683,8 @@ const administratorSelect = `
 		u.email::text,
 		u.is_active AND u.deleted_at IS NULL,
 		rsa.user_id IS NOT NULL,
+ EXISTS(SELECT 1 FROM root_co_holder WHERE user_id=u.id),
+ COALESCE((SELECT rank FROM root_successor_designations WHERE user_id=u.id),0),
 		aa.level,
 		aa.status,
 		aa.appointed_at,
@@ -696,6 +705,7 @@ func scanAdministrator(row scannableRow) (*AdministratorRecord, error) {
 		&r.Email,
 		&r.AccountActive,
 		&r.IsRoot,
+ &r.IsCoRoot, &r.SuccessionRank,
 		&level,
 		&status,
 		&r.AppointedAt,
@@ -772,6 +782,8 @@ const accountSelect = `
 		u.created_at,
 		COALESCE(r.name::text, ''),
 		rsa.user_id IS NOT NULL,
+ EXISTS(SELECT 1 FROM root_co_holder WHERE user_id=u.id),
+ COALESCE((SELECT rank FROM root_successor_designations WHERE user_id=u.id),0),
 		COALESCE(aa.level, ''),
 		COALESCE(aa.status, '')
 	FROM users u
@@ -798,6 +810,7 @@ func scanAccount(row scannableRow) (*AccountRecord, error) {
 		&r.CreatedAt,
 		&r.PrimaryRole,
 		&r.IsRoot,
+ &r.IsCoRoot, &r.SuccessionRank,
 		&level,
 		&status,
 	); err != nil {

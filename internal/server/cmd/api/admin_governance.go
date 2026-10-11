@@ -61,6 +61,7 @@ const (
 func governanceErrorResponse(err error) (int, string, string) {
 	code := services.GovernanceDenialCode(err)
 	switch code {
+ case "succession_standing_protected":return http.StatusConflict,code,"use the dedicated continuity ceremony to change this standing"
 	case "self_governance_refused":
 		return http.StatusConflict, code, "administrators cannot change their own administrative standing or close their own account here"
 	case "root_protected":

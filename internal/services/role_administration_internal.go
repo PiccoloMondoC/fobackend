@@ -4,10 +4,11 @@
 package services
 
 import (
- "context"
- "github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
- "github.com/google/uuid"
- "github.com/jackc/pgx/v5"
+	"context"
+
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // WithRoleAdministrationInternal is the transaction owner for catalog edits.
@@ -43,6 +44,7 @@ func (s *Service) ChangeOrdinaryRoleInternal(ctx context.Context,actorID,targetI
   target:=targetFromSubject(targetID,subjects[targetID])
   if err:=AuthorizeAccountStewardship(actor,target);err!=nil{return err}
   if target.IsRoot{return ErrGovernanceRootProtected}
+  if target.IsCoRoot || target.SuccessionRank>0{return data.ErrContinuityConflict}
   if primary && (target.Status==data.AppointmentStatusActive || target.Status==data.AppointmentStatusSuspended){return data.ErrAdministrativeInconsistency}
   if err:=s.governance().RequirePermissionTx(ctx,tx,actorID,action);err!=nil{return err}
   if revoke{err=s.Models.Role.RevokeNonAdministrativeRoleTx(ctx,tx,targetID,roleID)

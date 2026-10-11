@@ -806,6 +806,7 @@ const (
 		('read_role_permissions', 'Read the permissions granted to a role'),
 		('update_role_permissions', 'Replace the permissions granted to a role'),
 		-- Administrative governance
+		('root_continuity', 'Record a Root continuity ceremony'),
 		('bootstrap_root_super_admin', 'Establish the initial Root Super Admin'),
 		('issue_root_bootstrap_claim', 'Issue or replace the installation email entitlement'),
 		('initialize_installation', 'Record completed installation'),
