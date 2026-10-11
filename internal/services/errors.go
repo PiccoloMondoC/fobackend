@@ -70,7 +70,11 @@ var (
 	ErrGovernanceReauthenticationFailed      = errors.New("governance: re-authentication failed")
 	ErrGovernanceReauthenticationUnavailable = errors.New("governance: re-authentication requires an account password")
 	ErrGovernanceConfirmationMismatch        = errors.New("governance: confirmation does not match the target account")
-	ErrRootBootstrapConflict                 = errors.New("governance: a different Root Super Admin is already established")
-	ErrRootBootstrapAccountNotFound          = errors.New("governance: bootstrap account not found")
-	ErrRootBootstrapAccountIneligible        = errors.New("governance: bootstrap account is not active (email not confirmed or deactivated)")
 )
+
+var (
+ ErrBootstrapCredentialInvalid = errors.New("bootstrap credential invalid")
+ ErrBootstrapAccountUnavailable = errors.New("bootstrap account unavailable")
+)
+
+var ErrBootstrapReauthenticationFailed = errors.New("bootstrap current password incorrect")

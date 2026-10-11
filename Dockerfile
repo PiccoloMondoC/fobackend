@@ -1,4 +1,4 @@
-# Future Offering backend Dockerfile
+# focodebase/fobackend/Dockerfile
 
 # ============================================================
 # Stage 1: Build foundation
@@ -18,20 +18,12 @@ RUN go mod download
 COPY . .
 
 RUN go build -o /main ./internal/server/cmd/api
+RUN go build -o /sagrenti-install ./internal/server/cmd/install
 
 
 # ============================================================
 # Stage 2: Test
 # ============================================================
-#
-# Retains the Go toolchain and complete source tree so package,
-# race, and PostgreSQL integration tests can run inside Docker.
-#
-# Example:
-#
-#   docker build --target test -t focodebase-go-backend-test ./fobackend
-#
-# This stage is not used by the production runtime image.
 
 FROM builder AS test
 
@@ -45,6 +37,7 @@ CMD ["go", "test", "./..."]
 FROM alpine:3.22 AS runtime
 
 COPY --from=builder /main /main
+COPY --from=builder /sagrenti-install /sagrenti-install
 
 COPY keys /keys
 COPY keys.pub /keys.pub

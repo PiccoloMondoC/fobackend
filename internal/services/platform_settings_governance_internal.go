@@ -18,6 +18,22 @@ const SettingsAdministrationKey = "platform_settings_admin_enabled"
 const SettingsHardDeleteKey = "platform_settings_hard_delete_enabled"
 const settingsMutationLock int64 = 7301195002
 
+// Engineering-owned administrative controls remain visible but are immutable
+// through the administrative API, including Root and Super Admin.
+var engineeringOwnedFOSettingKeys = map[string]struct{}{
+ "future_offering_enabled": {},
+ "future_offering_watch_enabled": {},
+ "future_offering_creation_enabled": {},
+ "merchant_center_future_offerings_enabled": {},
+ "user_trend_engagements_enabled": {},
+}
+
+func IsEngineeringOwnedFOSetting(key string) bool {
+ _, locked := engineeringOwnedFOSettingKeys[data.NormalizePlatformSettingKey(key)]
+ return locked
+}
+
+
 type SettingOperation string
 const (
  SettingCreate SettingOperation = "create"
@@ -72,6 +88,7 @@ func controlEnabled(row *data.PlatformSetting) bool {
 // DecideSettingMutation is a pure decision, also used in API policy tests.
 func DecideSettingMutation(enabled,super bool, op SettingOperation,key string,active bool,value json.RawMessage) string {
  key=data.NormalizePlatformSettingKey(key)
+ if IsEngineeringOwnedFOSetting(key) { return "not_allowed" }
  protected:=key==SettingsAdministrationKey || key==SettingsHardDeleteKey
  if protected {
   if op==SettingSoftDelete || op==SettingHardDelete { return "protected_platform_setting" }
@@ -118,6 +135,7 @@ func (s *Service) MutatePlatformSettingInternal(ctx context.Context, req Setting
   }
   code:=DecideSettingMutation(controlEnabled(controls[SettingsAdministrationKey]),actor.Level==data.AdministrativeLevelSuperAdmin,req.Operation,key,req.Active,req.Value)
   switch code {
+  case "not_allowed": return ErrEngineeringOwnedSettingNotAllowed
   case "protected_platform_setting": return ErrProtectedPlatformSetting
   case "insufficient_authority": return ErrGovernanceInsufficientAuthority
   case "platform_settings_administration_disabled": return ErrSettingsAdministrationDisabled
@@ -150,4 +168,5 @@ var (
  ErrSettingsAdministrationDisabled=errors.New("platform settings administration is disabled")
  ErrSettingsHardDeleteDisabled=errors.New("platform settings hard delete is disabled")
  ErrProtectedPlatformSetting=errors.New("protected platform setting")
+ ErrEngineeringOwnedSettingNotAllowed=errors.New("engineering-owned platform setting: administrative changes not allowed")
 )

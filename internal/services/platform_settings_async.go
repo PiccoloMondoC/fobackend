@@ -166,7 +166,13 @@ func GetJSONPlatformSettingAsync(ctx context.Context, s *Service, key string) <-
 
 // IsFutureOfferingEnabledAsync checks Future Offering workflow availability asynchronously.
 func IsFutureOfferingEnabledAsync(ctx context.Context, s *Service) <-chan PlatformSettingBoolAsyncResult {
-	return GetBoolPlatformSettingAsync(ctx, s, platformSettingFutureOfferingEnabled)
+	ch := make(chan PlatformSettingBoolAsyncResult, 1)
+ go func() {
+  defer close(ch)
+  enabled, err := s.IsFutureOfferingEnabledInternal(ctx)
+  ch <- PlatformSettingBoolAsyncResult{Value: enabled, Err: err}
+ }()
+ return ch
 }
 
 // IsPlatformSettingsAdminEnabledAsync checks platform settings administration asynchronously.

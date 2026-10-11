@@ -571,6 +571,8 @@ func TranslateGovernanceError(err error) error {
 		return ErrAdministrativeInconsistency
 	case IsPgErrorCode(err, sqlStateSuccessionLedgerImmutable):
 		return ErrSuccessionLedgerImmutable
+	case IsPgErrorCode(err, "SG006"):
+		return ErrInstallationProtected
 	case IsSerializationOrDeadlock(err):
 		return ErrConcurrentGovernanceChange
 	default:
@@ -610,3 +612,9 @@ var ErrPlatformSettingInvalidInput = errors.New("invalid platform setting input"
 var ErrAdministrativePermissionDenied = errors.New("administrative permission denied")
 
 var ErrUserProfileInvalidInput=errors.New("invalid profile input")
+
+var (
+ ErrInstallationAlreadyInitialized = errors.New("installation already initialized")
+ ErrInstallationProtected = errors.New("installation protected")
+ ErrBootstrapClaimNotFound = errors.New("bootstrap claim not found")
+)

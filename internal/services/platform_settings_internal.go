@@ -61,9 +61,9 @@ func canonicalPlatformSettingDefaults() []platformSettingDefault {
 	return []platformSettingDefault{
 		{
 			Key:         platformSettingFutureOfferingEnabled,
-			RawValue:    json.RawMessage(`true`),
+			RawValue:    json.RawMessage(`false`),
 			ValueType:   data.PlatformSettingValueTypeBoolean,
-			Description: "Governs whether Future Offering workflows are enabled platform-wide.",
+			Description: "Engineering-owned administrative control; Not Allowed for administrative mutation. Does not gate Future Offering functionality.",
 			IsActive:    true,
 		},
 		{
@@ -308,9 +308,17 @@ func (s *Service) GetJSONPlatformSettingInternal(ctx context.Context, key string
 	return out, nil
 }
 
-// IsFutureOfferingEnabledInternal reports whether Future Offering workflows are enabled.
+// foundationalFutureOfferingAvailable is intentionally independent of administrative
+// settings. No administrative value is permitted to disable the FO business.
+func foundationalFutureOfferingAvailable() bool { return true }
+
+// IsFutureOfferingEnabledInternal reports the foundational FO capability,
+// independent of the administrative control.
 func (s *Service) IsFutureOfferingEnabledInternal(ctx context.Context) (bool, error) {
-	return s.GetBoolPlatformSettingInternal(ctx, platformSettingFutureOfferingEnabled)
+	if err := validatePlatformSettingService(s); err != nil {
+        return false, err
+    }
+    return foundationalFutureOfferingAvailable(), nil
 }
 
 // IsPlatformSettingsAdminEnabledInternal reports whether platform settings administration is enabled.

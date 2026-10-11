@@ -9,7 +9,7 @@
 //	Release Class: SPINE
 //	Reason:
 //	  Owns the administrative hierarchy (Root Super Admin -> Super Admin ->
-//	  Admin): the authority policy, Root bootstrap, reconciliation of
+//	  Admin): the authority policy and installation-time reconciliation of
 //	  pre-governance role assignments, appointment lifecycle, account-removal
 //	  safeguards, and the administrative directory reads.
 //
@@ -685,147 +685,9 @@ func (s *Service) applyGovernanceChange(
 // Root bootstrap and reconciliation
 // ---------------------------------------------------------------------------
 
-// RootBootstrapOutcome reports what EstablishRootSuperAdminInternal did.
-type RootBootstrapOutcome string
-
-const (
-	RootBootstrapEstablished        RootBootstrapOutcome = "established"
-	RootBootstrapAlreadyEstablished RootBootstrapOutcome = "already_established"
-)
-
-// EstablishRootSuperAdminInternal establishes the first Root Super Admin
-// from an existing account identified by email. It never creates accounts,
-// never handles passwords, and is safe to re-run:
-//
-//   - Root absent, account eligible: established (one transaction, audited).
-//   - Root present and it is this account: already established, no change.
-//   - Root present and it is another account: ErrRootBootstrapConflict.
-//   - Account missing or deleted: ErrRootBootstrapAccountNotFound.
-//   - Account inactive (email not confirmed): ErrRootBootstrapAccountIneligible.
-//
-// Concurrent bootstraps across instances serialize on the governance
-// advisory lock; the singleton key makes a second Root impossible regardless.
-func (s *Service) EstablishRootSuperAdminInternal(ctx context.Context, email string) (RootBootstrapOutcome, uuid.UUID, error) {
-	if err := s.validate(); err != nil {
-		return "", uuid.Nil, err
-	}
-	email = strings.TrimSpace(email)
-	if email == "" {
-		return "", uuid.Nil, ErrGovernanceInputInvalid
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, s.Cfg.DBTimeout)
-	defer cancel()
-
-	gov := s.governance()
-	var outcome RootBootstrapOutcome
-	var rootID uuid.UUID
-
-	err := s.withGovernanceTx(ctx, func(tx pgx.Tx) error {
-		if err := gov.AcquireGovernanceAdvisoryLockTx(ctx, tx); err != nil {
-			return err
-		}
-
-		existing, err := gov.RootUserIDTx(ctx, tx)
-		if err != nil {
-			return err
-		}
-
-		subject, err := gov.LockGovernanceSubjectByEmailTx(ctx, tx, email)
-		if err != nil {
-			if errors.Is(err, data.ErrUserNotFound) {
-				if existing != nil {
-					return ErrRootBootstrapConflict
-				}
-				return ErrRootBootstrapAccountNotFound
-			}
-			return err
-		}
-
-		if existing != nil {
-			if *existing == subject.UserID {
-				outcome = RootBootstrapAlreadyEstablished
-				rootID = *existing
-				return nil
-			}
-			return ErrRootBootstrapConflict
-		}
-
-		if subject.IsDeleted {
-			return ErrRootBootstrapAccountNotFound
-		}
-		if !subject.IsActive {
-			return ErrRootBootstrapAccountIneligible
-		}
-
-			if subject.Appointment != nil && subject.Appointment.Status == data.AppointmentStatusActive &&
-			subject.Appointment.Level == data.AdministrativeLevelAdmin {
-			adminRoleID, err := s.Models.Role.ResolveRoleIDByNameTx(ctx, tx, data.RoleNameAdmin)
-			if err != nil {
-				return err
-			}
-			if _, err := s.Models.Role.RevokeRoleAssignmentTx(ctx, tx, subject.UserID, adminRoleID, ""); err != nil {
-				return err
-			}
-		}
-
-		reason := "Root Super Admin bootstrap"
-		if _, err := gov.PutAppointmentTx(ctx, tx, data.AppointmentChange{
-			UserID:  subject.UserID,
-			Level:   data.AdministrativeLevelSuperAdmin,
-			Status:  data.AppointmentStatusActive,
-			ActorID: nil,
-			Reason:  &reason,
-			NewTerm: true,
-		}); err != nil {
-			return err
-		}
-
-		superAdminRoleID, err := s.Models.Role.ResolveRoleIDByNameTx(ctx, tx, data.RoleNameSuperAdmin)
-		if err != nil {
-			return err
-		}
-		if err := s.Models.Role.AssignPrimaryRoleTx(ctx, tx, subject.UserID, superAdminRoleID, nil); err != nil {
-			return err
-		}
-
-		if err := gov.InsertRootSuperAdminTx(ctx, tx, subject.UserID); err != nil {
-			return err
-		}
-
-		if err := gov.InsertGovernanceAuditTx(ctx, tx, data.GovernanceAuditEntry{
-			ActorID:    nil,
-			Action:     "bootstrap_root_super_admin",
-			EntityType: data.GovernanceEntityRootSuperAdmin,
-			EntityID:   subject.UserID.String(),
-			Outcome:    data.GovernanceOutcomeSucceeded,
-			Context: data.GovernanceAuditContext{
-				Operation:            "bootstrap_root_super_admin",
-				Mechanism:            "bootstrap",
-				SuccessionGeneration: 1,
-				NewLevel:             string(data.AdministrativeLevelSuperAdmin),
-				NewStatus:            string(data.AppointmentStatusActive),
-			},
-		}); err != nil {
-			return err
-		}
-
-		outcome = RootBootstrapEstablished
-		rootID = subject.UserID
-		return nil
-	})
-	if err != nil {
-		if errors.Is(err, data.ErrRootSuperAdminAlreadyEstablished) {
-			return "", uuid.Nil, ErrRootBootstrapConflict
-		}
-		return "", uuid.Nil, err
-	}
-	return outcome, rootID, nil
-}
-
 // ReconcileAdministrativeAppointmentsInternal brings role assignments made
 // before administrative governance existed under the appointment model. It
-// runs at every startup and is idempotent:
+// is composed during installation completion and is idempotent:
 //
 //   - an account whose effective (primary) role is admin or super_admin
 //     receives an active appointment at that level;
@@ -835,22 +697,25 @@ func (s *Service) EstablishRootSuperAdminInternal(ctx context.Context, email str
 //
 // Each reconciled account is audited.
 func (s *Service) ReconcileAdministrativeAppointmentsInternal(ctx context.Context) (int, error) {
-	if err := s.validate(); err != nil {
-		return 0, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, s.Cfg.DBTimeout)
-	defer cancel()
+ if err := s.validate(); err != nil { return 0, err }
+ ctx, cancel := context.WithTimeout(ctx, s.Cfg.DBTimeout); defer cancel()
+ reconciled := 0
+ err := s.withGovernanceTx(ctx, func(tx pgx.Tx) error {
+  var err error
+  reconciled, err = s.reconcileAdministrativeAppointmentsTx(ctx, tx)
+  return err
+ })
+ if err != nil { return 0, err }
+ return reconciled, nil
+}
 
-	gov := s.governance()
-	reconciled := 0
-
-	err := s.withGovernanceTx(ctx, func(tx pgx.Tx) error {
-		if err := gov.AcquireGovernanceAdvisoryLockTx(ctx, tx); err != nil {
-			return err
-		}
+// The caller holds the governance mutex and owns commit and audit atomicity.
+func (s *Service) reconcileAdministrativeAppointmentsTx(ctx context.Context, tx pgx.Tx) (int, error) {
+ gov := s.governance()
+ reconciled := 0
 		assignments, err := s.Models.Role.ListAdministrativeAssignmentsWithoutAppointmentTx(ctx, tx)
 		if err != nil {
-			return err
+			return reconciled, err
 		}
 
 		byUser := make(map[uuid.UUID][]data.AdministrativeAssignment)
@@ -864,7 +729,7 @@ func (s *Service) ReconcileAdministrativeAppointmentsInternal(ctx context.Contex
 
 		for _, userID := range data.SortedGovernanceLockOrder(order...) {
 			if _, err := gov.LockGovernanceSubjectsTx(ctx, tx, userID); err != nil {
-				return err
+				return reconciled, err
 			}
 			var keep *data.AdministrativeAssignment
 			for i := range byUser[userID] {
@@ -874,7 +739,7 @@ func (s *Service) ReconcileAdministrativeAppointmentsInternal(ctx context.Contex
 					continue
 				}
 				if _, err := s.Models.Role.RevokeRoleAssignmentTx(ctx, tx, userID, a.RoleID, ""); err != nil {
-					return err
+					return reconciled, err
 				}
 			}
 
@@ -889,7 +754,7 @@ func (s *Service) ReconcileAdministrativeAppointmentsInternal(ctx context.Contex
 					Reason:  &reason,
 					NewTerm: true,
 				}); err != nil {
-					return err
+					return reconciled, err
 				}
 				auditContext.NewLevel = string(level)
 				auditContext.NewStatus = string(data.AppointmentStatusActive)
@@ -905,13 +770,12 @@ func (s *Service) ReconcileAdministrativeAppointmentsInternal(ctx context.Contex
 				Outcome:    data.GovernanceOutcomeSucceeded,
 				Context:    auditContext,
 			}); err != nil {
-				return err
+				return reconciled, err
 			}
 			reconciled++
 		}
-		return nil
-	})
-	return reconciled, err
+
+ return reconciled, nil
 }
 
 // ---------------------------------------------------------------------------

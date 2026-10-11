@@ -28,6 +28,8 @@
 //	emailed links; never derive browser links from BaseURL.
 //	Preserve validated email-confirmation code and resend policy.
 //	Preserve fail-fast staging/prod HTTPS and SMTP transport-security invariants.
+//	Never carry privileged identity (Root email or any other) in Config;
+//	refuse the retired ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL variable.
 //	Block deployment if this file breaks application startup,
 //	database configuration, JWT configuration, timeout validation,
 //	Ed25519 key validation, notification transport configuration,
@@ -206,14 +208,10 @@ type Config struct {
 	// SMTPSecurity is one of none, starttls, or tls.
 	SMTPSecurity string
 
-	// RootSuperAdminBootstrapEmail names the existing Sagrenti account to be
-	// established as the initial Root Super Admin at startup
-	// (ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL, optional). It is an identifier, not a
-	// credential: bootstrap never accepts or stores a password. Once the Root
-	// exists the value must either match it (no-op) or be removed; a
-	// different value fails startup. Diagnostics report only whether it is
-	// set, never the address.
-	RootSuperAdminBootstrapEmail string
+	// Config deliberately carries no privileged identity. The initial Root
+	// Super Admin is named interactively during the one-time installation
+	// ceremony (cmd/install) and is persisted only as database state; see
+	// RetiredPrivilegedIdentityVariable.
 }
 
 // LoadConfig loads, validates, canonicalizes, and returns startup configuration.
@@ -331,8 +329,7 @@ func LoadConfig() (*Config, error) {
 		return nil, err
 	}
 
-	rootSuperAdminBootstrapEmail, err := loadRootSuperAdminBootstrapEmail()
-	if err != nil {
+	if err := refuseRetiredPrivilegedIdentity(); err != nil {
 		return nil, err
 	}
 
@@ -414,39 +411,84 @@ func LoadConfig() (*Config, error) {
 		JWTKeyID:                       jwtKeyID,
 		JWTPrivateKey:                  jwtPrivateKey,
 		JWTPublicKey:                   jwtPublicKey,
-		RootSuperAdminBootstrapEmail:   rootSuperAdminBootstrapEmail,
 	}, nil
 }
 
-// loadRootSuperAdminBootstrapEmail reads the optional bootstrap identifier.
-// Unset is valid (no bootstrap). A set value must look like a single email
-// address; it is matched against existing accounts case-insensitively.
-func loadRootSuperAdminBootstrapEmail() (string, error) {
-	return validateRootSuperAdminBootstrapEmail(optionalValue("ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL", ""))
+// RetiredPrivilegedIdentityVariable is the retired environment variable
+// that used to name the Root Super Admin. Privileged identity must never be
+// runtime configuration, so its presence — with any value, including empty —
+// fails startup until it is removed from the deployment. The value is never
+// read into the process beyond the presence check.
+const RetiredPrivilegedIdentityVariable = "ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL"
+
+// ErrRetiredPrivilegedIdentity reports that the retired variable is present.
+var ErrRetiredPrivilegedIdentity = errors.New(
+	RetiredPrivilegedIdentityVariable + " is no longer supported; remove it from the deployment " +
+		"(the initial Root Super Admin is established by the installation ceremony)",
+)
+
+func refuseRetiredPrivilegedIdentity() error {
+	if _, present := os.LookupEnv(RetiredPrivilegedIdentityVariable); present {
+		return ErrRetiredPrivilegedIdentity
+	}
+	return nil
 }
 
-func validateRootSuperAdminBootstrapEmail(raw string) (string, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", nil
+// LoadDatabaseConfig loads only what a database-only operator tool needs:
+// the runtime environment and validated PostgreSQL connection settings.
+// It never reads JWT signing keys, OAuth secrets, or SMTP credentials, so a
+// tool built on it (cmd/governance-recovery) holds no application signing
+// or notification authority. The retired privileged-identity variable is
+// refused here as well.
+func LoadDatabaseConfig() (*Config, error) {
+	env, err := loadEnv()
+	if err != nil {
+		return nil, err
 	}
-	at := strings.LastIndex(value, "@")
-	if len(value) > 254 ||
-		at <= 0 ||
-		at == len(value)-1 ||
-		strings.Count(value, "@") != 1 ||
-		strings.ContainsAny(value, " \t\r\n,;<>\"") ||
-		!strings.Contains(value[at+1:], ".") {
-		return "", fmt.Errorf("ROOT_SUPER_ADMIN_BOOTSTRAP_EMAIL must be a single email address")
-	}
-	return value, nil
-}
 
-func presenceLabel(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "unset"
+	if err := refuseRetiredPrivilegedIdentity(); err != nil {
+		return nil, err
 	}
-	return "set"
+
+	dbHost, err := requiredHost("DB_HOST")
+	if err != nil {
+		return nil, err
+	}
+
+	dbPort, err := requiredPort("DB_PORT")
+	if err != nil {
+		return nil, err
+	}
+
+	dbUser, err := requiredValue("FOBACKEND_DB_USER")
+	if err != nil {
+		return nil, err
+	}
+
+	dbPass, err := requiredValue("FOBACKEND_DB_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+
+	dbName, err := requiredValue("FOBACKEND_DB_NAME")
+	if err != nil {
+		return nil, err
+	}
+
+	dbTimeout, err := loadDuration("DB_TIMEOUT", defaultDBTimeout, minDBTimeout, maxDBTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Config{
+		Env:       env,
+		DBHost:    dbHost,
+		DBPort:    dbPort,
+		DBUser:    dbUser,
+		DBPass:    dbPass,
+		DBName:    dbName,
+		DBTimeout: dbTimeout,
+	}, nil
 }
 
 // String returns a redacted representation of Config safe for diagnostics.
@@ -456,7 +498,7 @@ func (c *Config) String() string {
 	}
 
 	return fmt.Sprintf(
-		"Config{Env:%q BaseURL:%q FrontendURL:%q WebPort:%q DBHost:%q DBPort:%q DBUser:%q DBPass:%s DBName:%q DBTimeout:%s ActivationTokenTTL:%s PasswordResetTokenTTL:%s ActivationCodeTTL:%s ActivationCodeMaxAttempts:%d ActivationCodeMaxTotalFailures:%d ActivationResendCooldown:%s EmailProvider:%q SMTPHost:%q SMTPPort:%q SMTPUsername:%s SMTPPassword:%s SMTPFrom:%q SMTPSecurity:%q OAuthWebClientSecret:%s OAuthMobileClientSecret:%s JWTIssuer:%q JWTAudience:%q JWTKeyID:%q JWTPrivateKey:%s JWTPublicKey:%s RootSuperAdminBootstrapEmail:%s}",
+		"Config{Env:%q BaseURL:%q FrontendURL:%q WebPort:%q DBHost:%q DBPort:%q DBUser:%q DBPass:%s DBName:%q DBTimeout:%s ActivationTokenTTL:%s PasswordResetTokenTTL:%s ActivationCodeTTL:%s ActivationCodeMaxAttempts:%d ActivationCodeMaxTotalFailures:%d ActivationResendCooldown:%s EmailProvider:%q SMTPHost:%q SMTPPort:%q SMTPUsername:%s SMTPPassword:%s SMTPFrom:%q SMTPSecurity:%q OAuthWebClientSecret:%s OAuthMobileClientSecret:%s JWTIssuer:%q JWTAudience:%q JWTKeyID:%q JWTPrivateKey:%s JWTPublicKey:%s}",
 		c.Env,
 		c.BaseURL,
 		c.FrontendURL,
@@ -487,7 +529,6 @@ func (c *Config) String() string {
 		c.JWTKeyID,
 		redactedProtectedValueLabel,
 		fmt.Sprintf("%x", []byte(c.JWTPublicKey)),
-		presenceLabel(c.RootSuperAdminBootstrapEmail),
 	)
 }
 
@@ -533,7 +574,6 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 		JWTKeyID                       string        `json:"jwt_key_id"`
 		JWTPrivateKey                  string        `json:"jwt_private_key"`
 		JWTPublicKey                   string        `json:"jwt_public_key"`
-		RootSuperAdminBootstrapEmail   string        `json:"root_super_admin_bootstrap_email"`
 	}
 
 	return json.Marshal(redactedConfig{
@@ -567,7 +607,6 @@ func (c *Config) MarshalJSON() ([]byte, error) {
 		JWTKeyID:                       c.JWTKeyID,
 		JWTPrivateKey:                  redactedProtectedValueLabel,
 		JWTPublicKey:                   fmt.Sprintf("%x", []byte(c.JWTPublicKey)),
-		RootSuperAdminBootstrapEmail:   presenceLabel(c.RootSuperAdminBootstrapEmail),
 	})
 }
 
@@ -608,7 +647,6 @@ func (c *Config) LogValue() slog.Value {
 		slog.String("jwt_key_id", c.JWTKeyID),
 		slog.String("jwt_private_key", redactedProtectedValueLabel),
 		slog.String("jwt_public_key", fmt.Sprintf("%x", []byte(c.JWTPublicKey))),
-		slog.String("root_super_admin_bootstrap_email", presenceLabel(c.RootSuperAdminBootstrapEmail)),
 	)
 }
 
@@ -1137,4 +1175,22 @@ func isLikelyDNSName(host string) bool {
 	}
 
 	return true
+}
+
+// LoadInstallationConfig needs database, frontend origin and SMTP settings only.
+// It never loads JWT keys, OAuth secrets, or unrelated authentication lifetimes.
+func LoadInstallationConfig() (*Config, error) {
+ cfg, err := LoadDatabaseConfig()
+ if err != nil { return nil, err }
+ cfg.FrontendURL, err = loadFrontendURL(cfg.Env)
+ if err != nil { return nil, err }
+ cfg.EmailProvider, err = loadEmailProvider(cfg.Env)
+ if err != nil { return nil, err }
+ if cfg.EmailProvider != EmailProviderSMTP { return nil, errors.New("installation invitations require the configured SMTP provider") }
+ smtpCfg, err := loadSMTPSettings(cfg.Env, cfg.EmailProvider)
+ if err != nil { return nil, err }
+ cfg.SMTPHost, cfg.SMTPPort = smtpCfg.Host, smtpCfg.Port
+ cfg.SMTPUsername, cfg.SMTPPassword = smtpCfg.Username, smtpCfg.Password
+ cfg.SMTPFrom, cfg.SMTPSecurity = smtpCfg.From, smtpCfg.Security
+ return cfg, nil
 }

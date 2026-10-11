@@ -28,6 +28,7 @@ import (
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/installation"
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/security"
 
 	"github.com/google/uuid"
@@ -181,7 +182,7 @@ func TestAdministrativeGovernanceIntegration(t *testing.T) {
 
 	rootID, rootEmail := h.account("root", true)
 	otherID, otherEmail := h.account("other", true)
-	inactiveID, inactiveEmail := h.account("unconfirmed", false)
+	inactiveID, _ := h.account("unconfirmed", false)
 	_ = inactiveID
 
 	t.Run("public signup cannot request administrative roles", func(t *testing.T) {
@@ -214,73 +215,42 @@ func TestAdministrativeGovernanceIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("bootstrap refuses missing and unconfirmed accounts", func(t *testing.T) {
-		_, _, err := h.svc.EstablishRootSuperAdminInternal(h.ctx, "nobody@governance.test")
-		expectErr(t, "missing", err, ErrRootBootstrapAccountNotFound)
-		_, _, err = h.svc.EstablishRootSuperAdminInternal(h.ctx, inactiveEmail)
-		expectErr(t, "unconfirmed", err, ErrRootBootstrapAccountIneligible)
-		if n := h.count(`SELECT COUNT(*) FROM root_super_admin`); n != 0 {
-			t.Fatalf("root rows after refused bootstraps: %d", n)
-		}
-	})
 
-	t.Run("concurrent bootstrap establishes exactly one root", func(t *testing.T) {
-		const n = 8
-		var wg sync.WaitGroup
-		outcomes := make([]RootBootstrapOutcome, n)
-		errs := make([]error, n)
-		for i := 0; i < n; i++ {
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				outcomes[i], _, errs[i] = h.svc.EstablishRootSuperAdminInternal(h.ctx, rootEmail)
-			}(i)
-		}
-		wg.Wait()
-		established := 0
-		for i := range outcomes {
-			expectOK(t, "concurrent bootstrap", errs[i])
-			if outcomes[i] == RootBootstrapEstablished {
-				established++
-			}
-		}
-		if established != 1 {
-			t.Fatalf("established %d times", established)
-		}
-		if c := h.count(`SELECT COUNT(*) FROM root_super_admin WHERE user_id = $1`, rootID); c != 1 {
-			t.Fatalf("root rows: %d", c)
-		}
-		if c := h.count(`SELECT COUNT(*) FROM root_succession_events`); c != 1 {
-			t.Fatalf("succession events: %d", c)
-		}
-		if role := h.effectiveRole(rootID); role != "super_admin" {
-			t.Fatalf("root effective role: %q", role)
-		}
-		if c := h.count(`
-			SELECT COUNT(*) FROM audit_logs al JOIN actions a ON a.id = al.action_id
-			WHERE a.name = 'bootstrap_root_super_admin' AND al.entity_id = $1 AND al.outcome = 'succeeded'`, rootID.String()); c != 1 {
-			t.Fatalf("bootstrap audit records: %d", c)
-		}
-	})
-
-	t.Run("repeat and conflicting bootstrap never replace the root", func(t *testing.T) {
-		outcome, id, err := h.svc.EstablishRootSuperAdminInternal(h.ctx, rootEmail)
-		expectOK(t, "repeat", err)
-		if outcome != RootBootstrapAlreadyEstablished || id != rootID {
-			t.Fatalf("repeat: %s %s", outcome, id)
-		}
-		_, _, err = h.svc.EstablishRootSuperAdminInternal(h.ctx, otherEmail)
-		expectErr(t, "other account", err, ErrRootBootstrapConflict)
-		_, _, err = h.svc.EstablishRootSuperAdminInternal(h.ctx, "nobody@governance.test")
-		expectErr(t, "missing account after root", err, ErrRootBootstrapConflict)
-		gov := data.NewAdministrativeGovernanceModel(h.pool, h.svc.Logger)
-		err = h.svc.withGovernanceTx(h.ctx, func(tx pgx.Tx) error {
-			return gov.InsertRootSuperAdminTx(h.ctx, tx, otherID)
-		})
-		if err == nil {
-			t.Fatal("a second Root row was inserted")
-		}
-	})
+ t.Run("only an operator-issued email entitlement can establish Root", func(t *testing.T) {
+  _, err := h.svc.CompleteRootBootstrapInternal(h.ctx, "not-a-credential", testPassword)
+  expectErr(t, "malformed", err, ErrBootstrapCredentialInvalid)
+  unknown, err := data.GenerateBootstrapCredential(); expectOK(t, "random", err)
+  _, err = h.svc.CompleteRootBootstrapInternal(h.ctx, unknown, testPassword)
+  expectErr(t, "unknown", err, ErrBootstrapCredentialInvalid)
+  if h.count(`SELECT COUNT(*) FROM root_super_admin`) != 0 { t.Fatal("Root established without entitlement") }
+ })
+ t.Run("concurrent completion consumes entitlement exactly once", func(t *testing.T) {
+  claim, err := installation.IssueRootBootstrapClaim(h.ctx, h.pool, h.svc.Logger, rootEmail)
+  expectOK(t, "issue", err)
+  const n = 8
+  var wg sync.WaitGroup
+  errs := make([]error, n)
+  for i := 0; i < n; i++ {
+   wg.Add(1)
+   go func(i int) { defer wg.Done(); _, errs[i] = h.svc.CompleteRootBootstrapInternal(h.ctx, claim.Credential, testPassword) }(i)
+  }
+  wg.Wait()
+  successes := 0
+  for _, err := range errs { if err == nil { successes++ } else { expectErr(t, "duplicate completion", err, ErrBootstrapCredentialInvalid) } }
+  if successes != 1 { t.Fatalf("completed %d times", successes) }
+  if h.count(`SELECT COUNT(*) FROM root_super_admin WHERE user_id=$1`, rootID) != 1 || h.count(`SELECT COUNT(*) FROM root_succession_events`) != 1 || h.count(`SELECT COUNT(*) FROM platform_installation`) != 1 { t.Fatal("bootstrap not atomic") }
+  if h.effectiveRole(rootID) != "super_admin" { t.Fatal("Root primary role incorrect") }
+  if h.count(`SELECT COUNT(*) FROM platform_bootstrap_claims WHERE status='completed' AND claimant_email IS NULL AND credential_hash IS NULL`) != 1 { t.Fatal("claim not consumed and scrubbed") }
+  if h.count(`SELECT COUNT(*) FROM audit_logs al JOIN actions a ON a.id=al.action_id WHERE a.name='bootstrap_root_super_admin' AND al.entity_id=$1`, rootID.String()) != 1 { t.Fatal("bootstrap audit missing or duplicated") }
+ })
+ t.Run("issuance never reopens on an installed database", func(t *testing.T) {
+  for _, email := range []string{rootEmail, otherEmail, "nobody@governance.test"} {
+   _, err := installation.IssueRootBootstrapClaim(h.ctx, h.pool, h.svc.Logger, email)
+   expectErr(t, "post-install issue", err, data.ErrInstallationAlreadyInitialized)
+  }
+  err := h.svc.withGovernanceTx(h.ctx, func(tx pgx.Tx) error { return h.svc.governance().InsertRootSuperAdminTx(h.ctx,tx,otherID) })
+  if err == nil { t.Fatal("second Root inserted") }
+ })
 
 	t.Run("database protects the root on every direct path", func(t *testing.T) {
 		statements := []string{
@@ -502,7 +472,7 @@ func TestAdministrativeGovernanceIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("startup reconciliation adopts pre-governance admins", func(t *testing.T) {
+	t.Run("explicit reconciliation preserves pre-governance admins", func(t *testing.T) {
 		legacyID, _ := h.account("legacy", true)
 		tx, err := h.pool.Begin(h.ctx)
 		expectOK(t, "begin", err)

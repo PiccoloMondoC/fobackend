@@ -121,6 +121,8 @@ func (app *Application) Routes() http.Handler {
 		// ---- PUBLIC API ROUTES (no auth required) ----
 
 		// ---- PUBLIC IDENTITY AND AUTHENTICATION ROUTES ----
+        v1.With(app.RateLimitMiddleware).Post("/installation/root-bootstrap/complete", app.CompleteRootBootstrapHandler)
+        app.registerPublic("POST", "/api/v1/installation/root-bootstrap/complete")
 
 		// User Activation Routes.
 		//

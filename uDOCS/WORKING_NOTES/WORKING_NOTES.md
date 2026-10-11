@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "rewrite platform_settings.go data and service layers"
+git commit -m "write one-time bootstrap root admin installer all layers"
 git push
 
 | data layer | handler layer | service layer |
@@ -30,6 +30,13 @@ go test ./...
 
 docker compose down -v
 docker compose up -d --build
+
+// To reinstall Lord of the Rings Admin Root
+// Return to focodebase
+cd ../
+docker compose up -d --build go-backend
+docker compose exec go-backend /sagrenti-install status
+
 
 
 cd ../downloads
@@ -79,21 +86,6 @@ relationships Commerce model
        Angular Frontend Architecture
  Routes, components, services, state,
  APIs, permissions and design system
-
-
-
-
-
-gofmt -w \ ./internal/data/merchant_platform_credit_accounts.go
-
-go vet ./internal/data/...
-
-go vet ./internal/services/...
-go vet ./internal/server/cmd/api/...
-
-go test ./internal/data
-go test ./internal/services
-go test ./internal/server/cmd/api
 
 
 

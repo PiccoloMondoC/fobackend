@@ -647,6 +647,187 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 			ON DELETE RESTRICT
 	);
 
+	-- Drop 2 adds installation state without reshaping the established Root ledger.
+	CREATE TABLE IF NOT EXISTS platform_bootstrap_claims (
+	 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	 claimant_email CITEXT,
+	 credential_hash BYTEA,
+	 status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','superseded')),
+	 issued_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+	 expires_at TIMESTAMPTZ NOT NULL,
+	 resolved_at TIMESTAMPTZ,
+	 completed_user_id UUID REFERENCES users(id) ON DELETE RESTRICT,
+	 CHECK (expires_at > issued_at AND expires_at <= issued_at + INTERVAL '30 minutes'),
+	 CHECK ((status = 'pending' AND claimant_email IS NOT NULL AND credential_hash IS NOT NULL AND resolved_at IS NULL AND completed_user_id IS NULL)
+	     OR (status = 'completed' AND claimant_email IS NULL AND credential_hash IS NULL AND resolved_at IS NOT NULL AND completed_user_id IS NOT NULL)
+	     OR (status = 'superseded' AND claimant_email IS NULL AND credential_hash IS NULL AND resolved_at IS NOT NULL AND completed_user_id IS NULL)),
+	 CHECK (credential_hash IS NULL OR octet_length(credential_hash) = 32),
+	 CHECK (resolved_at IS NULL OR resolved_at >= issued_at)
+	);
+	CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_bootstrap_claims_single_pending
+	 ON platform_bootstrap_claims ((TRUE)) WHERE status = 'pending';
+	CREATE UNIQUE INDEX IF NOT EXISTS ux_platform_bootstrap_claims_credential
+	 ON platform_bootstrap_claims (credential_hash) WHERE credential_hash IS NOT NULL;
+
+	CREATE TABLE IF NOT EXISTS platform_installation (
+	 singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+	 installation_id UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+	 original_bootstrap_user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+	 bootstrap_succession_generation INTEGER NOT NULL CHECK (bootstrap_succession_generation = 1),
+	 bootstrap_claim_id UUID UNIQUE REFERENCES platform_bootstrap_claims(id) ON DELETE RESTRICT,
+	 ceremony_version SMALLINT NOT NULL CHECK (ceremony_version = 1),
+	 establishment_source TEXT NOT NULL DEFAULT 'email_claim' CHECK (establishment_source IN ('email_claim','existing_root')),
+	 completed_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+	 CHECK ((establishment_source = 'email_claim') = (bootstrap_claim_id IS NOT NULL)),
+	 FOREIGN KEY (bootstrap_succession_generation, original_bootstrap_user_id)
+	 REFERENCES root_succession_events(succession_generation, successor_user_id) ON DELETE RESTRICT
+	);
+
+	CREATE OR REPLACE FUNCTION public.protect_platform_bootstrap_claim()
+	RETURNS TRIGGER AS $$
+	DECLARE ceremony TEXT;
+	BEGIN
+	 PERFORM pg_advisory_xact_lock(7301195001);
+	 ceremony := current_setting('sagrenti.installation_ceremony', true);
+	 IF TG_OP = 'INSERT' THEN
+	   IF ceremony IS DISTINCT FROM 'issue' OR NEW.status <> 'pending'
+	      OR EXISTS(SELECT 1 FROM public.platform_installation)
+	      OR EXISTS(SELECT 1 FROM public.root_super_admin) THEN
+	     RAISE EXCEPTION 'bootstrap claim issuance refused' USING ERRCODE = 'SG006';
+	   END IF;
+	   RETURN NEW;
+	 END IF;
+	 IF TG_OP = 'UPDATE' THEN
+	   IF OLD.status <> 'pending' OR NEW.status NOT IN ('completed','superseded')
+	      OR NEW.id IS DISTINCT FROM OLD.id OR NEW.issued_at IS DISTINCT FROM OLD.issued_at
+	      OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
+	      OR EXISTS(SELECT 1 FROM public.platform_installation)
+	      OR (NEW.status = 'superseded' AND (ceremony IS DISTINCT FROM 'issue' OR EXISTS(SELECT 1 FROM public.root_super_admin)))
+	      OR (NEW.status = 'completed' AND (ceremony IS DISTINCT FROM 'complete' OR OLD.expires_at <= clock_timestamp())) THEN
+	     RAISE EXCEPTION 'bootstrap claim resolution refused' USING ERRCODE = 'SG006';
+	   END IF;
+	   IF NEW.status = 'completed' AND NOT EXISTS (
+	     SELECT 1 FROM public.users u JOIN public.root_super_admin r ON r.user_id = u.id
+	     WHERE u.id = NEW.completed_user_id AND u.email = OLD.claimant_email
+	       AND u.is_active AND u.deleted_at IS NULL
+	   ) THEN
+	     RAISE EXCEPTION 'bootstrap claimant mismatch' USING ERRCODE = 'SG006';
+	   END IF;
+	   RETURN NEW;
+	 END IF;
+	 RAISE EXCEPTION 'bootstrap claims are retained' USING ERRCODE = 'SG006';
+	END;
+	$$ LANGUAGE plpgsql;
+	DROP TRIGGER IF EXISTS protect_platform_bootstrap_claim ON platform_bootstrap_claims;
+	CREATE TRIGGER protect_platform_bootstrap_claim BEFORE INSERT OR UPDATE OR DELETE ON platform_bootstrap_claims
+	 FOR EACH ROW EXECUTE FUNCTION public.protect_platform_bootstrap_claim();
+	DROP TRIGGER IF EXISTS protect_platform_bootstrap_claim_truncate ON platform_bootstrap_claims;
+	CREATE TRIGGER protect_platform_bootstrap_claim_truncate BEFORE TRUNCATE ON platform_bootstrap_claims
+	 FOR EACH STATEMENT EXECUTE FUNCTION public.protect_platform_bootstrap_claim();
+
+	CREATE OR REPLACE FUNCTION public.protect_platform_installation()
+	RETURNS TRIGGER AS $$
+	DECLARE ceremony TEXT;
+	BEGIN
+	 PERFORM pg_advisory_xact_lock(7301195001);
+	 ceremony := current_setting('sagrenti.installation_ceremony', true);
+	 IF TG_OP <> 'INSERT' THEN
+	   RAISE EXCEPTION 'installation is immutable' USING ERRCODE = 'SG006';
+	 END IF;
+	 IF NOT EXISTS(SELECT 1 FROM public.root_super_admin r WHERE r.user_id = NEW.original_bootstrap_user_id AND r.succession_generation = 1) THEN
+	   RAISE EXCEPTION 'installation requires the established Root' USING ERRCODE = 'SG006';
+	 END IF;
+	 IF NEW.establishment_source = 'email_claim' THEN
+	   IF ceremony IS DISTINCT FROM 'complete' OR NOT EXISTS (
+	     SELECT 1 FROM public.platform_bootstrap_claims c WHERE c.id = NEW.bootstrap_claim_id
+	      AND c.status = 'completed' AND c.completed_user_id = NEW.original_bootstrap_user_id
+	   ) THEN
+	     RAISE EXCEPTION 'installation requires its completed claim' USING ERRCODE = 'SG006';
+	   END IF;
+	 ELSE
+	   IF ceremony IS DISTINCT FROM 'recognize_existing' OR EXISTS(SELECT 1 FROM public.platform_bootstrap_claims WHERE status = 'pending') THEN
+	     RAISE EXCEPTION 'existing Root recognition refused' USING ERRCODE = 'SG006';
+	   END IF;
+	 END IF;
+	 RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+	DROP TRIGGER IF EXISTS protect_platform_installation ON platform_installation;
+	CREATE TRIGGER protect_platform_installation BEFORE INSERT OR UPDATE OR DELETE ON platform_installation
+	 FOR EACH ROW EXECUTE FUNCTION public.protect_platform_installation();
+	DROP TRIGGER IF EXISTS protect_platform_installation_truncate ON platform_installation;
+	CREATE TRIGGER protect_platform_installation_truncate BEFORE TRUNCATE ON platform_installation
+	 FOR EACH STATEMENT EXECUTE FUNCTION public.protect_platform_installation();
+
+	-- These gates supplement all existing Root protections. No existing
+	-- ledger or Root table shape, account, or role is replaced.
+	CREATE OR REPLACE FUNCTION public.require_installation_bootstrap_ceremony()
+	RETURNS TRIGGER AS $$
+	DECLARE target UUID;
+	BEGIN
+	 PERFORM pg_advisory_xact_lock(7301195001);
+	 IF current_setting('sagrenti.installation_ceremony', true) IS DISTINCT FROM 'complete'
+	    OR EXISTS(SELECT 1 FROM public.platform_installation) THEN
+	   RAISE EXCEPTION 'Root bootstrap requires email completion' USING ERRCODE = 'SG006';
+	 END IF;
+	 IF TG_TABLE_NAME = 'root_super_admin' THEN target := NEW.user_id;
+	 ELSE
+	   IF NEW.mechanism <> 'bootstrap' OR NEW.succession_generation <> 1 THEN
+	     RAISE EXCEPTION 'Root continuity is outside installation' USING ERRCODE = 'SG006';
+	   END IF;
+	   target := NEW.successor_user_id;
+	 END IF;
+	 IF NOT EXISTS (
+	   SELECT 1 FROM public.platform_bootstrap_claims c JOIN public.users u ON u.email = c.claimant_email
+	   WHERE u.id = target AND c.status = 'pending' AND c.expires_at > clock_timestamp()
+	 ) THEN
+	   RAISE EXCEPTION 'Root bootstrap requires its pending entitlement' USING ERRCODE = 'SG006';
+	 END IF;
+	 RETURN NEW;
+	END;
+	$$ LANGUAGE plpgsql;
+	DROP TRIGGER IF EXISTS require_installation_bootstrap_ceremony ON root_super_admin;
+	CREATE TRIGGER require_installation_bootstrap_ceremony BEFORE INSERT ON root_super_admin
+	 FOR EACH ROW EXECUTE FUNCTION public.require_installation_bootstrap_ceremony();
+	DROP TRIGGER IF EXISTS require_installation_bootstrap_ceremony ON root_succession_events;
+	CREATE TRIGGER require_installation_bootstrap_ceremony BEFORE INSERT ON root_succession_events
+	 FOR EACH ROW EXECUTE FUNCTION public.require_installation_bootstrap_ceremony();
+
+	CREATE OR REPLACE FUNCTION public.assert_installation_consistency()
+	RETURNS TRIGGER AS $$
+	DECLARE installed BOOLEAN; rooted BOOLEAN; genesis BOOLEAN;
+	BEGIN
+	 SELECT EXISTS(SELECT 1 FROM public.platform_installation) INTO installed;
+	 SELECT EXISTS(SELECT 1 FROM public.root_super_admin) INTO rooted;
+	 SELECT EXISTS(SELECT 1 FROM public.root_succession_events WHERE succession_generation = 1) INTO genesis;
+	 IF installed IS DISTINCT FROM rooted OR installed IS DISTINCT FROM genesis THEN
+	   RAISE EXCEPTION 'installation and Root must commit together' USING ERRCODE = 'SG006';
+	 END IF;
+	 IF EXISTS(SELECT 1 FROM public.platform_bootstrap_claims WHERE status = 'completed') AND NOT EXISTS (
+	   SELECT 1 FROM public.platform_installation pi JOIN public.platform_bootstrap_claims c ON c.id = pi.bootstrap_claim_id
+	   WHERE c.status = 'completed' AND c.completed_user_id = pi.original_bootstrap_user_id
+	 ) THEN
+	   RAISE EXCEPTION 'completed claim requires installation' USING ERRCODE = 'SG006';
+	 END IF;
+	 IF installed AND EXISTS(SELECT 1 FROM public.platform_bootstrap_claims WHERE status = 'pending') THEN
+	   RAISE EXCEPTION 'installed system cannot retain pending bootstrap' USING ERRCODE = 'SG006';
+	 END IF;
+	 RETURN NULL;
+	END;
+	$$ LANGUAGE plpgsql;
+	DROP TRIGGER IF EXISTS assert_installation_consistency ON platform_installation;
+	CREATE CONSTRAINT TRIGGER assert_installation_consistency AFTER INSERT ON platform_installation
+	 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_installation_consistency();
+	DROP TRIGGER IF EXISTS assert_installation_consistency ON root_super_admin;
+	CREATE CONSTRAINT TRIGGER assert_installation_consistency AFTER INSERT ON root_super_admin
+	 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_installation_consistency();
+	DROP TRIGGER IF EXISTS assert_installation_consistency ON root_succession_events;
+	CREATE CONSTRAINT TRIGGER assert_installation_consistency AFTER INSERT ON root_succession_events
+	 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_installation_consistency();
+	DROP TRIGGER IF EXISTS assert_installation_consistency ON platform_bootstrap_claims;
+	CREATE CONSTRAINT TRIGGER assert_installation_consistency AFTER INSERT OR UPDATE ON platform_bootstrap_claims
+	 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_installation_consistency();
+
 	-- Current administrative standing per account. Suspension lives here and
 	-- never in users.is_active, which carries email-confirmation state.
 	-- Every mutation of a row here happens while the transaction holds the

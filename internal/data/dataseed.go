@@ -591,6 +591,7 @@ const (
 		('roles', 'User role assignments'),
 		('administrator', 'Administrative standing of an account (appointment lifecycle)'),
 		('root_super_admin', 'The protected Root Super Admin and its succession ledger'),
+		('platform_installation', 'Persistent one-time installation state'),
 		('permissions', 'Permission catalog and role-permission grants'),
 		('system', 'System-wide automation or batch operation'),
 		('user_notification', 'User Notification entity'),
@@ -806,6 +807,9 @@ const (
 		('update_role_permissions', 'Replace the permissions granted to a role'),
 		-- Administrative governance
 		('bootstrap_root_super_admin', 'Establish the initial Root Super Admin'),
+		('issue_root_bootstrap_claim', 'Issue or replace the installation email entitlement'),
+		('initialize_installation', 'Record completed installation'),
+		('recognize_existing_installation', 'Recognize the existing Root without changing authority'),
 		('reconcile_administrator_appointment', 'Reconcile a pre-governance administrative role assignment'),
 		('appoint_admin', 'Appoint an Admin'),
 		('appoint_super_admin', 'Appoint a Super Admin'),
@@ -1085,21 +1089,21 @@ const (
 	) VALUES
 		(
 			'future_offering_enabled',
-			'true',
+			'false',
 			'boolean',
-			'Enables or disables Future Offering functionality platform-wide.'
+			'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable Future Offering functionality.'
 		),
 		(
 			'future_offering_watch_enabled',
-			'true',
+			'false',
 			'boolean',
-			'Enables or disables the Watch action for Future Offerings.'
+			'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable Watch.'
 		),
 		(
 			'future_offering_creation_enabled',
-			'true',
+			'false',
 			'boolean',
-			'Allows merchants to create Future Offerings.'
+			'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO creation.'
 		),
 
 		-- Merchant onboarding
@@ -1133,18 +1137,18 @@ const (
 		),
 		(
 			'merchant_center_future_offerings_enabled',
-			'true',
+			'false',
 			'boolean',
-			'Enables Future Offering management within Merchant Center.'
+			'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO management.'
 		),
 
 		-- User engagement
 
 		(
 			'user_trend_engagements_enabled',
-			'true',
+			'false',
 			'boolean',
-			'Enables user engagement with Future Offerings, including Watch and all supported engagement options.'
+			'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO engagement.'
 		),
 		(
 			'consumer_notification_preferences_enabled',
@@ -1170,6 +1174,46 @@ const (
 
 	ON CONFLICT (setting_key) DO NOTHING;
 	`
+
+	// The five FO administrative controls are Engineering-owned policy,
+	// not switches that govern FO business capability. Reconcile only these
+	// keys; other platform settings remain administrator-configurable.
+	reconcileFOAdministrativeSettingsQuery = `
+		UPDATE platform_settings
+		SET setting_value = 'false'::jsonb,
+		    value_type = 'boolean',
+		    description = CASE setting_key
+		        WHEN 'future_offering_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable Future Offering functionality.'
+		        WHEN 'future_offering_watch_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable Watch.'
+		        WHEN 'future_offering_creation_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO creation.'
+		        WHEN 'merchant_center_future_offerings_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO management.'
+		        WHEN 'user_trend_engagements_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO engagement.'
+		    END,
+		    is_active = TRUE,
+		    deleted_at = NULL,
+		    updated_at = NOW()
+		WHERE setting_key IN (
+		    'future_offering_enabled',
+		    'future_offering_watch_enabled',
+		    'future_offering_creation_enabled',
+		    'merchant_center_future_offerings_enabled',
+		    'user_trend_engagements_enabled'
+		)
+		AND (
+		    setting_value IS DISTINCT FROM 'false'::jsonb
+		    OR value_type IS DISTINCT FROM 'boolean'
+		    OR description IS DISTINCT FROM CASE setting_key
+		        WHEN 'future_offering_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable Future Offering functionality.'
+		        WHEN 'future_offering_watch_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable Watch.'
+		        WHEN 'future_offering_creation_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO creation.'
+		        WHEN 'merchant_center_future_offerings_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO management.'
+		        WHEN 'user_trend_engagements_enabled' THEN 'Engineering-controlled administrative setting; Not Allowed for administrative mutation. Does not disable FO engagement.'
+		    END
+		    OR is_active IS DISTINCT FROM TRUE
+		    OR deleted_at IS NOT NULL
+		);
+	`
+
 )
 
 // seedSpec pairs a human-readable seed name with its SQL and optional bind
@@ -1228,6 +1272,9 @@ func (m *DBConnectionParamsModel) SeedAllData(
 		{name: "categories_level_2", query: insertCategoryLevel2Query},
 		{name: "categories_level_3", query: insertCategoryLevel3Query},
 
+		{name: "platform_settings", query: insertPlatformSettingsQuery},
+		{name: "fo_administrative_settings_reconciliation", query: reconcileFOAdministrativeSettingsQuery},
+
 		{name: "role_permissions", query: insertRolePermissionsQuery},
 		{name: "revoke_admin_governance_permissions", query: revokeAdminGovernancePermissionsQuery},
 	}
@@ -1264,10 +1311,18 @@ func (m *DBConnectionParamsModel) SeedAllData(
 		}
 	}()
 
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(7301195001)`); err != nil {
+		return err
+	}
+
 	for _, seed := range seeds {
 		if err := m.insertSeedDataTx(ctx, tx, seed); err != nil {
 			return err
 		}
+	}
+
+	if err := recognizeExistingInstallationTx(ctx, tx, m.Logger); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {

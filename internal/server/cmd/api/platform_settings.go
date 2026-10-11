@@ -220,6 +220,8 @@ func decidePlatformSettingMutation(enabled,super bool,m platformSettingMutation)
 // It writes the refusal and returns false when the mutation must not run.
 func (app *Application) respondWithSettingGovernanceError(w http.ResponseWriter,r *http.Request,err error) {
  switch {
+ case errors.Is(err,services.ErrEngineeringOwnedSettingNotAllowed):
+  app.respondWithErrorCode(w,http.StatusForbidden,"not_allowed","Not Allowed: this setting is controlled by Engineering")
  case errors.Is(err,services.ErrSettingsAdministrationDisabled):
   app.respondWithErrorCode(w,http.StatusForbidden,"platform_settings_administration_disabled","platform settings administration is disabled")
  case errors.Is(err,services.ErrSettingsHardDeleteDisabled):

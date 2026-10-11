@@ -9,6 +9,7 @@ import (
  "testing"
  "time"
  "github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/installation"
  "github.com/PiccoloMondoC/focodebase/fobackend/internal/security"
  "github.com/jackc/pgx/v5"
 )
@@ -16,7 +17,8 @@ import (
 func TestCEGovernanceRegressions(t *testing.T) {
  h:=newGovernanceHarness(t)
  rootID,rootEmail:=h.account("ce-root",true)
- _,_,err:=h.svc.EstablishRootSuperAdminInternal(h.ctx,rootEmail);expectOK(t,"bootstrap",err)
+ claim,err:=installation.IssueRootBootstrapClaim(h.ctx,h.pool,h.svc.Logger,rootEmail);expectOK(t,"issue",err)
+ _,err=h.svc.CompleteRootBootstrapInternal(h.ctx,claim.Credential,testPassword);expectOK(t,"bootstrap",err)
  adminID,_:=h.account("ce-admin",true)
  expectOK(t,"appoint admin",h.govern(rootID,adminID,GovernanceAppointAdmin,"",""))
 
