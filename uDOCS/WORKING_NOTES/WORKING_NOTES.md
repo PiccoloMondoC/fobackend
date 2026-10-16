@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "write root plus admin continuity all layers"
+git commit -m "write public-facing platform identity and business terminology all layers"
 git push
 
 | data layer | handler layer | service layer |
@@ -40,7 +40,8 @@ docker compose exec go-backend /sagrenti-install status
 
 
 cd ../downloads
-zip -r ./input_010/input_010.zip ./input_010
+zip -r ./input_013/input_013.zip ./input_013
+
 
 
 ### Vertical Build Strategy

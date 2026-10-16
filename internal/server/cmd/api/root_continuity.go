@@ -16,7 +16,7 @@ func (app *Application) rootContinuityError(w http.ResponseWriter,err error) {
  case errors.Is(err,services.ErrGovernanceReauthenticationFailed):app.respondWithErrorCode(w,400,"reauthentication_failed","confirm your current password")
  case errors.Is(err,services.ErrGovernanceInputInvalid),errors.Is(err,services.ErrGovernanceSelfTarget):app.respondWithErrorCode(w,400,"invalid_request","check the ceremony details and confirmation address")
  case errors.Is(err,data.ErrContinuityConflict),errors.Is(err,data.ErrConcurrentGovernanceChange):app.respondWithErrorCode(w,409,"continuity_changed","the ceremony is unavailable or state changed; refresh before proceeding")
- default:app.Logger.Error("Root continuity outcome unconfirmed","code","server_error");app.respondWithErrorCode(w,500,"outcome_unconfirmed","the outcome could not be confirmed; refresh the current state before proceeding")
+ default:app.Logger.Error("Root continuity ceremony failed", "error", err, "code", "server_error");app.respondWithErrorCode(w,500,"outcome_unconfirmed","the outcome could not be confirmed; refresh the current state before proceeding")
  }
 }
 func (app *Application) GetRootContinuityHandler(w http.ResponseWriter,r *http.Request) {

@@ -367,6 +367,16 @@ func (app *Application) Routes() http.Handler {
             c.With(app.RateLimitMiddleware).Get("/{capability}/{targetID}",app.ConsultingHandler)
         })
 
+        // Public presentation only. No authentication or merchant context.
+        v1.Get("/site-configuration", app.GetPublicSiteConfigurationHandler)
+        app.registerPublic("GET", "/api/v1/site-configuration")
+        v1.Route("/site-identity", func(si chi.Router) {
+            si.Use(app.AuthMiddleware, app.RequireInternalRole)
+            si.With(app.RequirePermission("read_site_identity")).Get("/", app.GetSiteIdentityHandler)
+            si.With(app.RequirePermission("read_site_identity")).Get("/history", app.GetSiteIdentityHistoryHandler)
+            si.With(app.RequirePermission("update_site_identity"), app.RateLimitMiddleware).Put("/", app.ReplaceSiteIdentityHandler)
+        })
+
 		// Platform Settings
 		v1.Route("/platform-settings", func(ps chi.Router) {
 			ps.Use(app.AuthMiddleware)

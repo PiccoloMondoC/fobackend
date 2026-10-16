@@ -1,3 +1,20 @@
+// BUSINESS-NEUTRAL SOURCE RULE — BEG 3.17–3.18
+// CE and engineering own this naming rule. Use platform for neutral internal
+// identifiers; use the platform in general UI prose. Capitalize Platform only
+// where a heading, sentence position, or defined label requires it. When naming
+// an installation's website or business, use its administrator-configured identity.
+// These choices must be implemented and reviewed in source, not delegated to the
+// project owner as editing guidance.
+// Do not hardcode an installation's brand in identifiers, CSS tokens, public
+// copy, defaults, or seed data. Public identity and business wording must come
+// from administrator-managed configuration. Internal names describe purpose.
+// Pre-startup call-site compatibility is not justification for weak naming.
+// Repair dependent callers together. An exception requires a documented,
+// intentional public, production, or migration-stable contract and CE review.
+// Run tools/check_business_neutrality.py before source release. Existing
+// violations are not automatically grandfathered or approved.
+
+//
 // Package data provides models and database access methods for seed data
 // operations and other entities.
 //
@@ -495,6 +512,8 @@ const (
 		),
 		('list_engagement_actions', 'Allows an authorized merchant to list active Platform-governed Engagement Actions'),
 		-- Platform Settings
+		('read_site_identity', 'Read installation identity and terminology'),
+		('update_site_identity', 'Manage installation identity and terminology'),
 		('create_platform_setting', 'Allows creating a new platform setting'),
 		('ensure_platform_setting', 'Allows idempotently ensuring a platform setting'),
 		('read_platform_setting', 'Allows reading platform setting records'),
@@ -552,6 +571,7 @@ const (
 
 	insertEntityTypeQuery = `
 	INSERT INTO entity_types (name, description) VALUES
+        ('site_identity', 'Installation identity and terminology aggregate'),
 		('action', 'Action entity for audit trail and metadata retrieval'),
 		('admin_dashboard', 'Admin dashboard entity'),
 		(
@@ -788,6 +808,7 @@ const (
 		-- Platform Settings
 		('create_platform_setting', 'Create a platform setting'),
 		('ensure_platform_setting', 'Ensure a platform setting'),
+		('update_site_identity', 'Replace installation identity and terminology'),
 		('update_platform_setting_value', 'Update platform setting value and type'),
 		('set_platform_setting_active', 'Set platform setting active state'),
 		('soft_delete_platform_setting', 'Soft delete a platform setting'),

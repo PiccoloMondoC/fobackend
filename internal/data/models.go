@@ -1,3 +1,20 @@
+// BUSINESS-NEUTRAL SOURCE RULE — BEG 3.17–3.18
+// CE and engineering own this naming rule. Use platform for neutral internal
+// identifiers; use the platform in general UI prose. Capitalize Platform only
+// where a heading, sentence position, or defined label requires it. When naming
+// an installation's website or business, use its administrator-configured identity.
+// These choices must be implemented and reviewed in source, not delegated to the
+// project owner as editing guidance.
+// Do not hardcode an installation's brand in identifiers, CSS tokens, public
+// copy, defaults, or seed data. Public identity and business wording must come
+// from administrator-managed configuration. Internal names describe purpose.
+// Pre-startup call-site compatibility is not justification for weak naming.
+// Repair dependent callers together. An exception requires a documented,
+// intentional public, production, or migration-stable contract and CE review.
+// Run tools/check_business_neutrality.py before source release. Existing
+// violations are not automatically grandfathered or approved.
+
+//
 // Package data provides the centralized database model aggregate for the
 // Platform backend.
 //
@@ -72,6 +89,7 @@ type Models struct {
 	AuditLog               AuditLogModel               // SPINE: minimal foundation — audit trail foundation
 	EntityType             EntityTypeModel             // SPINE: minimal foundation — audit/entity lookup governance
 	Action                 ActionModel                 // SPINE: minimal foundation — audit/action lookup governance
+	SiteIdentity           SiteIdentityModel           // SPINE: installation presentation aggregate
 	PlatformSetting        PlatformSettingModel        // SPINE: minimal foundation — system configuration infrastructure
 	PlatformSettingHistory PlatformSettingHistoryModel // SPINE: minimal foundation — immutable platform-setting value history
 	OutboxEvent            OutboxEventModel            // SPINE: minimal foundation — transactional domain-event outbox
@@ -142,6 +160,7 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		AuditLog:           AuditLogModel{DB: dbPool, Logger: logger},           // SPINE: minimal foundation
 		EntityType:         EntityTypeModel{DB: dbPool, Logger: logger},         // SPINE: minimal foundation
 		Action:             ActionModel{DB: dbPool, Logger: logger},             // SPINE: minimal foundation
+		SiteIdentity: SiteIdentityModel{DB: dbPool},
 		PlatformSetting:    PlatformSettingModel{DB: dbPool, Logger: logger},    // SPINE: minimal foundation
 		PlatformSettingHistory: PlatformSettingHistoryModel{
 			DB:     dbPool,

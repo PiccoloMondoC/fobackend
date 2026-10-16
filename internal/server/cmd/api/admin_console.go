@@ -96,6 +96,7 @@ type adminConsolePlatformStatus struct {
 // These fields identify control-plane inclusion. They do not claim that every
 // possible operation within the domain is enabled for the requesting actor.
 type adminConsoleDomains struct {
+ SiteIdentity bool `json:"site_identity"`
 	PlatformSettings                       bool `json:"platform_settings"`
 	PlatformSettingHistory                 bool `json:"platform_setting_history"`
 	MerchantAccounts                       bool `json:"merchant_accounts"`
@@ -324,6 +325,7 @@ func (app *Application) GetAdminConsoleOverviewHandler(
 			PlatformSettingsHardDeleteEnabled: hardDeleteEnabled,
 		},
 		Domains: adminConsoleDomains{
+ SiteIdentity: true,
 			PlatformSettings:                       true,
 			PlatformSettingHistory:                 true,
 			MerchantAccounts:                       true,

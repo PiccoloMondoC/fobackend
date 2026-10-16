@@ -68,8 +68,9 @@ No policy migration. No application redesign.
 
 We now have a precise, bounded requirement for Drop 1.
 
+### MAINTENANCE
 
-We should also distinguish **scheduled maintenance** from **active maintenance**.
+We should distinguish **scheduled maintenance** from **active maintenance**.
 
 # 1. Scheduled Maintenance — Announcement
 

@@ -52,7 +52,7 @@ const (
 	// SQLSTATE 40P01: deadlock_detected.
 	sqlStateDeadlockDetected = "40P01"
 
-	// Sagrenti administrative-governance SQLSTATEs (class SG). These are raised
+	// Platform administrative-governance SQLSTATEs (class SG). These are raised
 	// by the governance triggers in database.go and are the database-level
 	// backstop for invariants the service layer also enforces.
 	//

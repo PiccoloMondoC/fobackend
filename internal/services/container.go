@@ -1,3 +1,20 @@
+// BUSINESS-NEUTRAL SOURCE RULE — BEG 3.17–3.18
+// CE and engineering own this naming rule. Use platform for neutral internal
+// identifiers; use the platform in general UI prose. Capitalize Platform only
+// where a heading, sentence position, or defined label requires it. When naming
+// an installation's website or business, use its administrator-configured identity.
+// These choices must be implemented and reviewed in source, not delegated to the
+// project owner as editing guidance.
+// Do not hardcode an installation's brand in identifiers, CSS tokens, public
+// copy, defaults, or seed data. Public identity and business wording must come
+// from administrator-managed configuration. Internal names describe purpose.
+// Pre-startup call-site compatibility is not justification for weak naming.
+// Repair dependent callers together. An exception requires a documented,
+// intentional public, production, or migration-stable contract and CE review.
+// Run tools/check_business_neutrality.py before source release. Existing
+// violations are not automatically grandfathered or approved.
+
+//
 // Package services contains trusted internal service composition,
 // automation support, moderation helpers, and shared internal workflow logic.
 //
@@ -225,6 +242,9 @@ func NewService(logger *logging.Logger, models *data.Models, cfg *Config, shutdo
 	if models == nil {
 		return nil, fmt.Errorf("%w: models is nil", ErrInvalidServiceConfiguration)
 	}
+	if models.DB == nil || models.SiteIdentity.DB == nil || models.SiteIdentity.DB != models.DB {
+        return nil, fmt.Errorf("%w: site identity model must use the canonical database", ErrInvalidServiceConfiguration)
+    }
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
