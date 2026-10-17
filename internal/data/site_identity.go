@@ -15,7 +15,7 @@
 // violations are not automatically grandfathered or approved.
 
 //
-// internal/data/site_identity.go
+// focodebase/fobackend/internal/data/site_identity.go
 // CE: one versioned presentation aggregate, one immutable history event per commit.
 // Schema ownership remains exclusively in database.go. Transaction policy belongs
 // to services; these methods never commit a caller's transaction.

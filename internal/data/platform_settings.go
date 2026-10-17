@@ -42,6 +42,7 @@ import (
 	"math/big"
 	"regexp"
 	"time"
+	"strings"
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
 
@@ -1100,6 +1101,8 @@ func (m *PlatformSettingModel) LockControlSettingsTx(ctx context.Context, tx pgx
 // ValidateMutationValue reuses the existing strict key/type/JSON validators.
 // It returns only the input sentinel at the boundary, never JSON/parser detail.
 func ValidatePlatformSettingMutation(key string, value json.RawMessage, typ PlatformSettingValueType) error {
+ normalized := NormalizePlatformSettingKey(key)
+ if normalized=="maintenance" || normalized=="site_maintenance" || strings.HasPrefix(normalized,"maintenance_") || strings.HasPrefix(normalized,"site_maintenance_") { return ErrPlatformSettingInvalidInput }
  if _, err := validatePlatformSettingKey(key); err != nil { return ErrPlatformSettingInvalidInput }
  typ, err := validatePlatformSettingValueType(typ)
  if err != nil { return ErrPlatformSettingInvalidInput }

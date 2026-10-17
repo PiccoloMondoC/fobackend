@@ -255,6 +255,10 @@ func main() {
     }
 
 
+	if err := svc.InitializeMaintenanceInternal(ctx); err != nil {
+		logger.Fatal("maintenance startup validation failed")
+	}
+
 	// Installation startup reporting is read-only. Authority is established
 	// only by the operator-issued email claim and its completion.
 	if err := reportInstallationState(ctx, logger, svc); err != nil {

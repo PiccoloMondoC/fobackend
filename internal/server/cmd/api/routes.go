@@ -111,12 +111,23 @@ func (app *Application) Routes() http.Handler {
 	r.Route("/api/v1", func(v1 chi.Router) {
 		// Inject trusted IDs into context for all v1 endpoints
 		v1.Use(app.InjectApplicationContextMiddleware)
+        v1.Use(app.SiteMaintenanceGateMiddleware)
 
 		// Development-only fallback context.
 		// Never install synthetic trusted identifiers in production.
 		if isDevelopmentEnvironment(app.Config.Bootstrap.Env) {
 			v1.Use(app.DevFallbackContextMiddleware)
 		}
+
+        v1.Get("/site-maintenance/status", app.PublicMaintenanceHandler)
+        app.registerPublic("GET", "/api/v1/site-maintenance/status")
+        // Auth establishes the actor; the service revalidates Root standing and
+        // permissions live under lock, including auditing denied attempts.
+        v1.With(app.AuthMiddleware, app.RateLimitMiddleware).Get("/site-maintenance", app.MaintenanceWorkspaceHandler)
+        v1.With(app.AuthMiddleware, app.RateLimitMiddleware).Put("/site-maintenance/announcement", app.maintenanceCommandHandler("save"))
+        v1.With(app.AuthMiddleware, app.RateLimitMiddleware).Post("/site-maintenance/announcement/cancel", app.maintenanceCommandHandler("cancel"))
+        v1.With(app.AuthMiddleware, app.RateLimitMiddleware).Post("/site-maintenance/activate", app.maintenanceCommandHandler("activate"))
+        v1.With(app.AuthMiddleware, app.RateLimitMiddleware).Post("/site-maintenance/restore", app.maintenanceCommandHandler("restore"))
 
 		// ---- PUBLIC API ROUTES (no auth required) ----
 

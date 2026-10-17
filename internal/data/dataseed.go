@@ -68,6 +68,8 @@ type OAuthClientSeedSecrets struct {
 // additionally enforced per target by the governance service; these
 // permissions are the coarse route gate.
 const superAdminOnlyPermissionList = `
+        'read_site_maintenance',
+        'manage_site_maintenance',
 		'appoint_admin',
 		'appoint_super_admin',
 		'demote_administrator',
@@ -512,7 +514,9 @@ const (
 		),
 		('list_engagement_actions', 'Allows an authorized merchant to list active Platform-governed Engagement Actions'),
 		-- Platform Settings
-		('read_site_identity', 'Read installation identity and terminology'),
+		('read_site_maintenance', 'Read Root maintenance workspace'),
+        ('manage_site_maintenance', 'Manage announcements and platform availability'),
+        ('read_site_identity', 'Read installation identity and terminology'),
 		('update_site_identity', 'Manage installation identity and terminology'),
 		('create_platform_setting', 'Allows creating a new platform setting'),
 		('ensure_platform_setting', 'Allows idempotently ensuring a platform setting'),
@@ -571,6 +575,7 @@ const (
 
 	insertEntityTypeQuery = `
 	INSERT INTO entity_types (name, description) VALUES
+        ('site_maintenance', 'Audited maintenance state transitions'),
         ('site_identity', 'Installation identity and terminology aggregate'),
 		('action', 'Action entity for audit trail and metadata retrieval'),
 		('admin_dashboard', 'Admin dashboard entity'),
@@ -827,7 +832,14 @@ const (
 		('read_role_permissions', 'Read the permissions granted to a role'),
 		('update_role_permissions', 'Replace the permissions granted to a role'),
 		-- Administrative governance
-		('root_continuity', 'Record a Root continuity ceremony'),
+		('site_maintenance_publish', 'Publish maintenance announcement'),
+        ('site_maintenance_update', 'Revise maintenance announcement'),
+        ('site_maintenance_cancel', 'Cancel maintenance announcement'),
+        ('site_maintenance_activate', 'Activate platform maintenance'),
+        ('site_maintenance_restore', 'Restore platform operation'),
+        ('site_maintenance_engineering_restore', 'Signed Engineering maintenance recovery'),
+        ('site_maintenance_read', 'Record refused maintenance workspace access'),
+        ('root_continuity', 'Record a Root continuity ceremony'),
 		('bootstrap_root_super_admin', 'Establish the initial Root Super Admin'),
 		('issue_root_bootstrap_claim', 'Issue or replace the installation email entitlement'),
 		('initialize_installation', 'Record completed installation'),

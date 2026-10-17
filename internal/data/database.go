@@ -5617,13 +5617,15 @@ CREATE OR REPLACE FUNCTION public.require_installation_bootstrap_ceremony() RETU
 DECLARE target UUID; r public.root_super_admin%ROWTYPE;
 BEGIN
  PERFORM pg_advisory_xact_lock(7301195001);
- IF TG_TABLE_NAME='root_succession_events' AND NEW.mechanism<>'bootstrap' THEN
+ IF TG_TABLE_NAME='root_succession_events' THEN
+ IF NEW.mechanism<>'bootstrap' THEN
  SELECT * INTO r FROM public.root_super_admin WHERE singleton;
  IF r.user_id IS NULL OR NEW.succession_generation<>r.succession_generation+1 OR NEW.predecessor_user_id<>r.user_id OR NEW.successor_user_id=r.user_id
  OR NOT EXISTS(SELECT 1 FROM public.platform_installation)
  OR NOT ((NEW.mechanism='voluntary_transfer' AND current_setting('sagrenti.continuity_operation',true)='accept') OR (NEW.mechanism='emergency_succession' AND current_setting('sagrenti.continuity_operation',true)='recovery')) THEN
  RAISE EXCEPTION 'invalid continuity ledger generation' USING ERRCODE='SG007'; END IF;
  RETURN NEW;
+ END IF;
  END IF;
  IF current_setting('sagrenti.installation_ceremony',true) IS DISTINCT FROM 'complete' OR EXISTS(SELECT 1 FROM public.platform_installation) THEN
  RAISE EXCEPTION 'Root bootstrap requires email completion' USING ERRCODE='SG006'; END IF;
@@ -5739,6 +5741,143 @@ DO $$ DECLARE t TEXT; BEGIN
 END $$;
 `); err != nil {
 		return fmt.Errorf("initialize Root continuity schema: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+CREATE OR REPLACE FUNCTION public.maintenance_instant_valid(v jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE t timestamptz;
+BEGIN
+ IF jsonb_typeof(v) IS DISTINCT FROM 'string' THEN RETURN false; END IF;
+ IF (v #>> '{}') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T(0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](\.[0-9]{1,9})?(Z|[+-][0-9]{2}:[0-5][0-9])$' THEN RETURN false; END IF;
+ t:=(v #>> '{}')::timestamptz;
+ RETURN isfinite(t);
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END; $$;
+CREATE OR REPLACE FUNCTION public.maintenance_document_valid(d jsonb) RETURNS boolean
+LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE a jsonb; st timestamptz; n integer;
+BEGIN
+ IF jsonb_typeof(d) IS DISTINCT FROM 'object' OR NOT (d ?& ARRAY['active','active_since','message','expected_end_at','announcement'])
+ OR d - ARRAY['active','active_since','message','expected_end_at','announcement'] <> '{}'::jsonb
+ OR jsonb_typeof(d->'active') IS DISTINCT FROM 'boolean' THEN RETURN false; END IF;
+ IF (d->>'active')::boolean THEN
+  IF NOT public.maintenance_instant_valid(d->'active_since') THEN RETURN false; END IF;
+  st := (d->>'active_since')::timestamptz; IF NOT isfinite(st) THEN RETURN false; END IF;
+  IF d->'message' <> 'null'::jsonb THEN
+   IF jsonb_typeof(d->'message') IS DISTINCT FROM 'string' OR length(d->>'message') NOT BETWEEN 1 AND 280 OR d->>'message' ~ '[[:cntrl:]]' THEN RETURN false; END IF;
+  END IF;
+  IF d->'expected_end_at' <> 'null'::jsonb THEN
+   IF NOT public.maintenance_instant_valid(d->'expected_end_at') THEN RETURN false; END IF;
+   st := (d->>'expected_end_at')::timestamptz; IF NOT isfinite(st) THEN RETURN false; END IF;
+  END IF;
+ ELSE
+  IF d->'active_since' <> 'null'::jsonb OR d->'message' <> 'null'::jsonb OR d->'expected_end_at' <> 'null'::jsonb THEN RETURN false; END IF;
+ END IF;
+ a:=d->'announcement';
+ IF a <> 'null'::jsonb THEN
+  IF jsonb_typeof(a) IS DISTINCT FROM 'object' OR NOT (a ?& ARRAY['id','starts_at','duration_minutes','message'])
+  OR a - ARRAY['id','starts_at','duration_minutes','message'] <> '{}'::jsonb THEN RETURN false; END IF;
+  IF jsonb_typeof(a->'id') IS DISTINCT FROM 'string' OR jsonb_typeof(a->'starts_at') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(a->'message') IS DISTINCT FROM 'string' OR jsonb_typeof(a->'duration_minutes') IS DISTINCT FROM 'number' THEN RETURN false; END IF;
+  IF (a->>'id')::uuid = '00000000-0000-0000-0000-000000000000'::uuid THEN RETURN false; END IF;
+  IF NOT public.maintenance_instant_valid(a->'starts_at') THEN RETURN false; END IF;
+  st := (a->>'starts_at')::timestamptz; IF NOT isfinite(st) THEN RETURN false; END IF;
+  n := (a->>'duration_minutes')::integer;
+  IF n NOT BETWEEN 5 AND 10080 OR length(a->>'message') NOT BETWEEN 1 AND 280 OR a->>'message' ~ '[[:cntrl:]]' THEN RETURN false; END IF;
+ END IF;
+ RETURN true;
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END; $$;
+CREATE TABLE IF NOT EXISTS public.site_maintenance_state (
+ singleton boolean PRIMARY KEY DEFAULT true CHECK(singleton),
+ version bigint NOT NULL DEFAULT 1 CHECK(version BETWEEN 1 AND 9007199254740991),
+ document jsonb NOT NULL DEFAULT '{"active":false,"active_since":null,"message":null,"expected_end_at":null,"announcement":null}'::jsonb
+ CHECK(public.maintenance_document_valid(document)),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS public.site_maintenance_transitions (
+ id uuid PRIMARY KEY,
+ operation text NOT NULL CHECK(operation IN ('publish','update','cancel','activate','restore','engineering_restore')),
+ mechanism text NOT NULL CHECK(mechanism IN ('administrative','engineering_recovery')),
+ -- Retain immutable historical identity without blocking account deletion.
+ actor_id uuid,
+ version bigint UNIQUE NOT NULL CHECK(version>1),
+ before_state jsonb NOT NULL CHECK(public.maintenance_document_valid(before_state)),
+ after_state jsonb NOT NULL CHECK(public.maintenance_document_valid(after_state)),
+ reason text NOT NULL CHECK(length(reason)<=500 AND reason !~ '[[:cntrl:]]'),
+ evidence jsonb NOT NULL,
+ transaction_id bigint UNIQUE NOT NULL DEFAULT txid_current(),
+ occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ CHECK((mechanism='administrative' AND actor_id IS NOT NULL AND operation<>'engineering_restore')
+ OR (mechanism='engineering_recovery' AND actor_id IS NULL AND operation='engineering_restore'))
+);
+CREATE OR REPLACE FUNCTION public.protect_maintenance_state() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP IN ('DELETE','TRUNCATE') THEN RAISE EXCEPTION 'maintenance state cannot be removed' USING ERRCODE='SG008'; END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.version<>1 OR NEW.document<>'{"active":false,"active_since":null,"message":null,"expected_end_at":null,"announcement":null}'::jsonb THEN
+   RAISE EXCEPTION 'maintenance initialization must be neutral' USING ERRCODE='SG008'; END IF;
+ ELSE
+  IF NEW.singleton IS DISTINCT FROM OLD.singleton OR NEW.version<>OLD.version+1 THEN
+   RAISE EXCEPTION 'maintenance version must advance once' USING ERRCODE='SG008'; END IF;
+ END IF;
+ RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS protect_maintenance_state ON public.site_maintenance_state;
+CREATE TRIGGER protect_maintenance_state BEFORE INSERT OR UPDATE OR DELETE ON public.site_maintenance_state FOR EACH ROW EXECUTE FUNCTION public.protect_maintenance_state();
+DROP TRIGGER IF EXISTS protect_maintenance_state_truncate ON public.site_maintenance_state;
+CREATE TRIGGER protect_maintenance_state_truncate BEFORE TRUNCATE ON public.site_maintenance_state FOR EACH STATEMENT EXECUTE FUNCTION public.protect_maintenance_state();
+CREATE OR REPLACE FUNCTION public.protect_maintenance_evidence() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN RAISE EXCEPTION 'maintenance evidence is immutable' USING ERRCODE='SG008'; END; $$;
+DROP TRIGGER IF EXISTS protect_maintenance_evidence ON public.site_maintenance_transitions;
+CREATE TRIGGER protect_maintenance_evidence BEFORE UPDATE OR DELETE ON public.site_maintenance_transitions FOR EACH ROW EXECUTE FUNCTION public.protect_maintenance_evidence();
+DROP TRIGGER IF EXISTS protect_maintenance_evidence_truncate ON public.site_maintenance_transitions;
+CREATE TRIGGER protect_maintenance_evidence_truncate BEFORE TRUNCATE ON public.site_maintenance_transitions FOR EACH STATEMENT EXECUTE FUNCTION public.protect_maintenance_evidence();
+CREATE OR REPLACE FUNCTION public.assert_maintenance_transition() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE e public.site_maintenance_transitions%ROWTYPE; d jsonb; v bigint; ok boolean;
+BEGIN
+ IF TG_TABLE_NAME='site_maintenance_state' THEN
+  SELECT * INTO e FROM public.site_maintenance_transitions WHERE version=NEW.version AND transaction_id=txid_current();
+  IF e.id IS NULL OR e.before_state<>OLD.document OR e.after_state<>NEW.document THEN
+   RAISE EXCEPTION 'maintenance transition evidence missing' USING ERRCODE='SG008'; END IF;
+ ELSE
+  e:=NEW;
+ END IF;
+ SELECT version,document INTO v,d FROM public.site_maintenance_state WHERE singleton;
+ IF v IS DISTINCT FROM e.version OR d IS DISTINCT FROM e.after_state OR e.transaction_id<>txid_current() THEN
+  RAISE EXCEPTION 'maintenance transition does not match state' USING ERRCODE='SG008'; END IF;
+ CASE e.operation
+ WHEN 'publish' THEN ok:=e.before_state->'announcement'='null'::jsonb AND e.after_state->'announcement'<>'null'::jsonb AND e.before_state-'announcement'=e.after_state-'announcement';
+ WHEN 'update' THEN ok:=e.before_state->'announcement'<>'null'::jsonb AND e.after_state->'announcement'<>'null'::jsonb AND e.before_state#>>'{announcement,id}'<>e.after_state#>>'{announcement,id}' AND e.before_state-'announcement'=e.after_state-'announcement';
+ WHEN 'cancel' THEN ok:=e.before_state->'announcement'<>'null'::jsonb AND e.after_state->'announcement'='null'::jsonb AND e.before_state-'announcement'=e.after_state-'announcement';
+ WHEN 'activate' THEN ok:=NOT (e.before_state->>'active')::boolean AND (e.after_state->>'active')::boolean AND e.before_state->'announcement'=e.after_state->'announcement';
+ WHEN 'restore' THEN ok:=(e.before_state->>'active')::boolean AND NOT (e.after_state->>'active')::boolean AND (e.after_state->'announcement'='null'::jsonb OR e.before_state->'announcement'=e.after_state->'announcement');
+ WHEN 'engineering_restore' THEN ok:=(e.before_state->>'active')::boolean AND NOT (e.after_state->>'active')::boolean AND e.before_state->'announcement'=e.after_state->'announcement' AND jsonb_typeof(e.evidence)='object' AND e.evidence ?& ARRAY['plan_digest','approval'];
+ ELSE ok:=false;
+ END CASE;
+ IF ok IS DISTINCT FROM true THEN RAISE EXCEPTION 'invalid maintenance transition' USING ERRCODE='SG008'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.audit_logs l JOIN public.actions a ON a.id=l.action_id JOIN public.entity_types t ON t.id=l.entity_type_id
+ WHERE l.entity_id=e.id::text AND l.outcome='succeeded' AND a.name='site_maintenance_'||e.operation AND t.name='site_maintenance'
+ AND l.user_id IS NOT DISTINCT FROM e.actor_id AND l.context->>'mechanism'=e.mechanism) THEN
+  RAISE EXCEPTION 'maintenance success audit missing' USING ERRCODE='SG008'; END IF;
+ RETURN NULL;
+END; $$;
+DROP TRIGGER IF EXISTS assert_maintenance_state ON public.site_maintenance_state;
+CREATE CONSTRAINT TRIGGER assert_maintenance_state AFTER UPDATE ON public.site_maintenance_state DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_maintenance_transition();
+DROP TRIGGER IF EXISTS assert_maintenance_evidence ON public.site_maintenance_transitions;
+CREATE CONSTRAINT TRIGGER assert_maintenance_evidence AFTER INSERT ON public.site_maintenance_transitions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.assert_maintenance_transition();
+INSERT INTO public.site_maintenance_state(singleton) VALUES(true) ON CONFLICT(singleton) DO NOTHING;
+-- Maintenance has no platform-setting representation, including alternate keys.
+CREATE OR REPLACE FUNCTION public.refuse_maintenance_setting() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF lower(btrim(NEW.setting_key)) ~ '^(site_)?maintenance(_|$)' THEN RAISE EXCEPTION 'maintenance is a dedicated state machine' USING ERRCODE='SG008'; END IF;
+ RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS refuse_maintenance_setting ON public.platform_settings;
+CREATE TRIGGER refuse_maintenance_setting BEFORE INSERT OR UPDATE ON public.platform_settings FOR EACH ROW EXECUTE FUNCTION public.refuse_maintenance_setting();
+`); err != nil {
+		return fmt.Errorf("initialize maintenance schema: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
