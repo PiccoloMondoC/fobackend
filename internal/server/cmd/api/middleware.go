@@ -1,8 +1,6 @@
-// Package main provides HTTP middleware for authentication, authorization,
-// trusted request context, rate limiting, and other cross-cutting API controls.
-//
+// Package main provides account identity completion and administrative identity safeguards.
 // focodebase/fobackend/internal/server/cmd/api/middleware.go
-//
+
 // GTM:
 //
 //	Layer: 2.5 API / Authorization Infrastructure
@@ -217,6 +215,12 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+        if !identityCompletionTransport(r.Method,r.URL.Path) {
+         w.Header().Set("Cache-Control","no-store")
+         identity,identityErr:=app.InternalServices.AccountIdentityInternal(r.Context(),userID)
+         if identityErr!=nil {app.respondWithErrorCode(w,503,"identity_unavailable","Your identity could not be checked. Please try again.");return}
+         if !identity.ProfileComplete {app.respondWithErrorCode(w,403,"identity_completion_required","Complete your Full Legal Name and User Handle to continue.");return}
+        }
 		// 3️⃣  Resolve the authenticated user's current authorization class.
 		// A missing role is an authorization outcome; persistence failures and
 		// impossible role records are server failures and must not be disguised as
@@ -241,7 +245,9 @@ func (app *Application) AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-  if isInternalRole(role.Name) {
+  // Self identity/recovery never depends on administrative standing.
+  // These exact transports cannot grant or exercise administrative authority.
+  if isInternalRole(role.Name) && !identityCompletionTransport(r.Method,r.URL.Path) {
    gov:=data.NewAdministrativeGovernanceModel(app.Models.DB,app.Logger)
    rootID,err:=gov.RootUserID(r.Context())
    if err!=nil{app.serverErrorResponse(logger,w,r,err);return}

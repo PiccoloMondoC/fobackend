@@ -1,4 +1,6 @@
+// Package services provides account identity completion and administrative identity safeguards.
 // focodebase/fobackend/internal/services/root_continuity_internal.go
+
 // Root continuity policy: incumbent-only appointments and proposals; independent
 // co-Root acceptance. This package cannot execute Board recovery.
 package services
@@ -28,6 +30,7 @@ type ContinuityRequest struct {
  ExpectedDigest string `json:"expected_digest"`
 }
 type ContinuityView struct {
+ Identities map[uuid.UUID]*data.AdministrativeIdentity `json:"identities"`
  data.ContinuitySnapshot
  Digest string `json:"digest"`
 }
@@ -48,7 +51,9 @@ func (s *Service) ReadRootContinuityInternal(ctx context.Context,actorID uuid.UU
   rows,err:=tx.Query(ctx,`SELECT id,operation,actor_id,target_id,evidence,occurred_at FROM root_continuity_events ORDER BY occurred_at DESC,id DESC LIMIT 100`)
   if err!=nil{return err};defer rows.Close()
   for rows.Next(){var e data.ContinuityEvent;if err:=rows.Scan(&e.ID,&e.Operation,&e.ActorID,&e.TargetID,&e.Evidence,&e.OccurredAt);err!=nil{return err};view.History=append(view.History,e)}
-  return rows.Err()
+  if err=rows.Err();err!=nil{return err};rows.Close()
+  ids,err:=continuityIdentityIDs(view.State,view.History);if err!=nil{return err}
+  view.Identities,err=data.ReadAdministrativeIdentities(ctx,tx,ids...);return err
  });if err!=nil{return nil,err};return &view,nil
 }
 func (s *Service) ExecuteRootContinuityInternal(ctx context.Context,actorID uuid.UUID,req ContinuityRequest) (result uuid.UUID,resultErr error) {
@@ -81,6 +86,12 @@ func (s *Service) ExecuteRootContinuityInternal(ctx context.Context,actorID uuid
   if err:=data.SetContinuityOperationTx(ctx,tx,req.Operation);err!=nil{return err}
   target:=subjects[req.TargetID]
   requireTarget:=func()error{if req.TargetID==incumbent || req.TargetID==actorID{return ErrGovernanceSelfTarget};if err:=data.EnsureContinuitySubject(target);err!=nil{return err};if !strings.EqualFold(strings.TrimSpace(req.ConfirmEmail),target.Email){return ErrGovernanceInputInvalid};return nil}
+  switch req.Operation {
+  case "designate","appoint_co_root","replace_co_root","propose":
+   if err:=requireCompletedIdentityTx(ctx,tx,req.TargetID);err!=nil{return err}
+  case "accept":
+   if err:=requireCompletedIdentityTx(ctx,tx,actorID);err!=nil{return err}
+  }
   evidence:=map[string]any{}
   switch req.Operation {
   case "designate":

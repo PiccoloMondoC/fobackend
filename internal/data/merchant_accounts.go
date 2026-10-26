@@ -1,5 +1,4 @@
-// Package data provides models and database access methods for merchant accounts.
-//
+// Package data provides canonical merchant-account ownership, lifecycle, and operating contexts.
 // focodebase/fobackend/internal/data/merchant_accounts.go
 //
 // GTM:
@@ -1334,4 +1333,87 @@ func (m MerchantAccountModel) RecordFirstPlatformVisit(
 	default:
 		return false, fmt.Errorf("record first platform visit: %w", err)
 	}
+}
+// GetByPrincipal returns the non-deleted Merchant Account canonically owned by
+// principalUserID in any lifecycle status, or nil when none exists.
+//
+// It is a self-scoped presentation read for Merchant Center. Operational
+// authority continues to require an active account through
+// IsPrincipalForMerchant and ListActiveOperatingContextsForPrincipal.
+func (m *MerchantAccountModel) GetByPrincipal(
+	ctx context.Context,
+	principalUserID uuid.UUID,
+) (*MerchantAccount, error) {
+	if m == nil || m.DB == nil {
+		return nil, errors.New("merchant account model database is required")
+	}
+	if principalUserID == uuid.Nil {
+		return nil, errors.New("principal user ID is required")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
+	defer cancel()
+
+	const query = `
+		SELECT ` + merchantAccountSelectColumns + `
+		FROM merchant_accounts
+		WHERE principal_user_id = $1
+		  AND deleted_at IS NULL
+	`
+
+	var account MerchantAccount
+	if err := scanMerchantAccount(
+		m.DB.QueryRow(ctx, query, principalUserID),
+		&account,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get merchant account by principal: %w", err)
+	}
+
+	return &account, nil
+}
+
+// LockByPrincipalIncludingDeletedTx returns the principal's Merchant Account,
+// soft-deleted or not, locked FOR UPDATE inside the caller's transaction, or
+// nil when none exists.
+//
+// principal_user_id uniqueness is unconditional, so a soft-deleted account
+// still occupies the principal's single v1 Merchant Account relationship.
+// Merchant registration completion uses this read to decide between creating
+// the canonical account and linking an account established before
+// registration existed. Lock order: merchant_registrations, then
+// merchant_accounts.
+func (m *MerchantAccountModel) LockByPrincipalIncludingDeletedTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	principalUserID uuid.UUID,
+) (*MerchantAccount, error) {
+	if tx == nil {
+		return nil, errors.New("merchant account transaction is required")
+	}
+	if principalUserID == uuid.Nil {
+		return nil, errors.New("principal user ID is required")
+	}
+
+	const query = `
+		SELECT ` + merchantAccountSelectColumns + `
+		FROM merchant_accounts
+		WHERE principal_user_id = $1
+		FOR UPDATE
+	`
+
+	var account MerchantAccount
+	if err := scanMerchantAccount(
+		tx.QueryRow(ctx, query, principalUserID),
+		&account,
+	); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("lock merchant account by principal: %w", err)
+	}
+
+	return &account, nil
 }

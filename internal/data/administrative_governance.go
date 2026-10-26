@@ -1,9 +1,9 @@
-// Package data provides models and database access methods for administrative
+// Package data implements administrative governance persistence and minimized identity projections.
+// focodebase/fobackend/internal/data/administrative_governance.go
 // governance: the Root Super Admin, administrative appointments, the Root
 // succession ledger, the administrative account directory, and governance
 // audit records.
 //
-// focodebase/fobackend/internal/data/administrative_governance.go
 //
 // GTM:
 //
@@ -222,6 +222,9 @@ func (s *GovernanceSubject) ActiveLevel() AdministrativeLevel {
 // AdministratorRecord is the directory projection of an appointment.
 type AdministratorRecord struct {
 	UserID           uuid.UUID           `json:"user_id"`
+ Identity *AdministrativeIdentity `json:"identity"`
+ AppointedByID *uuid.UUID `json:"appointed_by_id"`
+ AppointedByIdentity *AdministrativeIdentity `json:"appointed_by_identity"`
 	Email            string              `json:"email"`
 	AccountActive    bool                `json:"account_active"`
 	IsRoot           bool                `json:"is_root"`
@@ -239,6 +242,7 @@ type AdministratorRecord struct {
 // deliberately minimal: no profile data, no provider identifiers, no hashes.
 type AccountRecord struct {
 	UserID              uuid.UUID           `json:"user_id"`
+ Identity *AdministrativeIdentity `json:"identity"`
 	Email               string              `json:"email"`
 	AccountActive       bool                `json:"account_active"`
 	CreatedAt           time.Time           `json:"created_at"`
@@ -252,6 +256,10 @@ type AccountRecord struct {
 
 // GovernanceHistoryEntry is one governance audit record about an account.
 type GovernanceHistoryEntry struct {
+ ActorID *uuid.UUID `json:"actor_id"`
+ ActorIdentity *AdministrativeIdentity `json:"actor_identity"`
+ TargetID uuid.UUID `json:"target_id"`
+ TargetIdentity *AdministrativeIdentity `json:"target_identity"`
 	OccurredAt     time.Time `json:"occurred_at"`
 	Action         string    `json:"action"`
 	Outcome        string    `json:"outcome"`
@@ -688,6 +696,7 @@ const administratorSelect = `
 		aa.level,
 		aa.status,
 		aa.appointed_at,
+ aa.appointed_by,
 		ab.email::text,
 		aa.status_changed_at,
 		aa.status_reason
@@ -709,6 +718,7 @@ func scanAdministrator(row scannableRow) (*AdministratorRecord, error) {
 		&level,
 		&status,
 		&r.AppointedAt,
+ &r.AppointedByID,
 		&r.AppointedByEmail,
 		&r.StatusChangedAt,
 		&r.StatusReason,
@@ -754,7 +764,12 @@ func (m *AdministrativeGovernanceModel) ListAdministrators(ctx context.Context, 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate administrators: %w", err)
 	}
-	return records, nil
+ rows.Close()
+ ids:=[]uuid.UUID{}
+ for _,r:=range records{ids=append(ids,r.UserID);if r.AppointedByID!=nil{ids=append(ids,*r.AppointedByID)}}
+ identities,err:=ReadAdministrativeIdentities(ctx,m.DB,ids...);if err!=nil{return nil,err}
+ for _,r:=range records{r.Identity=identities[r.UserID];if r.AppointedByID!=nil{r.AppointedByIdentity=identities[*r.AppointedByID]}}
+ return records, nil
 }
 
 // GetAdministrator returns one appointment record or ErrAdministrativeAppointmentNotFound.
@@ -769,7 +784,10 @@ func (m *AdministrativeGovernanceModel) GetAdministrator(ctx context.Context, us
 		}
 		return nil, fmt.Errorf("read administrator: %w", err)
 	}
-	return record, nil
+ ids:=[]uuid.UUID{record.UserID};if record.AppointedByID!=nil{ids=append(ids,*record.AppointedByID)}
+ identities,err:=ReadAdministrativeIdentities(ctx,m.DB,ids...);if err!=nil{return nil,err}
+ record.Identity=identities[record.UserID];if record.AppointedByID!=nil{record.AppointedByIdentity=identities[*record.AppointedByID]}
+ return record,nil
 }
 
 // accountSelect projects live (non-deleted) accounts with their primary role
@@ -886,7 +904,11 @@ func (m *AdministrativeGovernanceModel) SearchAccounts(ctx context.Context, quer
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate accounts: %w", err)
 	}
-	return records, nil
+ rows.Close()
+ ids:=[]uuid.UUID{};for _,r:=range records{ids=append(ids,r.UserID)}
+ identities,err:=ReadAdministrativeIdentities(ctx,m.DB,ids...);if err!=nil{return nil,err}
+ for _,r:=range records{r.Identity=identities[r.UserID]}
+ return records,nil
 }
 
 // GetAccount returns one live account, or ErrUserNotFound.
@@ -901,7 +923,8 @@ func (m *AdministrativeGovernanceModel) GetAccount(ctx context.Context, userID u
 		}
 		return nil, fmt.Errorf("read account: %w", err)
 	}
-	return record, nil
+ identities,err:=ReadAdministrativeIdentities(ctx,m.DB,record.UserID);if err!=nil{return nil,err};record.Identity=identities[record.UserID]
+ return record,nil
 }
 
 // MaxGovernanceHistory bounds a history read.
@@ -922,6 +945,7 @@ func (m *AdministrativeGovernanceModel) ListGovernanceHistory(ctx context.Contex
 			al.occurred_at,
 			a.name,
 			COALESCE(al.outcome, 'succeeded'),
+ al.user_id,
 			actor.email::text,
 			al.context
 		FROM audit_logs al
@@ -942,7 +966,7 @@ func (m *AdministrativeGovernanceModel) ListGovernanceHistory(ctx context.Contex
 	for rows.Next() {
 		var entry GovernanceHistoryEntry
 		var raw []byte
-		if err := rows.Scan(&entry.OccurredAt, &entry.Action, &entry.Outcome, &entry.ActorEmail, &raw); err != nil {
+		if err := rows.Scan(&entry.OccurredAt, &entry.Action, &entry.Outcome, &entry.ActorID, &entry.ActorEmail, &raw); err != nil {
 			return nil, fmt.Errorf("scan governance history: %w", err)
 		}
 		if len(raw) > 0 {
@@ -961,7 +985,11 @@ func (m *AdministrativeGovernanceModel) ListGovernanceHistory(ctx context.Contex
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate governance history: %w", err)
 	}
-	return entries, nil
+ rows.Close()
+ ids:=[]uuid.UUID{subjectID};for _,e:=range entries{if e.ActorID!=nil{ids=append(ids,*e.ActorID)}}
+ identities,err:=ReadAdministrativeIdentities(ctx,m.DB,ids...);if err!=nil{return nil,err}
+ for _,e:=range entries{e.TargetID=subjectID;e.TargetIdentity=identities[subjectID];if e.ActorID!=nil{e.ActorIdentity=identities[*e.ActorID]}}
+ return entries,nil
 }
 
 func nonEmpty(s string) *string {
@@ -993,5 +1021,9 @@ func (m *AdministrativeGovernanceModel) RequirePermissionTx(ctx context.Context,
 
 // GetAdministratorTx reads the response inside the successful mutation.
 func (m *AdministrativeGovernanceModel) GetAdministratorTx(ctx context.Context,tx pgx.Tx,userID uuid.UUID) (*AdministratorRecord,error) {
- return scanAdministrator(tx.QueryRow(ctx,administratorSelect+` WHERE aa.user_id=$1`,userID))
+ record,err:=scanAdministrator(tx.QueryRow(ctx,administratorSelect+` WHERE aa.user_id=$1`,userID));if err!=nil{return nil,err}
+ ids:=[]uuid.UUID{record.UserID};if record.AppointedByID!=nil{ids=append(ids,*record.AppointedByID)}
+ identities,err:=ReadAdministrativeIdentities(ctx,tx,ids...);if err!=nil{return nil,err}
+ record.Identity=identities[record.UserID];if record.AppointedByID!=nil{record.AppointedByIdentity=identities[*record.AppointedByID]}
+ return record,nil
 }

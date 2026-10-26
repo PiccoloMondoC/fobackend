@@ -1,8 +1,6 @@
-// Package services contains trusted internal service composition,
-// automation support, moderation helpers, and shared internal workflow logic.
-//
+// Package services provides account identity completion and administrative identity safeguards.
 // focodebase/fobackend/internal/services/administrative_governance_internal.go
-//
+
 // GTM:
 //
 //	Layer: 2.6 Internal Services / Administrative Governance
@@ -564,6 +562,9 @@ func (s *Service) ExecuteGovernanceOperationInternal(ctx context.Context,req Gov
    // here: confirmation must represent the target shown to this operator.
    if req.ConfirmTargetEmail!=targetSubject.Email{return ErrGovernanceConfirmationMismatch}
   }
+  switch req.Operation {case GovernanceAppointAdmin,GovernanceAppointSuperAdmin,GovernanceRestore:
+   if err:=requireCompletedIdentityTx(ctx,tx,req.TargetUserID);err!=nil{return err}
+  }
   action=auditActionFor(req.Operation,target)
   level,status,err:=s.applyGovernanceChange(ctx,tx,gov,actor,target,req.Operation,reason);if err!=nil{return err}
   audit:=data.GovernanceAuditContext{Operation:string(req.Operation),PreviousLevel:string(target.Level),PreviousStatus:string(target.Status),NewLevel:string(level),NewStatus:string(status)}
@@ -893,7 +894,7 @@ func (s *Service) ListAdministratorsInternal(ctx context.Context, actorID uuid.U
 	for _, r := range records {
 		views = append(views, AdministratorView{
 			AdministratorRecord: r,
-			AvailableActions:    AvailableGovernanceActions(actor, targetFromAdministrator(r)),
+			AvailableActions:    identityEligibleActions(AvailableGovernanceActions(actor, targetFromAdministrator(r)), r.Identity),
 		})
 	}
 	return &AdministratorDirectory{Actor: StandingFor(actor), Administrators: views}, nil
@@ -920,7 +921,7 @@ func (s *Service) SearchAccountsInternal(ctx context.Context, actorID uuid.UUID,
 	}
 	views := make([]AccountView, 0, len(records))
 	for _, r := range records {
-		views = append(views, AccountView{AccountRecord: r, AvailableActions: AvailableGovernanceActions(actor, targetFromAccount(r))})
+		views = append(views, AccountView{AccountRecord: r, AvailableActions: identityEligibleActions(AvailableGovernanceActions(actor, targetFromAccount(r)), r.Identity)})
 	}
 	return views, nil
 }
@@ -944,7 +945,7 @@ func (s *Service) GetAccountInternal(ctx context.Context, actorID, targetID uuid
 		}
 		return nil, err
 	}
-	return &AccountView{AccountRecord: record, AvailableActions: AvailableGovernanceActions(actor, targetFromAccount(record))}, nil
+	return &AccountView{AccountRecord: record, AvailableActions: identityEligibleActions(AvailableGovernanceActions(actor, targetFromAccount(record)), record.Identity)}, nil
 }
 
 // ListAdministratorHistoryInternal returns governance history for target.

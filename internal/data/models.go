@@ -1,3 +1,6 @@
+// Package data provides the canonical database model aggregate and its dependency wiring.
+// focodebase/fobackend/internal/data/models.go
+//
 // BUSINESS-NEUTRAL SOURCE RULE — BEG 3.17–3.18
 // CE and engineering own this naming rule. Use platform for neutral internal
 // identifiers; use the platform in general UI prose. Capitalize Platform only
@@ -13,12 +16,8 @@
 // intentional public, production, or migration-stable contract and CE review.
 // Run tools/check_business_neutrality.py before source release. Existing
 // violations are not automatically grandfathered or approved.
-
 //
-// Package data provides the centralized database model aggregate for the
 // Platform backend.
-//
-// File: focodebase/fobackend/internal/data/models.go
 //
 // GTM:
 //
@@ -118,6 +117,7 @@ type Models struct {
 	// Layer 2.4 — Merchant / Future Offering Domain
 	Merchant                              MerchantModel                              // SPINE: Future Offering v1 — merchant identity
 	MerchantAccount                       MerchantAccountModel                       // SPINE: merchant platform-account lifecycle
+	MerchantRegistration                  MerchantRegistrationModel                  // SPINE: Foundation Level 4 — principal-owned merchant registration draft and completion
 	MerchantPaymentMethod                 MerchantPaymentMethodModel                 // SPINE: Future Offering v1 — merchant billing payment-method reference infrastructure
 	MerchantProgramFeeSchedule            MerchantProgramFeeScheduleModel            // SPINE: Future Offering v1 — effective-dated merchant monetization policy
 	MerchantFutureOfferingServiceTerm     MerchantFutureOfferingServiceTermModel     // SPINE: Future Offering — overall agreed FO service duration
@@ -192,6 +192,10 @@ func New(dbPool *pgxpool.Pool, logger *logging.Logger) Models {
 		// Layer 2.4 — Merchant / Future Offering Domain
 		Merchant:        MerchantModel{DB: dbPool, Logger: logger}, // SPINE: Future Offering v1
 		MerchantAccount: MerchantAccountModel{DB: dbPool, Logger: logger},
+		MerchantRegistration: MerchantRegistrationModel{
+			DB:     dbPool,
+			Logger: logger,
+		}, // SPINE: Foundation Level 4 — principal-owned merchant registration
 		MerchantPaymentMethod: MerchantPaymentMethodModel{
 			DB:     dbPool,
 			Logger: logger,

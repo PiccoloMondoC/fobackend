@@ -1,7 +1,6 @@
-// Package main provides HTTP handlers for administrative governance.
-//
+// Package main provides account identity completion and administrative identity safeguards.
 // focodebase/fobackend/internal/server/cmd/api/admin_governance.go
-//
+
 // GTM:
 //
 //	Layer: 3.1 API / Administrative Control Plane
@@ -71,7 +70,7 @@ func governanceErrorResponse(err error) (int, string, string) {
 	case "account_not_found":
 		return http.StatusNotFound, code, "account not found"
 	case "account_ineligible":
-		return http.StatusConflict, code, "account is not eligible: it must be active with a confirmed email"
+		return http.StatusConflict, code, "account is not eligible: it must be active with a confirmed email, Full Legal Name and User Handle"
 	case "invalid_transition":
 		return http.StatusConflict, code, "this change does not apply to the account's current standing"
 	case "administrator_account":
@@ -107,6 +106,7 @@ func (app *Application) respondWithGovernanceError(w http.ResponseWriter, r *htt
 }
 
 func (app *Application) governanceActor(w http.ResponseWriter, ctx context.Context) (uuid.UUID, bool) {
+    w.Header().Set("Cache-Control", "no-store")
 	id := app.getUserIDFromContext(ctx)
 	if id == nil || *id == uuid.Nil {
 		app.respondWithErrorCode(w, http.StatusUnauthorized, "unauthenticated", "unauthorized")

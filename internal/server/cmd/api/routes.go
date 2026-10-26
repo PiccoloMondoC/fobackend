@@ -1,7 +1,6 @@
-// Package main provides HTTP routing for the Platform API.
-//
+// Package main provides account identity completion and administrative identity safeguards.
 // focodebase/fobackend/internal/server/cmd/api/routes.go
-//
+
 // GTM:
 //
 //	Layer: 2.1 API / Routing Foundation
@@ -111,7 +110,7 @@ func (app *Application) Routes() http.Handler {
 	r.Route("/api/v1", func(v1 chi.Router) {
 		// Inject trusted IDs into context for all v1 endpoints
 		v1.Use(app.InjectApplicationContextMiddleware)
-        v1.Use(app.SiteMaintenanceGateMiddleware)
+        v1.Use(app.identityMaintenanceGate)
 
 		// Development-only fallback context.
 		// Never install synthetic trusted identifiers in production.
@@ -482,15 +481,53 @@ func (app *Application) Routes() http.Handler {
 				Patch("/", app.UpdateMerchantHandler)
 		})
 
-		// Merchant Onboarding
+		// Merchant Onboarding (Foundation Level 4 — Become a Merchant)
 		//
-		// Merchant self-service onboarding is distinct from public Users signup.
-		// It creates the Merchant and that Merchant's principal-owned canonical
-		// Merchant Account atomically. Merchant classification is not required.
+		// Merchant self-service registration is distinct from public Users
+		// signup. A signed-in account holder with a public role (consumer or
+		// merchant) saves and resumes a registration draft and completes it;
+		// completion creates the Merchant and that Merchant's principal-owned
+		// canonical Merchant Account atomically. The principal is always the
+		// authenticated caller. GET is self-scoped and reports eligibility, so it
+		// is not role-restricted. The old one-shot POST returns an explicit 410.
 		v1.Route("/merchant-onboarding", func(mo chi.Router) {
-			mo.Use(app.AuthMiddleware)
-			mo.With(app.RequireRole("merchant")).
-				Post("/", app.OnboardMerchantHandler)
+            mo.Use(app.AuthMiddleware)
+            mo.With(app.RateLimitMiddleware).Post("/", app.OnboardMerchantHandler)
+
+			mo.Get(
+				"/registration",
+				app.GetOwnMerchantRegistrationHandler,
+			)
+
+			mo.With(
+				app.RateLimitMiddleware,
+				app.RequireRole("consumer", "merchant"),
+			).Put(
+				"/registration",
+				app.SaveOwnMerchantRegistrationHandler,
+			)
+
+			mo.With(
+				app.RateLimitMiddleware,
+				app.RequireRole("consumer", "merchant"),
+			).Post(
+				"/registration/complete",
+				app.CompleteOwnMerchantRegistrationHandler,
+			)
+		})
+
+		// Account Navigation
+		//
+		// Self-scoped presentation eligibility for the Adaptable Account Menu.
+		// It returns no private registration facts and authorizes nothing;
+		// every destination re-authorizes independently.
+		v1.Route("/account", func(acct chi.Router) {
+			acct.Use(app.AuthMiddleware)
+
+			acct.Get(
+				"/navigation",
+				app.GetOwnAccountNavigationHandler,
+			)
 		})
 
 		// Merchant Accounts
@@ -1322,43 +1359,25 @@ func (app *Application) Routes() http.Handler {
 			).Get("/by-user", app.GetUserNotificationByUserIDHandler)
 		})
 
-		// User Profile
-		v1.Route("/user-profile", func(up chi.Router) {
-			up.Use(app.AuthMiddleware)
-
-			// GET /user-profile/self
-			up.With(app.RequireAuthenticatedUser).
-				Get("/self", app.GetOwnUserProfileHandler)
-
-			// PATCH: Update own profile
-			up.With(app.RequireAuthenticatedUser).
-				Patch("/self", app.UpdateOwnUserProfileHandler)
-
-			// PATCH: Admin or Operator updates another user's profile
-			up.With(app.RequirePermission("update_user_profile")).
-				Patch("/", app.UpdateUserProfileHandler)
-
-			// PATCH: Flag or unflag user profile (internal moderation only)
-			up.With(app.RequirePermission("moderate_user_profile")).
-				Patch("/moderate", app.ModerateUserProfileHandler)
-
-			// GET: Authenticated access to a user profile by user ID
-			// (visibility remains enforced inside the handler).
-			up.With(app.RequireAuthenticatedUser).
-				Get("/by-user", app.GetUserProfileByUserIDHandler)
-
-			// GET: List user profiles
-			up.With(app.RequirePermission("read_user_profiles")).
-				Get("/all", app.ListUserProfilesHandler)
-
-			// GET: Search user profiles
-			up.With(app.RequirePermission("read_user_profiles")).
-				Get("/search", app.SearchUserProfilesHandler)
-
-			// GET: Return reserved user handles for UI validation
-			up.With(app.RequirePermission("read_reserved_handles")).
-				Get("/reserved-handles", app.GetReservedHandlesHandler)
-		})
+        // AuthMiddleware enforces identity completion; only exact self-service transports are exempt.
+        v1.Route("/user-profile", func(up chi.Router) {
+            up.Use(app.AuthMiddleware, app.RequireAuthenticatedUser, app.profileServiceContext)
+            up.Get("/self", app.GetOwnUserProfileHandler)
+            up.Get("/self/identity", app.GetOwnPublicIdentityHandler)
+            up.Get("/self/photo", app.GetOwnProfilePhotoHandler)
+            up.With(app.RateLimitMiddleware).Post("/self/photo", app.SaveOwnProfilePhotoHandler)
+            up.With(app.RateLimitMiddleware).Delete("/self/photo", app.DeleteOwnProfilePhotoHandler)
+            up.With(app.RateLimitMiddleware).Post("/self", app.CreateOwnUserProfileHandler)
+            up.With(app.RateLimitMiddleware).Patch("/self", app.UpdateOwnUserProfileHandler)
+            up.Get("/self/completeness", app.GetOwnProfileCompletenessHandler)
+            up.With(app.RateLimitMiddleware).Get("/handle-availability", app.ProfileHandleAvailabilityHandler)
+            up.Get("/by-user", app.GetUserProfileByUserIDHandler)
+            up.With(app.RequireInternalRole, app.RequirePermission("update_user_profile")).Patch("/", app.UpdateUserProfileHandler)
+            up.With(app.RequireInternalRole, app.RequirePermission("moderate_user_profile")).Patch("/moderate", app.ModerateUserProfileHandler)
+            up.With(app.RequireInternalRole, app.RequirePermission("read_user_profiles")).Get("/all", app.ListUserProfilesHandler)
+            up.With(app.RequireInternalRole, app.RequirePermission("read_user_profiles")).Get("/search", app.SearchUserProfilesHandler)
+            up.With(app.RequireInternalRole, app.RequirePermission("read_reserved_handles")).Get("/reserved-handles", app.GetReservedHandlesHandler)
+        })
 
 		// Users
 		v1.Route("/users", func(u chi.Router) {

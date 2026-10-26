@@ -1,28 +1,17 @@
-// Package data provides models and database access methods for Merchant Center and related entities.
-//
+// Package data provides the Foundation Level 4 merchant workspace persistence boundary.
 // focodebase/fobackend/internal/data/merchant_center.go
 //
 // GTM:
+//     Layer: 2.1 Persistence / Merchant Registration
+//     Release Class: SPINE
+//     Reason: Supports the complete Foundation Level 4 merchant-registration and account-navigation vertical.
 //
-//	Layer: 2.4 Merchant / Affiliate Domain
-//	Release Class: DEFERRED
-//	Reason:
-//	  Merchant Center is valid future merchant self-service infrastructure, but
-//	  it is not required for the initial Platform release spine. The v1
-//	  spine requires merchant identity, favorites, and merchant follows
-//	  before expanding into merchant self-service dashboards, onboarding
-//	  workspaces, campaign management, storefront controls, analytics, and
-//	  operational console workflows.
+// SPINE Rule:
+//     Keep compiling and preserve established security, lifecycle, and privacy contracts.
+//     Preserve canonical principal ownership and backend authorization.
+//     Keep private registration values out of public projections, logs, and errors.
 //
-// DEFERRED Rule:
-//
-//	Keep compiling.
-//	Keep safe.
-//	Preserve merchant-scoped Merchant Center ownership semantics.
-//	Preserve separation from internal/admin governance surfaces.
-//	Preserve merchant self-service boundary definitions.
-//	Preserve DB-owned lifecycle timestamp behavior where persisted.
-//	Do not add new features.
-//	Do not route into v1 UI/API expansion.
-//	Do not block deployment on this file unless it breaks the build.
+// Registration persistence belongs to merchant_registrations.go; canonical
+// merchant operations remain governed by MerchantAccount principal ownership.
+// Public storefronts, multiuser memberships and investigations remain deferred.
 package data

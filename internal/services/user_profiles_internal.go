@@ -31,12 +31,10 @@ package services
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
-	"github.com/PiccoloMondoC/focodebase/fobackend/internal/utils"
 
 	"github.com/google/uuid"
 )
@@ -58,97 +56,16 @@ func (s *Service) getSystemUserID() uuid.UUID {
 }
 
 func (s *Service) CheckAndAutoFlagProfileInternal(ctx context.Context, userID uuid.UUID) {
-	logger := s.Logger.GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("CheckAndAutoFlagProfileInternal")
-
-	if userID == uuid.Nil {
-		logger.Warn("missing user_id for profile auto-flag check")
-		return
-	}
-
-	profile, err := s.Models.UserProfile.GetByUserID(ctx, userID)
-	if err != nil {
-		logger.Error("load profile failed", "user_id", userID, "error", err)
-		return
-	}
-	if profile == nil {
-		logger.Info("profile not found for auto-flag check", "user_id", userID)
-		return
-	}
-
-	if !shouldFlagProfile(profile) {
-		logger.Info("profile passed moderation check", "user_id", userID)
-		return
-	}
-
-	if err := s.Models.UserProfile.FlagUserProfile(ctx, userID, true, userProfileAutoFlagReason); err != nil {
-		logger.Error("failed to flag profile", "user_id", userID, "error", err)
-		return
-	}
-
-	if err := utils.InsertAutoModerationAudit(ctx, s.Models, s.getSystemUserID(), userID); err != nil {
-		logger.Warn("audit log failed after flagging", "user_id", userID, "error", err)
-	}
-
-	logger.Warn("profile auto-flagged for violation", "user_id", userID)
+ if err:=s.autoFlagProfileAtomic(ctx,userID);err!=nil{
+  s.Logger.GetLoggerWithContextFromContext(ctx).WithFunctionName("CheckAndAutoFlagProfileInternal").Warn("profile moderation check failed", "user_id",userID)
+ }
 }
-
 func (s *Service) AutoFlagUserProfilesInternal(ctx context.Context) error {
-	logger := s.Logger.GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("AutoFlagUserProfilesInternal")
-
-	ctx, cancel := context.WithTimeout(ctx, s.Cfg.DBTimeout)
-	defer cancel()
-
-	profiles, err := s.Models.UserProfile.GetAll(
-		ctx,
-		userProfileModerationBatchLimit,
-		userProfileModerationBatchOffset,
-	)
-	if err != nil {
-		logger.Error("failed to fetch user profiles", "error", err)
-		return fmt.Errorf("user profile query failed: %w", err)
-	}
-
-	if len(profiles) == 0 {
-		logger.Info("no profiles found for moderation review")
-		return nil
-	}
-
-	action, entityType := s.resolveUserProfileAuditMetadata(
-		ctx,
-		userProfileAuditActionAutoFlagProfile,
-		"Automatically flag a user profile for moderation review",
-	)
-
-	requesterID := s.getUserIDFromContext(ctx)
-	if requesterID == nil {
-		systemUserID := s.getSystemUserID()
-		requesterID = &systemUserID
-	}
-
-	var flaggedCount int
-
-	for _, profile := range profiles {
-		if profile == nil || profile.UserID == uuid.Nil {
-			continue
-		}
-
-		if !shouldFlagProfile(profile) {
-			continue
-		}
-
-		if err := s.Models.UserProfile.FlagUserProfile(ctx, profile.UserID, true, userProfileAutoFlagReason); err != nil {
-			logger.Warn("failed to flag profile", "user_id", profile.UserID, "error", err)
-			continue
-		}
-
-		s.insertUserProfileAuditLog(ctx, requesterID, action, entityType, profile.UserID.String())
-		flaggedCount++
-	}
-
-	logger.Info("auto moderation completed", "total_flagged", flaggedCount)
-	return nil
+ if err:=s.validate();err!=nil{return err};if ctx==nil{return ErrNilContext}
+ ctx,cancel:=context.WithTimeout(ctx,s.Cfg.DBTimeout);defer cancel()
+ profiles,err:=s.Models.UserProfile.GetAll(ctx,userProfileModerationBatchLimit,userProfileModerationBatchOffset);if err!=nil{return err}
+ for _,p:=range profiles{if p==nil{continue};if err:=s.autoFlagProfileAtomic(ctx,p.UserID);err!=nil{return err}}
+ return nil
 }
 
 func shouldFlagProfile(p *data.UserProfile) bool {
@@ -215,7 +132,7 @@ func (s *Service) ValidateAndNormalizeHandleInternal(ctx context.Context, handle
 	}
 
 	if err := s.Models.UserProfile.ValidateUserHandle(ctx, normalized); err != nil {
-		logger.Warn("handle validation failed", "user_handle", normalized, "error", err)
+		logger.Warn("handle validation failed", "error", err)
 		return "", err
 	}
 
@@ -230,7 +147,7 @@ func (s *Service) ValidateAndNormalizeHandleInternal(ctx context.Context, handle
 		s.insertUserProfileAuditLog(ctx, requesterID, action, entityType, normalized)
 	}
 
-	logger.Info("handle validation passed", "normalized_handle", normalized)
+	logger.Info("handle validation passed")
 	return normalized, nil
 }
 
@@ -257,11 +174,11 @@ func (s *Service) ResolveProfileOwnerInternal(
 		userID, err := s.Models.UserProfile.GetUserIDByHandle(ctx, normalized)
 		if err != nil {
 			if errors.Is(err, data.ErrUserHandleNotFound) {
-				logger.Info("handle not found", "user_handle", normalized)
+				logger.Info("handle not found")
 				return false, nil
 			}
 
-			logger.Error("failed to resolve user ID from handle", "user_handle", normalized, "error", err)
+			logger.Error("failed to resolve user ID from handle", "error", err)
 			return false, err
 		}
 
@@ -299,7 +216,9 @@ func (s *Service) ResolveProfileOwnerInternal(
 }
 
 func (s *Service) getUserIDFromContext(ctx context.Context) *uuid.UUID {
-	val, ok := ctx.Value("user_id").(uuid.UUID)
+	if ctx==nil{return nil}
+ val,ok:=ctx.Value(profileActorContextKey{}).(uuid.UUID)
+ if !ok { val,ok=ctx.Value("user_id").(uuid.UUID) } // retained trusted internal callers
 	if !ok || val == uuid.Nil {
 		return nil
 	}

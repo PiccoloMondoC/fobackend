@@ -1,5 +1,4 @@
-// Package data provides canonical persistence for Merchant identity.
-//
+// Package data provides canonical merchant identity and coordination with private business registration.
 // focodebase/fobackend/internal/data/merchants.go
 //
 // GTM:
@@ -65,6 +64,8 @@ const merchantSelectColumns = `
 // merchantNameUniqueConstraint is the canonical uniqueness constraint over
 // Merchant name. The column is CITEXT, so uniqueness is case-insensitive.
 const merchantNameUniqueConstraint = "ux_merchants_name"
+
+var ErrMerchantRegistrationManaged = errors.New("use merchant registration to manage this identity")
 
 // Merchant is the canonical durable commercial identity behind one or more
 // Future Offerings.
@@ -246,7 +247,7 @@ func (m *MerchantModel) InsertTx(
 		if isMerchantNameConflict(err) {
 			return ErrMerchantIdentityConflict
 		}
-		return fmt.Errorf("insert merchant: %w", err)
+		return SafeMerchantRegistrationError("insert merchant", err)
 	}
 
 	return nil
@@ -310,80 +311,84 @@ func (m *MerchantModel) GetByID(
 // validation, ErrMerchantIdentityConflict when the canonical name is already
 // held by another Merchant, and ErrMerchantNotFound when no Merchant exists
 // with merchant.ID.
-func (m *MerchantModel) Update(
+func (m *MerchantModel) Update(ctx context.Context, merchant *Merchant) error {
+    if merchant == nil || merchant.ID == uuid.Nil { return ErrMerchantInvalid }
+    if err := validateAndNormalizeMerchant(merchant); err != nil { return err }
+    ctx,cancel:=context.WithTimeout(ctx,dbTimeout);defer cancel()
+    tx,err:=m.DB.BeginTx(ctx,pgx.TxOptions{});if err!=nil{return SafeMerchantRegistrationError("begin identity update",err)}
+    defer func(){ cleanup,done:=context.WithTimeout(context.Background(),3*time.Second);defer done();_ = tx.Rollback(cleanup) }()
+    // The old tuple writer participates in the same user-first lock order as
+    // registration completion. A pre-check outside a transaction would race
+    // completion and permit canonical DBA/private-registration divergence.
+    var principal uuid.UUID
+    err=tx.QueryRow(ctx,`SELECT principal_user_id FROM merchant_accounts WHERE merchant_id=$1`,merchant.ID).Scan(&principal)
+    if err!=nil&&!errors.Is(err,pgx.ErrNoRows){return SafeMerchantRegistrationError("resolve identity owner",err)}
+    if err==nil {
+        var locked uuid.UUID
+        if err=tx.QueryRow(ctx,`SELECT id FROM users WHERE id=$1 FOR UPDATE`,principal).Scan(&locked);err!=nil{
+            return SafeMerchantRegistrationError("lock identity owner",err)
+        }
+        var registered bool
+        if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM merchant_registrations
+            WHERE principal_user_id=$1 AND registration_status='completed')`,principal).Scan(&registered);err!=nil{
+            return SafeMerchantRegistrationError("resolve identity management",err)
+        }
+        if registered{return ErrMerchantRegistrationManaged}
+    }
+    err=scanMerchant(tx.QueryRow(ctx,`UPDATE merchants SET name=$1,logo_url=$2,website=$3,updated_at=NOW()
+        WHERE id=$4 RETURNING `+merchantSelectColumns,merchant.Name,merchant.LogoURL,merchant.Website,merchant.ID),merchant)
+    if errors.Is(err,pgx.ErrNoRows){return ErrMerchantNotFound}
+    if isMerchantNameConflict(err){return ErrMerchantIdentityConflict}
+    if err!=nil{return SafeMerchantRegistrationError("update identity",err)}
+    return SafeMerchantRegistrationError("commit identity update",tx.Commit(ctx))
+}
+
+// UpdateNameTx replaces the canonical Merchant name inside a caller-owned
+// transaction. Merchant registration uses it to keep the Merchant name equal
+// to the registered public DBA / brand name. LogoURL is preserved. A historical website is cleared from the general
+// identity once the owner submits the private registration website.
+//
+// Returns an error wrapping ErrMerchantInvalid when the name fails validation,
+// ErrMerchantIdentityConflict when another Merchant holds the canonical name,
+// and ErrMerchantNotFound when no Merchant exists with id.
+func (m *MerchantModel) UpdateNameTx(
 	ctx context.Context,
-	merchant *Merchant,
-) error {
-	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
-	defer cancel()
-
-	logger := m.Logger.
-		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("UpdateMerchant")
-
-	if merchant == nil {
-		err := errors.New("merchant is required")
-		logger.Error("Merchant validation failed", err)
-		return err
+	tx pgx.Tx,
+	id uuid.UUID,
+	name string,
+) (*Merchant, error) {
+	if tx == nil {
+		return nil, errors.New("merchant transaction is required")
+	}
+	if id == uuid.Nil {
+		return nil, errors.New("merchant ID is required")
 	}
 
-	if merchant.ID == uuid.Nil {
-		err := errors.New("merchant ID is required")
-		logger.Error("Merchant validation failed", err)
-		return err
-	}
-
-	if err := validateAndNormalizeMerchant(merchant); err != nil {
-		logger.Error(
-			"Merchant validation failed",
-			err,
-			"merchant_id", merchant.ID,
-		)
-		return err
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return nil, fmt.Errorf("%w: merchant name is required", ErrMerchantInvalid)
 	}
 
 	const query = `
 		UPDATE merchants
 		SET
 			name = $1,
-			logo_url = $2,
-			website = $3,
+            website = NULL,
 			updated_at = NOW()
-		WHERE id = $4
+		WHERE id = $2 AND deleted_at IS NULL
 		RETURNING ` + merchantSelectColumns + `
 	`
 
-	if err := scanMerchant(
-		m.DB.QueryRow(
-			ctx,
-			query,
-			merchant.Name,
-			merchant.LogoURL,
-			merchant.Website,
-			merchant.ID,
-		),
-		merchant,
-	); err != nil {
+	var merchant Merchant
+	if err := scanMerchant(tx.QueryRow(ctx, query, trimmed, id), &merchant); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrMerchantNotFound
+			return nil, ErrMerchantNotFound
 		}
 		if isMerchantNameConflict(err) {
-			return ErrMerchantIdentityConflict
+			return nil, ErrMerchantIdentityConflict
 		}
-
-		logger.Error(
-			"Update merchant failed",
-			err,
-			"merchant_id", merchant.ID,
-		)
-
-		return fmt.Errorf("update merchant: %w", err)
+		return nil, SafeMerchantRegistrationError("update merchant name", err)
 	}
 
-	logger.Info(
-		"Merchant updated",
-		"merchant_id", merchant.ID,
-	)
-
-	return nil
+	return &merchant, nil
 }

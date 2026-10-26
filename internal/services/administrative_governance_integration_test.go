@@ -1,5 +1,6 @@
+// Package services provides account identity completion and administrative identity safeguards.
 // focodebase/fobackend/internal/services/administrative_governance_integration_test.go
-//
+
 // PostgreSQL integration tests for administrative governance. They prove the
 // invariants that only the database can prove: Root uniqueness under races,
 // trigger backstops on every path that could affect the Root, appointment /
@@ -104,7 +105,8 @@ func newGovernanceHarness(t *testing.T) *governanceHarness {
 	return &governanceHarness{t: t, ctx: ctx, pool: pool, svc: svc}
 }
 
-// account creates a signup-shaped account: users row plus consumer primary role.
+// account creates a governance fixture with identity completed when active.
+// Identity-incomplete scenarios explicitly remove its private identity below.
 func (h *governanceHarness) account(label string, active bool) (uuid.UUID, string) {
 	h.t.Helper()
 	id := uuid.New()
@@ -122,6 +124,11 @@ func (h *governanceHarness) account(label string, active bool) (uuid.UUID, strin
 		SELECT $1, id, TRUE FROM roles WHERE name = 'consumer'`, id); err != nil {
 		h.t.Fatalf("assign consumer: %v", err)
 	}
+ if active {
+  name:="Test Account";handle:="test-"+strings.ReplaceAll(id.String(),"-","")[:20]
+  _,err:=h.svc.SaveOwnProfileInternal(h.ctx,id,data.ProfileChanges{"full_legal_name":&name,"user_handle":&handle},nil,true)
+  if err!=nil{h.t.Fatalf("complete fixture identity: %v",err)}
+ }
 	return id, email
 }
 

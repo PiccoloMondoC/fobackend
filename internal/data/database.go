@@ -1,3 +1,6 @@
+// Package data provides database connections, canonical schema initialization, and persistence integrity.
+// focodebase/fobackend/internal/data/database.go
+//
 // BUSINESS-NEUTRAL SOURCE RULE — BEG 3.17–3.18
 // CE and engineering own this naming rule. Use platform for neutral internal
 // identifiers; use the platform in general UI prose. Capitalize Platform only
@@ -13,11 +16,6 @@
 // intentional public, production, or migration-stable contract and CE review.
 // Run tools/check_business_neutrality.py before source release. Existing
 // violations are not automatically grandfathered or approved.
-
-//
-// Package data provides models and database access methods for databases and other entities.
-//
-// focodebase/fobackend/internal/data/database.go
 //
 // GTM:
 //
@@ -340,6 +338,33 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 	);
 
+    -- Additive private storage. Existing profile/name rows are never rewritten.
+    CREATE TABLE IF NOT EXISTS user_profile_private_identities (
+        user_id UUID PRIMARY KEY REFERENCES user_profiles(user_id) ON DELETE CASCADE,
+        full_legal_name TEXT NOT NULL CHECK (char_length(btrim(full_legal_name)) BETWEEN 1 AND 300),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    -- Object bytes live in the configured private media store, not PostgreSQL.
+    -- No profile FK: cleanup records must survive permanent profile deletion.
+    CREATE TABLE IF NOT EXISTS media_objects (
+        id UUID PRIMARY KEY,
+        owner_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        purpose TEXT NOT NULL,
+        storage_driver TEXT NOT NULL CHECK (storage_driver IN ('filesystem','gcs')),
+        storage_location TEXT NOT NULL,
+        content_type TEXT NOT NULL,
+        byte_size BIGINT NOT NULL CHECK (byte_size > 0),
+        sha256 TEXT NOT NULL CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+        state TEXT NOT NULL CHECK (state IN ('staged','active','retired')),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        cleanup_after TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp() + INTERVAL '24 hours'
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_media_objects_active_owner_purpose
+        ON media_objects(owner_user_id,purpose) WHERE state='active';
+    CREATE INDEX IF NOT EXISTS ix_media_objects_cleanup
+        ON media_objects(cleanup_after) WHERE state <> 'active';
+
 	CREATE INDEX IF NOT EXISTS idx_user_profiles_phone
 		ON user_profiles(phone);
 
@@ -381,6 +406,8 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		CONSTRAINT ux_global_handles_entity
 			UNIQUE (entity_type, entity_id)
 	);
+
+	CREATE UNIQUE INDEX IF NOT EXISTS ux_global_handles_namespace ON global_handles (handle);
 
 	CREATE INDEX IF NOT EXISTS idx_global_handles_entity_type
 		ON global_handles(entity_type);
@@ -3938,6 +3965,141 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 		ON merchant_accounts(principal_user_id, created_at, id)
 		WHERE deleted_at IS NULL AND account_status = 'active';
 
+	-- ===============================================================
+	-- Merchant Registrations (Foundation Level 4 — Become a Merchant)
+	-- ===============================================================
+	-- Principal-owned registration record holding the eight registration
+	-- facts. Only dba_name is public (it becomes merchants.name on
+	-- completion); every other fact is private registration information.
+	--
+	-- draft      saved and resumable; no Merchant or Merchant Account exists
+	--            for it and it grants no merchant authority. Draft saves
+	--            require no fact, but every supplied fact must be valid.
+	-- completed  every required fact present; merchant_id references the
+	--            canonical Merchant whose principal-owned Merchant Account
+	--            was created or linked in the completing transaction.
+	--
+	-- Additive and safe for existing databases: CREATE TABLE IF NOT EXISTS
+	-- creates the table on the next startup without altering existing tables.
+	-- Field bounds mirror data/merchant_registration_validation.go.
+	CREATE TABLE IF NOT EXISTS merchant_registrations (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		principal_user_id UUID NOT NULL
+			REFERENCES users(id) ON DELETE CASCADE,
+
+		registration_status TEXT NOT NULL DEFAULT 'draft'
+			CHECK (registration_status IN ('draft', 'completed')),
+
+		revision BIGINT NOT NULL DEFAULT 1
+			CHECK (revision > 0),
+
+		legal_name TEXT
+			CHECK (legal_name IS NULL OR char_length(legal_name) BETWEEN 2 AND 200),
+		dba_name TEXT
+			CHECK (dba_name IS NULL OR char_length(dba_name) BETWEEN 2 AND 120),
+		tax_id TEXT
+			CHECK (tax_id IS NULL OR (
+				char_length(tax_id) BETWEEN 4 AND 32
+				AND tax_id ~ '^[A-Z0-9]([A-Z0-9 ./-]*[A-Z0-9])?$'
+			)),
+		address_line1 TEXT
+			CHECK (address_line1 IS NULL OR char_length(address_line1) BETWEEN 3 AND 200),
+		address_line2 TEXT
+			CHECK (address_line2 IS NULL OR char_length(address_line2) BETWEEN 1 AND 200),
+		address_city TEXT
+			CHECK (address_city IS NULL OR char_length(address_city) BETWEEN 2 AND 100),
+		address_region TEXT
+			CHECK (address_region IS NULL OR char_length(address_region) BETWEEN 1 AND 100),
+		address_postal_code TEXT
+			CHECK (address_postal_code IS NULL OR (
+				char_length(address_postal_code) BETWEEN 2 AND 16
+				AND address_postal_code ~ '^[A-Z0-9]([A-Z0-9 -]*[A-Z0-9])?$'
+			)),
+		address_country TEXT
+			CHECK (address_country IS NULL OR address_country ~ '^[A-Z]{2}$'),
+		corporate_email TEXT
+			CHECK (corporate_email IS NULL OR (
+				char_length(corporate_email) <= 254
+				AND corporate_email = lower(corporate_email)
+				AND corporate_email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$'
+			)),
+		contact_name TEXT
+			CHECK (contact_name IS NULL OR char_length(contact_name) BETWEEN 2 AND 150),
+		phone TEXT
+			CHECK (phone IS NULL OR phone ~ '^\+[1-9][0-9]{9,14}$'),
+		website TEXT
+			CHECK (website IS NULL OR (
+				char_length(website) <= 2048
+				AND website ~* '^https?://'
+			)),
+
+		merchant_id UUID
+			REFERENCES merchants(id) ON DELETE RESTRICT,
+
+		completed_at TIMESTAMPTZ,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		CONSTRAINT ux_merchant_registrations_principal_user_id
+			UNIQUE (principal_user_id),
+		CONSTRAINT ux_merchant_registrations_merchant_id
+			UNIQUE (merchant_id),
+		CONSTRAINT chk_merchant_registrations_lifecycle CHECK (
+			(
+				registration_status = 'draft'
+				AND merchant_id IS NULL
+				AND completed_at IS NULL
+			)
+			OR
+			(
+				registration_status = 'completed'
+				AND merchant_id IS NOT NULL
+				AND completed_at IS NOT NULL
+				AND legal_name IS NOT NULL
+				AND dba_name IS NOT NULL
+				AND tax_id IS NOT NULL
+				AND address_line1 IS NOT NULL
+				AND address_city IS NOT NULL
+				AND address_country IS NOT NULL
+				AND corporate_email IS NOT NULL
+				AND contact_name IS NOT NULL
+				AND phone IS NOT NULL
+				AND website IS NOT NULL
+			)
+		)
+	);
+
+
+
+    -- Registration identity and completion are monotonic. Facts can be edited
+    -- only with a revision increment; completing cannot switch principals.
+    CREATE OR REPLACE FUNCTION guard_merchant_registration() RETURNS trigger
+    LANGUAGE plpgsql AS $$
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN
+        IF NEW.id IS DISTINCT FROM OLD.id OR
+           NEW.principal_user_id IS DISTINCT FROM OLD.principal_user_id OR
+           NEW.created_at IS DISTINCT FROM OLD.created_at OR
+           NEW.revision <> OLD.revision + 1 OR
+           (OLD.registration_status = 'completed' AND
+             (NEW.registration_status <> 'completed' OR
+              NEW.merchant_id IS DISTINCT FROM OLD.merchant_id OR
+              NEW.completed_at IS DISTINCT FROM OLD.completed_at)) THEN
+          RAISE EXCEPTION USING ERRCODE='23514', MESSAGE='invalid registration transition';
+        END IF;
+      END IF;
+      IF NEW.registration_status = 'completed' AND NOT EXISTS (
+        SELECT 1 FROM merchant_accounts a WHERE a.merchant_id=NEW.merchant_id
+        AND a.principal_user_id=NEW.principal_user_id
+      ) THEN
+        RAISE EXCEPTION USING ERRCODE='23514', MESSAGE='invalid registration ownership';
+      END IF;
+      RETURN NEW;
+    END $$;
+    DROP TRIGGER IF EXISTS guard_merchant_registration ON merchant_registrations;
+    CREATE TRIGGER guard_merchant_registration BEFORE INSERT OR UPDATE
+    ON merchant_registrations FOR EACH ROW EXECUTE FUNCTION guard_merchant_registration();
 
 	-- ===============================================================
 	-- Merchant Program Fee Schedules
@@ -5297,10 +5459,18 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	BEFORE UPDATE ON users
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
-	DROP TRIGGER IF EXISTS set_updated_at_user_profiles ON user_profiles;
+	CREATE OR REPLACE FUNCTION public.set_profile_updated_at()
+    RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        NEW.updated_at := GREATEST(clock_timestamp(), OLD.updated_at + INTERVAL '1 microsecond');
+        RETURN NEW;
+    END;
+    $$;
+
+    DROP TRIGGER IF EXISTS set_updated_at_user_profiles ON user_profiles;
 	CREATE TRIGGER set_updated_at_user_profiles
 	BEFORE UPDATE ON user_profiles
-	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+	FOR EACH ROW EXECUTE FUNCTION public.set_profile_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_social_platforms ON social_platforms;
 	CREATE TRIGGER set_updated_at_social_platforms
@@ -5410,6 +5580,11 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_accounts ON merchant_accounts;
 	CREATE TRIGGER set_updated_at_merchant_accounts
 	BEFORE UPDATE ON merchant_accounts
+	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+	DROP TRIGGER IF EXISTS set_updated_at_merchant_registrations ON merchant_registrations;
+	CREATE TRIGGER set_updated_at_merchant_registrations
+	BEFORE UPDATE ON merchant_registrations
 	FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 	DROP TRIGGER IF EXISTS set_updated_at_merchant_program_fee_schedules ON merchant_program_fee_schedules;

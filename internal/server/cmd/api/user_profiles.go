@@ -34,947 +34,145 @@
 //	Block deployment if this file breaks build, profile access control,
 //	profile persistence, handle integrity, moderation integrity,
 //	sensitive-data redaction, or identity/account lifecycle behavior.
+// CE Foundation 3 HTTP adapters: trusted ownership, strict bodies and safe errors.
 package main
-
 import (
-	"context"
-	"errors"
-	"fmt"
-	"net/http"
-	"strings"
-
-	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
-
-	"github.com/google/uuid"
+ "encoding/json"
+ "errors"
+ "io"
+ "net/http"
+ "strings"
+ "time"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/mediastore"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/services"
+ "github.com/google/uuid"
 )
-
-// default when preferred_contact not supplied
-const profilePrefContactFallback = "email"
-
-// Write User Profile Handlers
-
-// createUserProfileAfterRegistration inserts a minimal user profile immediately
-// after a successful registration. It is *internal‑only* – never exposed as an
-// HTTP endpoint.
-//
-// Design notes
-// ------------
-//   - NO calls to the services layer. Automation (e.g., auto‑flagging) is handled
-//     elsewhere by the services package listening for DB changes / events.
-//   - Strict validation & normalisation occur synchronously via the model layer.
-//   - Audit logging is best‑effort and must never block the main flow.
-func (app *Application) createUserProfileAfterRegistration(
-	ctx context.Context,
-	userID uuid.UUID,
-	rawHandle *string,
-) error {
-	logger := app.Logger.
-		GetLoggerWithContextFromContext(ctx).
-		WithFunctionName("createUserProfileAfterRegistration")
-
-	// ---------- Sanity checks ----------
-	if userID == uuid.Nil {
-		err := errors.New("userID must not be nil")
-		logger.Error("missing userID", err)
-		return err
-	}
-
-	// ---------- Optional handle validation ----------
-	var normalisedHandle *string
-	if rawHandle != nil {
-		// Lower‑case & trim – lightweight normalisation before deeper checks.
-		h := strings.ToLower(strings.TrimSpace(*rawHandle))
-
-		// Re‑use existing model‑level validation (format, length, uniqueness,
-		// reserved words, etc.). The model returns nil on success.
-		if err := app.Models.UserProfile.ValidateUserHandle(ctx, h); err != nil {
-			logger.Warn("handle validation failed", "raw_handle", *rawHandle, "error", err)
-			return fmt.Errorf("invalid user handle: %w", err)
-		}
-		normalisedHandle = &h
-	}
-
-	// ---------- Build & insert profile ----------
-	// Persisted lifecycle timestamps remain database-owned and are populated by
-	// UserProfileModel.Insert through the INSERT ... RETURNING contract.
-	profile := &data.UserProfile{
-		UserID:           userID,
-		UserHandle:       normalisedHandle,
-		PreferredContact: profilePrefContactFallback,
-	}
-
-	if err := app.Models.UserProfile.Insert(ctx, profile); err != nil {
-		logger.Error("insert user profile failed", "user_id", userID, "error", err)
-		return err
-	}
-
-	// --- Resolve Audit Action ---
-	action, err := app.Models.Action.GetByName(ctx, "create_user_profile")
-	if err != nil || action == nil {
-		logger.Warn("Audit action 'create_user_profile' missing, attempting to create", "error", err)
-		actionID, createErr := app.Models.Action.CreateIfNotExists(ctx, "create_user_profile", "Create a new user profile")
-		if createErr != nil {
-			logger.Error("Failed to create audit action", "error", createErr)
-		} else {
-			action = &data.Action{ID: actionID}
-		}
-	}
-
-	// --- Resolve Entity Type ---
-	entityType, err := app.Models.EntityType.GetByName(ctx, "user_profile")
-	if err != nil || entityType == nil {
-		logger.Warn("Entity type 'user_profile' missing, attempting to create", "error", err)
-		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(ctx, "user_profile", "User profile entity")
-		if createErr != nil {
-			logger.Error("Failed to create entity type", "error", createErr)
-		} else {
-			entityType = &data.EntityType{ID: entityTypeID}
-		}
-	}
-
-	// --- Perform Audit Log Insert (non-blocking) ---
-	if action != nil && entityType != nil {
-		audit := data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       &userID,
-			ActionID:     action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     userID.String(),
-		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Warn("Audit log failed", "user_id", userID, "error", err)
-			// Continue silently
-		}
-	}
-
-	// Success
-	logger.Info("User profile auto-created successfully", "user_id", userID)
-	return nil
-}
-
-// GetOwnUserProfileHandler retrieves the current authenticated user's profile.
-// It does NOT support accessing others' profiles — even as admin/operator.
-// - Requires authentication.
-// - Extracts user ID from trusted JWT-injected context.
-// - Applies context timeout.
-// - Performs structured and audit logging.
-// - Returns full user profile on success.
-func (app *Application) GetOwnUserProfileHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("GetOwnUserProfileHandler")
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	// --- Extract Authenticated User ID from Context ---
-	userID := app.getUserIDFromContext(ctx)
-	if userID == nil {
-		app.respondWithError(w, errors.New("unauthorized: login required"), http.StatusUnauthorized)
-		return
-	}
-
-	// --- Retrieve User Profile by User ID ---
-	profile, err := app.Models.UserProfile.GetByUserID(ctx, *userID)
-	if err != nil {
-		logger.Error("Failed to load user profile", "user_id", userID, "error", err)
-		app.respondWithError(w, errors.New("failed to load profile"), http.StatusInternalServerError)
-		return
-	}
-	if profile == nil {
-		logger.Warn("User profile not found", "user_id", userID)
-		app.respondWithError(w, errors.New("profile not found"), http.StatusNotFound)
-		return
-	}
-
-	// --- Ensure Audit Metadata Exists (Action + EntityType) ---
-	actionName := "read_user_profile"
-	entityTypeName := "user_profile"
-
-	// Resolve or create audit action
-	action, err := app.Models.Action.GetByName(ctx, actionName)
-	if err != nil || action == nil {
-		logger.Warn("Audit action missing, attempting to create", "action", actionName, "error", err)
-		actionID, createErr := app.Models.Action.CreateIfNotExists(ctx, actionName, "Retrieve current user profile")
-		if createErr != nil {
-			logger.Error("Failed to create audit action", "action", actionName, "error", createErr)
-		} else {
-			action = &data.Action{ID: actionID}
-		}
-	}
-
-	// Resolve or create audit entity type
-	entityType, err := app.Models.EntityType.GetByName(ctx, entityTypeName)
-	if err != nil || entityType == nil {
-		logger.Warn("Audit entity type missing, attempting to create", "entity_type", entityTypeName, "error", err)
-		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(ctx, entityTypeName, "User profile entity")
-		if createErr != nil {
-			logger.Error("Failed to create entity type", "entity_type", entityTypeName, "error", createErr)
-		} else {
-			entityType = &data.EntityType{ID: entityTypeID}
-		}
-	}
-
-	// --- Insert Audit Log (fail-safe) ---
-	if action != nil && entityType != nil {
-		audit := data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       userID,
-			ActionID:     action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     userID.String(),
-		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Warn("Audit logging failed", "user_id", userID, "error", err)
-			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
-				Error:   false,
-				Message: "User profile retrieved, but audit logging failed",
-				Data:    profile,
-			})
-			return
-		}
-	}
-
-	// --- Respond with User Profile ---
-	logger.Info("User profile retrieved successfully", "user_id", userID)
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "User profile retrieved successfully",
-		Data:    profile,
-	})
-}
-
-// UpdateOwnUserProfileHandler updates the authenticated user's canonical
-// user_profiles row.
-//
-// Omitted fields retain their existing persisted values. Social links and
-// notification preferences are normalized relations owned by their respective
-// persistence paths and are intentionally not accepted here.
-//
-// Persisted lifecycle timestamps remain database-owned.
-func (app *Application) UpdateOwnUserProfileHandler(
-	w http.ResponseWriter,
-	r *http.Request,
-) {
-	logger := app.Logger.
-		GetLoggerWithContext(r).
-		WithFunctionName("UpdateOwnUserProfileHandler")
-
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	userIDPtr := app.getUserIDFromContext(ctx)
-	if userIDPtr == nil || *userIDPtr == uuid.Nil {
-		app.respondWithError(
-			w,
-			errors.New("unauthorized: login required"),
-			http.StatusUnauthorized,
-		)
-		return
-	}
-	userID := *userIDPtr
-
-	var input struct {
-		FirstName        *string `json:"first_name,omitempty"`
-		LastName         *string `json:"last_name,omitempty"`
-		UserHandle       *string `json:"user_handle,omitempty"`
-		Phone            *string `json:"phone,omitempty"`
-		AvatarURL        *string `json:"avatar_url,omitempty"`
-		Bio              *string `json:"bio,omitempty"`
-		Location         *string `json:"location,omitempty"`
-		Website          *string `json:"website,omitempty"`
-		Company          *string `json:"company,omitempty"`
-		PreferredContact *string `json:"preferred_contact,omitempty"`
-	}
-
-	if err := app.readJSON(w, r, &input); err != nil {
-		app.respondWithError(w, err, http.StatusBadRequest)
-		return
-	}
-
-	existing, err := app.Models.UserProfile.GetByUserID(ctx, userID)
-	if err != nil {
-		logger.Error(
-			"Load existing user profile failed",
-			"user_id", userID,
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			errors.New("failed to load user profile"),
-			http.StatusInternalServerError,
-		)
-		return
-	}
-
-	if existing == nil {
-		app.respondWithError(
-			w,
-			errors.New("user profile not found"),
-			http.StatusNotFound,
-		)
-		return
-	}
-
-	profile := data.UserProfile{
-		UserID:           existing.UserID,
-		FirstName:        existing.FirstName,
-		LastName:         existing.LastName,
-		UserHandle:       existing.UserHandle,
-		Phone:            existing.Phone,
-		AvatarURL:        existing.AvatarURL,
-		Bio:              existing.Bio,
-		Location:         existing.Location,
-		Website:          existing.Website,
-		Company:          existing.Company,
-		PreferredContact: existing.PreferredContact,
-		IsFlagged:        existing.IsFlagged,
-		ModerationNotes:  existing.ModerationNotes,
-	}
-
-	if input.FirstName != nil {
-		profile.FirstName = input.FirstName
-	}
-
-	if input.LastName != nil {
-		profile.LastName = input.LastName
-	}
-
-	if input.UserHandle != nil {
-		handle := strings.ToLower(strings.TrimSpace(*input.UserHandle))
-		if err := app.Models.UserProfile.ValidateUserHandle(ctx, handle); err != nil {
-			app.respondWithError(w, err, http.StatusBadRequest)
-			return
-		}
-		profile.UserHandle = &handle
-	}
-
-	if input.Phone != nil {
-		profile.Phone = input.Phone
-	}
-
-	if input.AvatarURL != nil {
-		profile.AvatarURL = input.AvatarURL
-	}
-
-	if input.Bio != nil {
-		profile.Bio = input.Bio
-	}
-
-	if input.Location != nil {
-		profile.Location = input.Location
-	}
-
-	if input.Website != nil {
-		profile.Website = input.Website
-	}
-
-	if input.Company != nil {
-		profile.Company = input.Company
-	}
-
-	if input.PreferredContact != nil {
-		profile.PreferredContact = strings.ToLower(
-			strings.TrimSpace(*input.PreferredContact),
-		)
-	}
-
-	if err := app.Models.UserProfile.Update(ctx, &profile); err != nil {
-		logger.Error(
-			"Update user profile failed",
-			"user_id", userID,
-			"error", err,
-		)
-		app.respondWithError(
-			w,
-			errors.New("profile update failed"),
-			http.StatusInternalServerError,
-		)
-		return
-	}
-
-	const actionName = "update_user_profile"
-	const entityTypeName = "user_profile"
-
-	action, err := app.Models.Action.GetByName(ctx, actionName)
-	if err != nil || action == nil {
-		logger.Warn(
-			"Audit action missing; attempting creation",
-			"action", actionName,
-			"error", err,
-		)
-
-		actionID, createErr := app.Models.Action.CreateIfNotExists(
-			ctx,
-			actionName,
-			"Update own user profile",
-		)
-		if createErr != nil {
-			logger.Error(
-				"Create audit action failed",
-				"action", actionName,
-				"error", createErr,
-			)
-		} else {
-			action = &data.Action{
-				ID: actionID,
-			}
-		}
-	}
-
-	entityType, err := app.Models.EntityType.GetByName(
-		ctx,
-		entityTypeName,
-	)
-	if err != nil || entityType == nil {
-		logger.Warn(
-			"Audit entity type missing; attempting creation",
-			"entity_type", entityTypeName,
-			"error", err,
-		)
-
-		entityTypeID, createErr := app.Models.EntityType.CreateIfNotExists(
-			ctx,
-			entityTypeName,
-			"User profile entity",
-		)
-		if createErr != nil {
-			logger.Error(
-				"Create audit entity type failed",
-				"entity_type", entityTypeName,
-				"error", createErr,
-			)
-		} else {
-			entityType = &data.EntityType{
-				ID: entityTypeID,
-			}
-		}
-	}
-
-	if action != nil &&
-		action.ID != uuid.Nil &&
-		entityType != nil &&
-		entityType.ID != uuid.Nil {
-		auditLog := &data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       &userID,
-			ActionID:     action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     userID.String(),
-		}
-
-		if err := app.Models.AuditLog.Insert(ctx, auditLog); err != nil {
-			logger.Warn(
-				"User profile updated but audit logging failed",
-				"user_id", userID,
-				"error", err,
-			)
-
-			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
-				Error:   false,
-				Message: "Profile updated, but audit logging failed",
-				Data:    &profile,
-			})
-			return
-		}
-	}
-
-	logger.Info(
-		"User profile updated",
-		"user_id", userID,
-	)
-
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "Profile updated successfully",
-		Data:    &profile,
-	})
-}
-
-
-// Read User Profile Handlers
-
-// GetUserProfileByUserIDHandler retrieves a user's profile by their ID.
-// - Public profiles are accessible to all (including guests).
-// - Private profiles are restricted to the user themselves or internal roles.
-// - Sensitive fields are redacted for unauthorized viewers.
-// - Logs all access with fail-safe audit logging.
-func (app *Application) GetUserProfileByUserIDHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("GetUserProfileByUserIDHandler")
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	// --- Resolve Target User ID ---
-	targetID := app.resolveProfileTargetUserID(r)
-	if targetID == nil {
-		logger.Warn("Missing target user ID")
-		app.respondWithErrorCode(w, http.StatusBadRequest, "target_required", "target user ID is required")
-		return
-	}
-
-	// --- Fetch Profile from DB ---
-	profile, err := app.Models.UserProfile.GetByUserID(ctx, *targetID)
-	if err != nil {
-		logger.Error("DB error retrieving profile", "target_user_id", targetID, "error", err)
-		app.respondWithError(w, errors.New("failed to retrieve profile"), http.StatusInternalServerError)
-		return
-	}
-	if profile == nil {
-		logger.Warn("Profile not found", "target_user_id", targetID)
-		app.respondWithError(w, errors.New("profile not found"), http.StatusNotFound)
-		return
-	}
-
-	// --- Role and Viewer Identity Checks ---
-	requesterID := app.getUserIDFromContext(ctx)
-	roleName, _ := app.getRoleFromContextOrDB(ctx)
-
-	isSelf := requesterID != nil && *requesterID == *targetID
-	isInternal := isInternalRole(roleName)
-	isPublic := true // current schema has no profile-visibility state
-
-	if !isSelf && !isInternal && !isPublic {
-		logger.Warn("Access denied: private profile", "requester_id", requesterID, "target_user_id", targetID, "role", roleName)
-		app.respondWithError(w, errors.New("access denied: profile is private"), http.StatusForbidden)
-		return
-	}
-
-	// --- Redact Sensitive Fields for Non-Privileged Viewers ---
-	if !isSelf && !isInternal {
-		profile.Phone = nil
-  profile.ModerationNotes = nil
-		profile.NotificationPreferences = nil
-		profile.SocialLinks = nil
-	}
-
-	// --- Audit Logging Setup ---
-	const actionName = "read_user_profile_by_user_id"
-	const entityTypeName = "user_profile"
-
-	// Ensure audit action exists
-	action, err := app.Models.Action.GetByName(ctx, actionName)
-	if err != nil || action == nil {
-		logger.Warn("Missing audit action; attempting dynamic creation", "action", actionName, "error", err)
-		if id, createErr := app.Models.Action.CreateIfNotExists(ctx, actionName, "Retrieve user profile by ID"); createErr == nil {
-			action = &data.Action{ID: id}
-		} else {
-			logger.Error("Failed to create audit action", "action", actionName, "error", createErr)
-		}
-	}
-
-	// Ensure entity type exists
-	entityType, err := app.Models.EntityType.GetByName(ctx, entityTypeName)
-	if err != nil || entityType == nil {
-		logger.Warn("Missing entity type; attempting dynamic creation", "entity_type", entityTypeName)
-		if id, createErr := app.Models.EntityType.CreateIfNotExists(ctx, entityTypeName, "User profile entity"); createErr == nil {
-			entityType = &data.EntityType{ID: id}
-		} else {
-			logger.Error("Failed to create entity type", "error", createErr)
-		}
-	}
-
-	// --- Insert Audit Log (non-blocking failure) ---
-	if requesterID != nil && action != nil && entityType != nil {
-		audit := data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       requesterID,
-			ActionID:     action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     targetID.String(),
-		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Error("Audit log insert failed", "error", err)
-			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
-				Error:   false,
-				Message: "Profile retrieved, but audit logging failed",
-				Data:    profile,
-			})
-			return
-		}
-	}
-
-	// --- Search Engine Metadata Control (Frontend Hint) ---
-	// NOTE: The frontend should use profile.SearchIndexed to render appropriate <meta name="robots"> tags.
-
-	// Success
-	logger.Info("Profile retrieved successfully", "target_user_id", targetID, "requester_id", requesterID)
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "Profile retrieved successfully",
-		Data:    profile,
-	})
-}
-
-// ListUserProfilesHandler returns a list of user profiles viewable by the current user.
-// - Enforces read_user_profiles permission.
-// - Authenticated users can see public profiles of others.
-// - Admins/operators may see private profiles as well.
-// - Guest access is denied (auth required).
-// - Uses pagination (limit + offset) from context.
-// - Structured and audit logging applied throughout.
-func (app *Application) ListUserProfilesHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("ListUserProfilesHandler")
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	// --- Extract Requester Identity ---
-	requesterID := app.getUserIDFromContext(ctx)
-	if requesterID == nil {
-		logger.Warn("Missing authenticated user ID in context")
-		app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
-		return
-	}
-
-	roleName, _ := app.getRoleFromContextOrDB(ctx)
-	isInternal := isInternalRole(roleName)
-
-	//  Parse pagination parameters (?limit & ?offset). Defaults: 50/0.
-	limit, offset, err := app.parseLimitOffset(r)
-	if err != nil {
-		app.respondWithError(w, err, http.StatusBadRequest)
-		return
-	}
-
-	// --- Fetch Profiles ---
-	allProfiles, err := app.Models.UserProfile.GetAll(ctx, limit, offset)
-	if err != nil {
-		logger.Error("Failed to query user profiles", "error", err)
-		app.respondWithError(w, errors.New("could not retrieve profiles"), http.StatusInternalServerError)
-		return
-	}
-
-	// --- Filter Profiles Based on Visibility ---
-	var visible []*data.UserProfile
-	for _, p := range allProfiles {
-		// Self or internal users can view all
-		if p.UserID == *requesterID || isInternal {
-			visible = append(visible, p)
-			continue
-		}
-
-		// Skip private profiles
-		// No visibility inference from preferred_contact; it is email/phone only.
-
-		// Redact sensitive fields for external viewers
-		p.Phone = nil
-  p.ModerationNotes = nil
-		p.NotificationPreferences = nil
-		p.SocialLinks = nil
-		visible = append(visible, p)
-	}
-
-	// --- Audit Logging (non-blocking) ---
-	const actionName = "read_user_profiles"
-	const entityTypeName = "user_profile"
-
-	action, err := app.Models.Action.GetByName(ctx, actionName)
-	if err != nil || action == nil {
-		logger.Warn("Missing audit action, creating", "action", actionName)
-		if id, createErr := app.Models.Action.CreateIfNotExists(ctx, actionName, "Retrieve multiple user profiles via search or listing"); createErr == nil {
-			action = &data.Action{ID: id}
-		} else {
-			logger.Error("Audit action creation failed", "error", createErr)
-		}
-	}
-
-	entityType, err := app.Models.EntityType.GetByName(ctx, entityTypeName)
-	if err != nil || entityType == nil {
-		logger.Warn("Missing entity type, creating", "entity_type", entityTypeName)
-		if id, createErr := app.Models.EntityType.CreateIfNotExists(ctx, entityTypeName, "User profile entity"); createErr == nil {
-			entityType = &data.EntityType{ID: id}
-		} else {
-			logger.Error("Entity type creation failed", "error", createErr)
-		}
-	}
-
-	if action != nil && entityType != nil {
-		audit := data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       requesterID,
-			ActionID:     action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     "batch_list",
-		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Error("Audit log insert failed", "error", err)
-			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
-				Error:   false,
-				Message: "User profiles listed, but audit logging failed",
-				Data:    visible,
-			})
-			return
-		}
-	}
-
-	// --- Response ---
-	logger.Info("User profiles listed", "visible_count", len(visible), "role", roleName)
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "User profiles listed successfully",
-		Data:    visible,
-	})
-}
-
-// SearchUserProfilesHandler handles full-text search across public user profiles.
-// - Requires authentication to prevent abuse and tie activity to user identity.
-// - Supports query parameters: `q` (search term), `limit`, `offset`.
-// - Uses FTS + fallback ILIKE across first_name, last_name, user_handle, and bio.
-// - Structured logging, audit logging, safe context timeout, dynamic metadata resolution.
-func (app *Application) SearchUserProfilesHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("SearchUserProfilesHandler")
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	// --- Require authenticated user ---
-	userID := app.getUserIDFromContext(ctx)
-	if userID == nil {
-		logger.Warn("Unauthorized access to profile search")
-		app.respondWithError(w, errors.New("unauthorized"), http.StatusUnauthorized)
-		return
-	}
-
-	// --- Parse query string ---
-	queryText := r.URL.Query().Get("q")
-	if strings.TrimSpace(queryText) == "" {
-		logger.Warn("Missing query parameter 'q'")
-		app.respondWithError(w, errors.New("query parameter 'q' is required"), http.StatusBadRequest)
-		return
-	}
-
-	//  Parse pagination parameters (?limit & ?offset). Defaults: 50/0.
-	limit, offset, err := app.parseLimitOffset(r)
-	if err != nil {
-		app.respondWithError(w, err, http.StatusBadRequest)
-		return
-	}
-
-	// --- Perform DB Search ---
-	results, err := app.Models.UserProfile.SearchUserProfiles(ctx, queryText, limit, offset)
-	if err != nil {
-		logger.Error("Search failed", "query_length", len(queryText), "error", err)
-		app.respondWithError(w, errors.New("search failed"), http.StatusInternalServerError)
-		return
-	}
-
-	// --- Audit Logging ---
-	const actionName = "read_user_profiles"
-	const entityTypeName = "user_profile"
-
-	action, err := app.Models.Action.GetByName(ctx, actionName)
-	if err != nil || action == nil {
-		logger.Warn("Missing audit action; attempting creation", "action", actionName)
-		if id, createErr := app.Models.Action.CreateIfNotExists(ctx, actionName, "Retrieve multiple user profiles via search or listing"); createErr == nil {
-			action = &data.Action{ID: id}
-		} else {
-			logger.Error("Failed to create audit action", "error", createErr)
-		}
-	}
-
-	entityType, err := app.Models.EntityType.GetByName(ctx, entityTypeName)
-	if err != nil || entityType == nil {
-		logger.Warn("Missing entity type; attempting creation", "entity_type", entityTypeName)
-		if id, createErr := app.Models.EntityType.CreateIfNotExists(ctx, entityTypeName, "User profile entity"); createErr == nil {
-			entityType = &data.EntityType{ID: id}
-		} else {
-			logger.Error("Failed to create entity type", "error", createErr)
-		}
-	}
-
-	// Audit log entry (non-fatal)
-	if action != nil && entityType != nil {
-		audit := data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       userID,
-			ActionID:     action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     "search",
-		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Warn("Audit logging failed", "user_id", userID, "error", err)
-			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
-				Error:   false,
-				Message: "Search completed, but audit logging failed",
-				Data:    results,
-			})
-			return
-		}
-	}
-
-	// Success
-	logger.Info("Search completed", "user_id", userID, "result_count", len(results))
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "Search completed",
-		Data:    results,
-	})
-}
-
-// Restricted or Internal User Profile Handlers
-
-// UpdateUserProfileHandler lets an *internal* operator (admin or moderator)
-// update another user’s profile.
-//
-// Security / Behaviour
-// --------------------
-// • Requires HasPermission(ctx,"update_user_profile") (route-level middleware).
-// • Self‑updates are blocked – callers must use the “/self” endpoint.
-// • Accepts a *partial* JSON payload; omitted fields remain unchanged.
-// • Validates / normalises user_handle via the model layer.
-// • Writes an audit record (action: update_user_profile, entity: user_profile).
-// • 200 on success, 400 on bad input, 401/403 on auth failures, 500 on DB errors.
-func (app *Application) UpdateUserProfileHandler(w http.ResponseWriter,r *http.Request) {
- ctx,cancel:=context.WithTimeout(r.Context(),cfgTimeout);defer cancel()
- actorID,ok:=app.governanceActor(w,ctx);if !ok{return}
- targetID:=app.resolveProfileTargetUserID(r)
- if targetID==nil {app.respondWithErrorCode(w,http.StatusBadRequest,"target_required","target user ID is required");return}
- var input data.UserProfile
- if err:=app.readJSON(w,r,&input);err!=nil{app.respondWithErrorCode(w,http.StatusBadRequest,"invalid_request","invalid request body");return}
- if err:=app.InternalServices.ChangeProfileAdministrativeInternal(ctx,actorID,*targetID,&input,false,"");err!=nil{
-  app.respondWithProfileAdministrationError(w,r,err);return
+// profileBody rejects duplicate/unknown keys, non-string values, null root,
+// trailing JSON and invalid preconditions. JSON null clears optional fields.
+func decodeProfileBody(r io.Reader,create bool)(data.ProfileChanges,*time.Time,error){
+ decoder:=json.NewDecoder(r)
+ token,err:=decoder.Token();if err!=nil||token!=json.Delim('{'){return nil,nil,data.ErrUserProfileInvalidInput}
+ changes:=data.ProfileChanges{};seen:=map[string]bool{};known:=map[string]bool{};for _,f:=range data.ProfileFieldNames(){known[f]=true}
+ var expected *time.Time
+ for decoder.More(){
+  token,err:=decoder.Token();if err!=nil{return nil,nil,err};name,ok:=token.(string);if !ok||seen[name]{return nil,nil,data.ErrUserProfileInvalidInput};seen[name]=true
+  var raw json.RawMessage;if err=decoder.Decode(&raw);err!=nil{return nil,nil,err}
+  if name=="expected_updated_at" {
+   if create{return nil,nil,data.ErrUserProfileInvalidInput}
+   var text string;if err=json.Unmarshal(raw,&text);err!=nil||text==""{return nil,nil,data.ErrUserProfileInvalidInput}
+   parsed,err:=time.Parse(time.RFC3339Nano,text);if err!=nil{return nil,nil,data.ErrUserProfileInvalidInput};expected=&parsed;continue
+  }
+  if !known[name]{return nil,nil,data.ErrUserProfileInvalidInput}
+  var value *string;if err=json.Unmarshal(raw,&value);err!=nil{return nil,nil,data.ErrUserProfileInvalidInput};changes[name]=value
  }
- app.respondWithJSON(w,http.StatusOK,jsonResponse{Error:false,Message:"Profile updated successfully",Data:&input})
+ if _,err=decoder.Token();err!=nil{return nil,nil,err};var extra any;if err=decoder.Decode(&extra);err!=io.EOF{return nil,nil,data.ErrUserProfileInvalidInput}
+ if !create&&expected==nil{return nil,nil,data.ErrProfileVersionRequired};return changes,expected,nil
 }
-
-// ModerateUserProfileHandler allows internal operators to flag or unflag a user profile with notes.
-// - Requires "moderate_user_profile" permission.
-// - Only internal users can act on others' profiles.
-// - Performs audit logging and structured error handling.
-func (app *Application) ModerateUserProfileHandler(w http.ResponseWriter,r *http.Request) {
- ctx,cancel:=context.WithTimeout(r.Context(),cfgTimeout);defer cancel()
- actorID,ok:=app.governanceActor(w,ctx);if !ok{return}
- targetID:=app.resolveProfileTargetUserID(r)
- if targetID==nil {app.respondWithErrorCode(w,http.StatusBadRequest,"target_required","target user ID is required");return}
- var input struct {IsFlagged *bool `json:"is_flagged"`;Notes string `json:"notes"`}
- if err:=app.readJSON(w,r,&input);err!=nil || input.IsFlagged==nil{app.respondWithErrorCode(w,http.StatusBadRequest,"invalid_request","is_flagged is required");return}
- if len(input.Notes)>4000{app.respondWithErrorCode(w,http.StatusBadRequest,"invalid_request","moderation notes are too long");return}
- if err:=app.InternalServices.ChangeProfileAdministrativeInternal(ctx,actorID,*targetID,nil,*input.IsFlagged,input.Notes);err!=nil{
-  app.respondWithProfileAdministrationError(w,r,err);return
+func(app *Application)profileActor(w http.ResponseWriter,r *http.Request)(uuid.UUID,bool){
+ w.Header().Set("Cache-Control","no-store")
+ id:=app.getUserIDFromContext(r.Context());if id==nil||*id==uuid.Nil{app.respondWithErrorCode(w,401,"authentication_required","Please sign in.");return uuid.Nil,false};return *id,true
+}
+func(app *Application)profileError(w http.ResponseWriter,r *http.Request,err error){
+ var fields data.ProfileFieldErrors
+ if errors.As(err,&fields){app.respondWithJSON(w,400,jsonResponse{Error:true,Message:"Please check the highlighted details.",Data:map[string]any{"code":"validation_failed","fields":fields}});return}
+ code,message,status:="profile_failed","Your profile could not be loaded or saved. Please reload before trying again.",500
+ switch {
+ case errors.Is(err,mediastore.ErrNotFound):code,message,status="photo_not_found","No saved profile photo is available.",404
+ case errors.Is(err,mediastore.ErrUnavailable):code,message,status="media_unavailable","Your photo could not be loaded or saved. Please try again shortly.",503
+ case errors.Is(err,data.ErrProfileVersionRequired):code,message,status="profile_version_required","Reload your profile before saving.",428
+ case errors.Is(err,data.ErrProfileConflict):code,message,status="profile_edit_conflict","Your profile changed elsewhere. Load the latest version before saving.",409
+ case errors.Is(err,data.ErrProfileExists):code,message,status="profile_already_exists","Your profile is already set up. Load it to continue.",409
+ case errors.Is(err,data.ErrProfileUnavailable):code,message,status="profile_unavailable","Your profile is unavailable. Please contact support.",409
+ case errors.Is(err,data.ErrProfileAccount):code,message,status="account_unavailable","Please sign in again to continue.",403
+ case errors.Is(err,data.ErrUserHandleTaken):code,message,status="handle_taken","That handle is already taken.",409
+ case errors.Is(err,data.ErrUserProfileNotFound):code,message,status="profile_not_found","Set up your profile to continue.",404
+ case errors.Is(err,data.ErrUserProfileInvalidInput):code,message,status="invalid_request","Please check the profile information.",400
+ default:
+  // Do not log driver error text: constraint detail can contain personal data.
+  app.Logger.GetLoggerWithContext(r).WithFunctionName("profileError").Error("profile operation failed")
  }
- app.respondWithJSON(w,http.StatusOK,jsonResponse{Error:false,Message:"Profile moderation updated",Data:map[string]any{"user_id":*targetID,"is_flagged":*input.IsFlagged}})
+ app.respondWithErrorCode(w,status,code,message)
 }
-
-// GetReservedHandlesHandler returns all reserved or claimed user handles for validation UI.
-//
-// Access Control:
-// - Only internal admins and operators with the 'read_reserved_handles' permission may access this endpoint.
-// - Enforces context-injected identity, permission checks, structured logging, and audit logging.
-//
-// Returns:
-// - 200 OK with list of reserved handles on success.
-// - 401 Unauthorized or 403 Forbidden on access issues.
-// - 500 Internal Server Error on unexpected failure.
-func (app *Application) GetReservedHandlesHandler(w http.ResponseWriter, r *http.Request) {
-	logger := app.Logger.GetLoggerWithContext(r).WithFunctionName("GetReservedHandlesHandler")
-
-	ctx, cancel := context.WithTimeout(r.Context(), cfgTimeout)
-	defer cancel()
-
-	// --- Extract Requester ID from Trusted Context ---
-	requesterID := app.getUserIDFromContext(ctx)
-	if requesterID == nil {
-		logger.Warn("Missing requester ID in context")
-		app.respondWithError(w, errors.New("unauthorized: requester ID missing"), http.StatusUnauthorized)
-		return
-	}
-
-	// --- Enforce Internal Permission Check ---
-	if !app.RequireInternalPermission(ctx, "read_reserved_handles") {
-		logger.Warn("Access denied: requires both internal role and permission",
-			"user_id", requesterID.String())
-		app.respondWithError(w, errors.New("forbidden: requires internal role and permission"), http.StatusForbidden)
-		return
-	}
-
-	// --- Retrieve Reserved Handles from DB and In-Memory Set ---
-	handles, err := app.Models.UserProfile.GetReservedHandles(ctx)
-	if err != nil {
-		logger.Error("Failed to load reserved handles", "error", err)
-		app.respondWithError(w, errors.New("failed to retrieve reserved handles"), http.StatusInternalServerError)
-		return
-	}
-
-	// --- Audit Logging Setup ---
-	const actionName = "read_reserved_handles"
-	const entityTypeName = "user_profile"
-
-	// Ensure audit action exists
-	action, err := app.Models.Action.GetByName(ctx, actionName)
-	if err != nil || action == nil {
-		logger.Warn("Missing audit action; attempting creation", "action", actionName)
-		if id, createErr := app.Models.Action.CreateIfNotExists(ctx, actionName, "Retrieve reserved user handles"); createErr == nil {
-			action = &data.Action{ID: id}
-		} else {
-			logger.Error("Failed to create audit action", "error", createErr)
-		}
-	}
-
-	// Ensure entity type exists
-	entityType, err := app.Models.EntityType.GetByName(ctx, entityTypeName)
-	if err != nil || entityType == nil {
-		logger.Warn("Missing entity type; attempting creation", "entity_type", entityTypeName)
-		if id, createErr := app.Models.EntityType.CreateIfNotExists(ctx, entityTypeName, "User profile entity"); createErr == nil {
-			entityType = &data.EntityType{ID: id}
-		} else {
-			logger.Error("Failed to create entity type", "error", createErr)
-		}
-	}
-
-	// Insert audit log (non-blocking failure)
-	if action != nil && entityType != nil {
-		audit := data.AuditLog{
-			ID:           uuid.New(),
-			UserID:       requesterID,
-			ActionID:     action.ID,
-			EntityTypeID: entityType.ID,
-			EntityID:     "system", // No specific profile acted upon
-		}
-		if err := app.Models.AuditLog.Insert(ctx, &audit); err != nil {
-			// Audit logging failed (partial success)
-			logger.Error("Audit log insert failed", "error", err)
-			app.respondWithJSON(w, http.StatusPartialContent, jsonResponse{
-				Error:   false,
-				Message: "Reserved handles retrieved, but audit logging failed",
-				Data:    handles,
-			})
-			return
-		}
-	}
-
-	// --- Success Response ---
-	logger.Info("Reserved handles retrieved", "count", len(handles))
-	app.respondWithJSON(w, http.StatusOK, jsonResponse{
-		Error:   false,
-		Message: "Reserved handles retrieved successfully",
-		Data:    handles,
-	})
+func(app *Application)GetOwnUserProfileHandler(w http.ResponseWriter,r *http.Request){
+ id,ok:=app.profileActor(w,r);if !ok{return};value,err:=app.InternalServices.GetOwnProfileInternal(r.Context(),id);if err!=nil{app.profileError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Data:value})
 }
-
-// resolveProfileTargetUserID returns the target account for an
-// administrative profile operation.
-//
-// For non-administrative callers AuthMiddleware pins the target to the
-// caller, so they can never address another account. Administrative callers
-// name the target with the X-Target-User-ID header (allowed by CORS) or the
-// user_id query parameter. Absence is reported by the caller as 400
-// target_required, never 401.
-func (app *Application) resolveProfileTargetUserID(r *http.Request) *uuid.UUID {
-	if id := app.getTargetUserIDFromContext(r.Context()); id != nil && *id != uuid.Nil {
-		return id
-	}
-	if !isInternalRole(getRoleFromContext(r.Context())) {
-		return nil
-	}
-	parsed, err := uuid.Parse(strings.TrimSpace(r.URL.Query().Get("user_id")))
-	if err != nil || parsed == uuid.Nil {
-		return nil
-	}
-	return &parsed
+func(app *Application)saveOwnProfile(w http.ResponseWriter,r *http.Request,create bool){
+ id,ok:=app.profileActor(w,r);if !ok{return}
+ changes,expected,err:=decodeProfileBody(http.MaxBytesReader(w,r.Body,16384),create);if err!=nil{app.profileBodyError(w,r,err);return}
+ value,err:=app.InternalServices.SaveOwnProfileInternal(r.Context(),id,changes,expected,create);if err!=nil{app.profileError(w,r,err);return}
+ status:=200;if create{status=201};app.respondWithJSON(w,status,jsonResponse{Message:"Profile saved.",Data:value})
 }
-
-func (app *Application) respondWithProfileAdministrationError(w http.ResponseWriter,r *http.Request,err error) {
- if errors.Is(err,data.ErrUserProfileInvalidInput){app.respondWithErrorCode(w,http.StatusBadRequest,"invalid_request","invalid profile input");return}
- if errors.Is(err,data.ErrUserProfileNotFound){app.respondWithErrorCode(w,http.StatusNotFound,"profile_not_found","profile not found");return}
+func(app *Application)CreateOwnUserProfileHandler(w http.ResponseWriter,r *http.Request){app.saveOwnProfile(w,r,true)}
+func(app *Application)UpdateOwnUserProfileHandler(w http.ResponseWriter,r *http.Request){app.saveOwnProfile(w,r,false)}
+func(app *Application)GetOwnProfileCompletenessHandler(w http.ResponseWriter,r *http.Request){
+ id,ok:=app.profileActor(w,r);if !ok{return};a,err:=app.InternalServices.AssessOwnProfileCompletenessInternal(r.Context(),id);if err!=nil{app.profileError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Data:a})
+}
+func(app *Application)ProfileHandleAvailabilityHandler(w http.ResponseWriter,r *http.Request){
+ id,ok:=app.profileActor(w,r);if !ok{return};handle:=strings.ToLower(strings.TrimSpace(r.URL.Query().Get("handle")))
+ status,err:=app.InternalServices.ProfileHandleAvailabilityInternal(r.Context(),id,handle);if err!=nil{app.profileError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Data:map[string]string{"status":status}})
+}
+func(app *Application)profileAdmin(w http.ResponseWriter,r *http.Request,permission string)(uuid.UUID,bool){
+ id,ok:=app.profileActor(w,r);if !ok{return uuid.Nil,false}
+ if !app.RequireInternalPermission(r.Context(),permission){app.respondWithErrorCode(w,403,"permission_denied","You do not have access to this operation.");return uuid.Nil,false};return id,true
+}
+func(app *Application)resolveProfileTargetUserID(r *http.Request)*uuid.UUID{
+ // Explicit target text wins validation; malformed input cannot silently act
+ // on a different context target. A normal user's target remains their self.
+ if !isInternalRole(getRoleFromContext(r.Context())){return app.getUserIDFromContext(r.Context())}
+ raw:=strings.TrimSpace(r.Header.Get("X-Target-User-ID"));if raw==""{raw=strings.TrimSpace(r.URL.Query().Get("user_id"))}
+ if raw!=""{id,err:=uuid.Parse(raw);if err!=nil||id==uuid.Nil{return nil};return &id}
+ return app.getTargetUserIDFromContext(r.Context())
+}
+func(app *Application)GetUserProfileByUserIDHandler(w http.ResponseWriter,r *http.Request){
+ actor,ok:=app.profileActor(w,r);if !ok{return};target:=app.resolveProfileTargetUserID(r);if target==nil{app.respondWithErrorCode(w,400,"target_required","Choose an account.");return}
+ if actor==*target{app.GetOwnUserProfileHandler(w,r);return}
+ if _,ok=app.profileAdmin(w,r,"read_user_profile");!ok{return}
+ result,err:=app.InternalServices.ReadProfileAdministrationInternal(r.Context(),actor,*target);if err!=nil{app.profileError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Data:result})
+}
+func(app *Application)ListUserProfilesHandler(w http.ResponseWriter,r *http.Request){app.listProfiles(w,r,false)}
+func(app *Application)SearchUserProfilesHandler(w http.ResponseWriter,r *http.Request){app.listProfiles(w,r,true)}
+func(app *Application)listProfiles(w http.ResponseWriter,r *http.Request,search bool){
+ actor,ok:=app.profileAdmin(w,r,"read_user_profiles");if !ok{return}
+ limit,offset,err:=app.parseLimitOffset(r);if err!=nil{app.profileError(w,r,data.ErrUserProfileInvalidInput);return}
+ q:="";if search{q=strings.TrimSpace(r.URL.Query().Get("q"));if q==""||len([]rune(q))>200{app.profileError(w,r,data.ErrUserProfileInvalidInput);return}}
+ result,err:=app.InternalServices.ListProfileAdministrationInternal(r.Context(),actor,q,limit,offset);if err!=nil{app.profileError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Data:result})
+}
+func(app *Application)UpdateUserProfileHandler(w http.ResponseWriter,r *http.Request){
+ actor,ok:=app.profileAdmin(w,r,"update_user_profile");if !ok{return};target:=app.resolveProfileTargetUserID(r);if target==nil{app.respondWithErrorCode(w,400,"target_required","Choose an account.");return}
+ changes,expected,err:=decodeProfileBody(http.MaxBytesReader(w,r.Body,16384),false);if err!=nil{app.profileBodyError(w,r,err);return}
+ result,err:=app.InternalServices.PatchProfileAdministrativeInternal(r.Context(),actor,*target,changes,expected);if err!=nil{app.respondWithProfileAdministrationError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Message:"Profile saved.",Data:result})
+}
+func(app *Application)ModerateUserProfileHandler(w http.ResponseWriter,r *http.Request){
+ actor,ok:=app.profileAdmin(w,r,"moderate_user_profile");if !ok{return};target:=app.resolveProfileTargetUserID(r);if target==nil{app.respondWithErrorCode(w,400,"target_required","Choose an account.");return}
+ var input struct{Flagged *bool `json:"is_flagged"`;Notes string `json:"notes"`}
+ if err:=app.readJSON(w,r,&input);err!=nil||input.Flagged==nil||len([]rune(input.Notes))>4000{app.profileError(w,r,data.ErrUserProfileInvalidInput);return}
+ err:=app.InternalServices.ModerateProfileAdministrativeInternal(r.Context(),actor,*target,*input.Flagged,input.Notes);if err!=nil{app.respondWithProfileAdministrationError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Message:"Profile moderation updated."})
+}
+func(app *Application)GetReservedHandlesHandler(w http.ResponseWriter,r *http.Request){
+ actor,ok:=app.profileAdmin(w,r,"read_reserved_handles");if !ok{return};value,err:=app.InternalServices.ReservedProfileHandlesInternal(r.Context(),actor);if err!=nil{app.profileError(w,r,err);return};app.respondWithJSON(w,200,jsonResponse{Data:value})
+}
+func(app *Application)respondWithProfileAdministrationError(w http.ResponseWriter,r *http.Request,err error){
+ if errors.Is(err,data.ErrUserProfileInvalidInput)||errors.Is(err,data.ErrUserProfileNotFound)||errors.Is(err,data.ErrProfileConflict)||errors.Is(err,data.ErrProfileVersionRequired)||errors.Is(err,data.ErrUserHandleTaken)||errors.Is(err,data.ErrProfileUnavailable)||errors.Is(err,data.ErrProfileAccount){app.profileError(w,r,err);return}
  app.respondWithGovernanceError(w,r,"profile_administration",err)
+}
+
+func(app *Application)profileBodyError(w http.ResponseWriter,r *http.Request,err error){
+ var tooLarge *http.MaxBytesError
+ if errors.As(err,&tooLarge){app.respondWithErrorCode(w,413,"request_too_large","The profile request is too large.");return}
+ if !errors.Is(err,data.ErrProfileVersionRequired){err=data.ErrUserProfileInvalidInput}
+ app.profileError(w,r,err)
+}
+
+func(app *Application)profileServiceContext(next http.Handler)http.Handler{
+ return http.HandlerFunc(func(w http.ResponseWriter,r *http.Request){
+  if id:=app.getUserIDFromContext(r.Context());id!=nil{r=r.WithContext(services.WithProfileActorContext(r.Context(),*id))}
+  next.ServeHTTP(w,r)
+ })
+}
+
+func(app *Application)GetOwnPublicIdentityHandler(w http.ResponseWriter,r *http.Request){
+ id,ok:=app.profileActor(w,r);if !ok{return}
+ result,err:=app.InternalServices.GetOwnPublicIdentityInternal(r.Context(),id);if err!=nil{app.profileError(w,r,err);return}
+ app.respondWithJSON(w,200,jsonResponse{Data:result})
 }

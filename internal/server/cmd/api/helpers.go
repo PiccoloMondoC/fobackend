@@ -431,14 +431,18 @@ func (s *authzState) resolve(ctx context.Context, app *Application, permission s
 				"err", err,
 			)
 		ok = false
+	} else if !ok {
+		// Only a successful role lookup with no grant may use the bounded
+		// active-principal capability path. Lookup errors remain denials.
+		ok = app.hasMerchantPrincipalCapability(ctx, permission)
 	}
 
 	s.results[permission] = ok
 	return ok
 }
 
-// HasPermission checks whether the authenticated actor's role holds the
-// specified permission using the request-scoped authorization state established
+// HasPermission checks the actor's role grant or a bounded active merchant
+// principal capability using the request-scoped authorization state established
 // by AuthMiddleware. Missing, malformed, mismatched, or empty authorization
 // context fails closed; there is no hidden persistence fallback.
 func (app *Application) HasPermission(ctx context.Context, permissionName string) bool {

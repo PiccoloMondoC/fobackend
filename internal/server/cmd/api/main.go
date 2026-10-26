@@ -242,7 +242,33 @@ func main() {
 		)
 	}
 
-	// Ensure SPINE platform settings seed data synchronously before the
+	mediaStore, err := newMediaStorage(ctx)
+	if err != nil {
+		logger.Fatal("private media storage initialization failed; verify driver, mounted root or private bucket/runtime permissions")
+	}
+	defer mediaStore.Close()
+	if err = svc.ConfigureMediaInternal(ctx, mediaStore); err != nil {
+		switch {
+		case errors.Is(err, services.ErrMediaLegacyPhotos):
+			logger.Fatal("media startup blocked: unexpected legacy photo rows require an explicit migration")
+		case errors.Is(err, services.ErrMediaLocationMismatch):
+			logger.Fatal("media startup blocked: configured storage differs from retained object metadata")
+		default:
+			logger.Fatal("media startup blocked: metadata/configuration validation failed")
+		}
+	}
+	cleanupCtx, stopMediaCleanup := context.WithCancel(ctx)
+	defer stopMediaCleanup()
+	mediaCleanupDone, err := svc.StartMediaCleanupInternal(cleanupCtx)
+	if err != nil {
+		logger.Fatal("media cleanup initialization failed")
+	}
+
+	if err := svc.ValidateProfileServicesInternal(); err != nil {
+ logger.Fatal("profile service startup validation failed", "error", err)
+ }
+
+ // Ensure SPINE platform settings seed data synchronously before the
 	// application is allowed to accept HTTP traffic. These settings establish
 	// platform-level governance defaults for Future Offering availability,
 	// Watch behavior, platform settings administration, hard-delete safety, and
@@ -320,6 +346,7 @@ func main() {
 	logger.Info("shutdown signal received")
 
 	close(svc.ShutdownChan) // notify async orchestrator
+	stopMediaCleanup()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -328,6 +355,12 @@ func main() {
 		logger.Error("graceful shutdown failed", "error", err)
 	} else {
 		logger.Info("server shut down cleanly")
+	}
+
+	select {
+	case <-mediaCleanupDone:
+	case <-shutdownCtx.Done():
+		logger.Warn("media cleanup shutdown deadline reached")
 	}
 
 	// Let detached password-reset and confirmation-resend emails finish

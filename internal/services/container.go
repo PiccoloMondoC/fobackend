@@ -52,6 +52,7 @@ import (
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/logging"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/mediastore"
 	"github.com/google/uuid"
 )
 
@@ -232,7 +233,9 @@ type Service struct {
 	Cfg           *Config
 	ShutdownChan  chan struct{}
 	SessionTokens SessionTokenIssuer
-	maintenance *data.MaintenanceModel
+	media mediastore.Store
+ photoSlots chan struct{}
+ maintenance *data.MaintenanceModel
 }
 
 // NewService constructs the validated internal-service composition root.
@@ -252,7 +255,8 @@ func NewService(logger *logging.Logger, models *data.Models, cfg *Config, shutdo
 	if sessionTokens == nil {
 		return nil, fmt.Errorf("%w: session token issuer is nil", ErrInvalidServiceConfiguration)
 	}
-	return &Service{Logger: logger, Models: models, Cfg: cfg, ShutdownChan: shutdownChan, SessionTokens: sessionTokens, maintenance: &data.MaintenanceModel{DB: models.DB}}, nil
+	svc := &Service{Logger: logger, Models: models, Cfg: cfg, ShutdownChan: shutdownChan, SessionTokens: sessionTokens, maintenance: &data.MaintenanceModel{DB: models.DB}}
+ if err := svc.ValidateProfileServicesInternal(); err != nil { return nil, err }; return svc, nil
 }
 
 // validate verifies dependencies required by DB-bound internal-service work.

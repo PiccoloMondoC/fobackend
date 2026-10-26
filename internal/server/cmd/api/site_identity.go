@@ -1,28 +1,14 @@
-// BUSINESS-NEUTRAL SOURCE RULE — BEG 3.17–3.18
-// CE and engineering own this naming rule. Use platform for neutral internal
-// identifiers; use the platform in general UI prose. Capitalize Platform only
-// where a heading, sentence position, or defined label requires it. When naming
-// an installation's website or business, use its administrator-configured identity.
-// These choices must be implemented and reviewed in source, not delegated to the
-// project owner as editing guidance.
-// Do not hardcode an installation's brand in identifiers, CSS tokens, public
-// copy, defaults, or seed data. Public identity and business wording must come
-// from administrator-managed configuration. Internal names describe purpose.
-// Pre-startup call-site compatibility is not justification for weak naming.
-// Repair dependent callers together. An exception requires a documented,
-// intentional public, production, or migration-stable contract and CE review.
-// Run tools/check_business_neutrality.py before source release. Existing
-// violations are not automatically grandfathered or approved.
+// Package main provides account identity completion and administrative identity safeguards.
+// focodebase/fobackend/internal/server/cmd/api/site_identity.go
 
-//
-// internal/server/cmd/api/site_identity.go
-// CE: presentation-only public DTO; privileged reads and replacements use the
-// complete internal service boundary. No database writes occur in handlers.
 package main
 import (
+ "context"
+ "encoding/json"
  "errors"
  "net/http"
  "strconv"
+ "github.com/google/uuid"
  "github.com/jackc/pgx/v5/pgconn"
  "github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
  "github.com/PiccoloMondoC/focodebase/fobackend/internal/services"
@@ -41,13 +27,9 @@ func (app *Application) siteIdentityError(w http.ResponseWriter,r *http.Request,
 func (app *Application) GetPublicSiteConfigurationHandler(w http.ResponseWriter,r *http.Request){
  config,err:=app.InternalServices.PublicSiteConfigurationInternal(r.Context())
  if err!=nil{
-  // Driver errors can include constraint DETAIL containing submitted values.
-  // Public logs deliberately carry no driver error or presentation content.
   app.Logger.GetLoggerWithContext(r).WithFunctionName("GetPublicSiteConfigurationHandler").Error("Public site configuration unavailable")
   app.respondWithErrorCode(w,503,"site_configuration_unavailable","Site configuration is temporarily unavailable.");return
  }
- // One cache layer owns freshness: Node SSR. Browser/shared HTTP caches must
- // revalidate, so cache age does not accumulate across two independent TTLs.
  w.Header().Set("Cache-Control","no-store")
  app.respondWithJSON(w,200,jsonResponse{Error:false,Message:"Site configuration retrieved",Data:config})
 }
@@ -65,12 +47,34 @@ func (app *Application) GetSiteIdentityHistoryHandler(w http.ResponseWriter,r *h
  if raw:=r.URL.Query().Get("limit");raw!=""{v,err:=strconv.Atoi(raw);if err!=nil||v<1||v>100{app.respondWithErrorCode(w,400,"invalid_request","Limit must be between 1 and 100.");return};limit=v}
  entries,err:=app.InternalServices.SiteIdentityHistoryInternal(r.Context(),actor,limit)
  if err!=nil{app.siteIdentityError(w,r,err);return}
- app.respondWithJSON(w,200,jsonResponse{Error:false,Message:"Site identity history retrieved",Data:entries})
+ // Authorization remains in the existing service. Add a minimized current
+ // identity projection without changing the immutable changed_by association.
+ encoded,err:=json.Marshal(entries);if err!=nil{app.siteIdentityError(w,r,err);return}
+ var display []map[string]json.RawMessage
+ if err=json.Unmarshal(encoded,&display);err!=nil{app.siteIdentityError(w,r,err);return}
+ if display==nil{display=[]map[string]json.RawMessage{}}
+ ids:=make([]uuid.UUID,0,len(display))
+ for _,entry:=range display {
+  var id uuid.UUID
+  if err=json.Unmarshal(entry["changed_by"],&id);err!=nil || id==uuid.Nil{app.siteIdentityError(w,r,errors.New("invalid history actor reference"));return}
+  ids=append(ids,id)
+ }
+ ctx,cancel:=context.WithTimeout(r.Context(),app.InternalServices.Cfg.DBTimeout);defer cancel()
+ // Site history intentionally survives physical account deletion. Resolve
+ // retained actors only; an absent account gets a neutral, non-ID label.
+ retained:=[]uuid.UUID{}
+ rows,err:=app.Models.DB.Query(ctx,`SELECT id FROM users WHERE id=ANY($1::uuid[])`,ids)
+ if err!=nil{app.respondWithErrorCode(w,503,"site_identity_unavailable","Site identity history is temporarily unavailable.");return}
+ for rows.Next(){var id uuid.UUID;if err=rows.Scan(&id);err!=nil{rows.Close();app.siteIdentityError(w,r,errors.New("history identity read failed"));return};retained=append(retained,id)}
+ err=rows.Err();rows.Close();if err!=nil{app.siteIdentityError(w,r,errors.New("history identity read failed"));return}
+ identities,err:=data.ReadAdministrativeIdentities(ctx,app.Models.DB,retained...)
+ if err!=nil{app.respondWithErrorCode(w,503,"site_identity_unavailable","Site identity history is temporarily unavailable.");return}
+ for i,entry:=range display {value,err:=json.Marshal(identities[ids[i]]);if err!=nil{app.siteIdentityError(w,r,err);return};entry["actor_identity"]=value}
+ app.respondWithJSON(w,200,jsonResponse{Error:false,Message:"Site identity history retrieved",Data:display})
 }
 func (app *Application) ReplaceSiteIdentityHandler(w http.ResponseWriter,r *http.Request){
  w.Header().Set("Cache-Control","no-store")
  actor,ok:=app.governanceActor(w,r.Context());if !ok{return}
- // Pointers distinguish omission/null from intentionally blank optional text.
  var input struct{
   Identity *struct{
    SiteName *string `json:"site_name"`;Tagline *string `json:"tagline"`

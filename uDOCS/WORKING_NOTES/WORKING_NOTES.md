@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "write site maintenance all layers"
+git commit -m "write merchant onboarding all layers"
 git push
 
 | data layer | handler layer | service layer |
@@ -29,10 +29,6 @@ go test ./...
 go test ./...
 
 
-cd ../fofrontend
-npm run build
-npx ng test --watch=false
-
 
 docker compose down -v
 docker compose up -d --build
@@ -45,8 +41,8 @@ docker compose exec go-backend /sagrenti-install status
 
 
 
-cd ../downloads
-zip -r ./input_014/input_014.zip ./input_014
+cd ../downloads/input_021
+zip -r ./input_021_supplemental/input_021_supplemental.zip ./input_021_supplemental
 
 
 

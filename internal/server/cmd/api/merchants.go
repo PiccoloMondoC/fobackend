@@ -1,7 +1,7 @@
-// Package main provides HTTP handlers for the Sagrenti Future Offering
-// Platform.
-//
+// Package main provides canonical merchant identity and coordination with private business registration.
 // focodebase/fobackend/internal/server/cmd/api/merchants.go
+//
+// Platform.
 //
 // GTM:
 //
@@ -168,7 +168,11 @@ func (app *Application) respondMerchantError(
 		WithFunctionName("respondMerchantError")
 
 	switch {
-	case errors.Is(err, data.ErrMerchantNotFound):
+	case errors.Is(err, data.ErrMerchantInvalid):
+        app.respondWithErrorCode(w, http.StatusBadRequest, "invalid_request", "Please check the merchant identity details.")
+    case errors.Is(err, data.ErrMerchantRegistrationManaged):
+        app.respondWithErrorCode(w, http.StatusConflict, "merchant_registration_managed", "Manage your business information in Merchant Center.")
+    case errors.Is(err, data.ErrMerchantNotFound):
 		app.respondWithError(
 			w,
 			errors.New("merchant not found"),
