@@ -2,7 +2,8 @@
 //
 // focodebase/fobackend/internal/server/cmd/api/merchant_future_offering_submission.go
 //
-// Submission is intentionally not exposed until the complete M01 readiness composite exists.
+// Automated activation uses the canonical readiness composite including media;
+// optional milestones/goals and deferred commerce do not gate activation.
 package main
 
 import (
@@ -39,6 +40,8 @@ func (app *Application) parseFutureOfferingIDParam(w http.ResponseWriter, r *htt
 func (app *Application) respondMerchantFutureOfferingServiceError(w http.ResponseWriter, r *http.Request, err error) {
 	var nr *services.MerchantFutureOfferingNotReadyError
 	switch {
+ case errors.Is(err,data.ErrMerchantAccountAccessDenied):
+  app.respondMerchantFutureOfferingAuthorizationError(w,r,err)
 	case errors.As(err, &nr):
 		app.respondWithJSON(w, http.StatusUnprocessableEntity, jsonResponse{Error: true, Message: "Future Offering is not ready for submission", Data: nr.Readiness})
 	case errors.Is(err, data.ErrMerchantFutureOfferingEngagementInvalidInput):

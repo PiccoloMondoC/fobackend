@@ -39,7 +39,7 @@
 //	  category    selectability of the chosen category (leaf, active ancestry)
 //	  engagement  groups/options (merchant_future_offering_engagement_*)
 //
-//	PENDING M01 contributors: assets, goals, service term, milestones. Until they land, this result describes implemented workspace readiness and MUST NOT authorize submission.
+//	Media is required. Goals and milestones are optional. Service terms and monetization are deferred and must not gate activation.
 //	Each lands as an additional contributor appended here; the evaluation
 //	and submission algorithms do not change.
 //
@@ -170,6 +170,7 @@ func (s *Service) merchantFutureOfferingReadiness() *canonicalMerchantFutureOffe
 			&coreFactsReadiness{},
 			&categoryReadiness{models: s.Models},
 			&engagementReadiness{models: s.Models},
+            &offeringMediaReadiness{models: s.Models},
 		},
 	}
 }
@@ -254,17 +255,14 @@ func coreFactsIssues(fo *data.MerchantFutureOffering, dbNow time.Time) []Merchan
 	if fo.AccessPolicy == nil {
 		issues = append(issues, detailsIssue(ReadinessCodeAccessPolicyRequired, "access_policy", "Choose who can take part."))
 	}
-	return append(issues, launchTimingIssues(fo, dbNow)...)
+	if fo.Status == data.MerchantFutureOfferingStatusPublished { return issues } // A passed plan does not prove actual Launch.
+    return append(issues, launchTimingIssues(fo, dbNow)...)
 }
 
-// launchTimingIssues requires one timing fact, either an exact moment or an
-// approximate window, and that it has not already passed.
-//
-// Engineering invariant: a Future Offering launches in the future
-// (FOCA §15). For an exact moment that means after NOW(). For a window it
-// means the window has not fully elapsed: "2026" remains a legitimate
-// planned launch during 2026, but not in 2027. Minimum anticipation runway
-// is Administration policy and is not yet configured.
+// launchTimingIssues validates supplied plans at activation. Undecided timing is
+// valid; a plan is never an expiry date or evidence of actual Launch. Active
+// updates bypass this check in coreFactsIssues. Actual Launch belongs to the
+// future non-Beta token issuance transition.
 func launchTimingIssues(fo *data.MerchantFutureOffering, dbNow time.Time) []MerchantFutureOfferingReadinessIssue {
 	switch {
 	case fo.LaunchAt != nil:
@@ -278,7 +276,7 @@ func launchTimingIssues(fo *data.MerchantFutureOffering, dbNow time.Time) []Merc
 			return []MerchantFutureOfferingReadinessIssue{detailsIssue(ReadinessCodeLaunchWindowNotFuture, "launch_timing", "The planned launch period has already passed.")}
 		}
 	default:
-		return []MerchantFutureOfferingReadinessIssue{detailsIssue(ReadinessCodeLaunchAtRequired, "launch_timing", "Say when it is planned to launch. A rough period is fine.")}
+		return nil // Deliberately undecided timing is valid; incomplete windows fail at persistence.
 	}
 	return nil
 }
@@ -401,4 +399,13 @@ func engagementConfigurationIssues(
 		}
 	}
 	return issues
+}
+
+// offeringMediaReadiness requires an active, validated main image. Goals,
+// milestones and commercial arrangements are not activation prerequisites.
+type offeringMediaReadiness struct { models *data.Models }
+func(r *offeringMediaReadiness) evaluate(ctx context.Context,tx pgx.Tx,fo *data.MerchantFutureOffering,_ time.Time)([]MerchantFutureOfferingReadinessIssue,error){
+ gallery,err:=r.models.MerchantFutureOffering.ListMediaTx(ctx,tx,fo.ID);if err!=nil{return nil,err}
+ for _,a:=range gallery{if a.Main && a.Kind=="image"{return nil,nil}}
+ return []MerchantFutureOfferingReadinessIssue{{Section:MerchantFutureOfferingReadinessSection("media"),Code:"main_image_required",Field:"main_image",Message:"Add a main image before activation."}},nil
 }

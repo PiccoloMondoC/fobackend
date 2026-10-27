@@ -50,7 +50,7 @@ func TestCoreFactsReportsEveryMissingFact(t *testing.T) {
 	want := strings.Join([]string{
 		ReadinessCodeTitleRequired, ReadinessCodeSummaryRequired, ReadinessCodeCategoryRequired,
 		ReadinessCodeOfferingTypeRequired, ReadinessCodeReleaseStrategyRequired,
-		ReadinessCodeAccessPolicyRequired, ReadinessCodeLaunchAtRequired,
+		ReadinessCodeAccessPolicyRequired,
 	}, ",")
 	if got != want {
 		t.Fatalf("got %s\nwant %s", got, want)
@@ -78,7 +78,7 @@ func TestLaunchTimingReadiness(t *testing.T) {
 	}{
 		"exact in future":            {completeOffering(), ""},
 		"exact passed":               {pastExact, ReadinessCodeLaunchAtNotFuture},
-		"no timing":                  {none, ReadinessCodeLaunchAtRequired},
+		"no timing":                  {none, ""},
 		"early 2027 (first half)":    {window("half", 2027, 1, 1), ""},
 		"this year is still future":  {window("year", 2026, 1, 1), ""},
 		"this quarter still running": {window("quarter", 2026, 7, 1), ""},

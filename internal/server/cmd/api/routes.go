@@ -1309,12 +1309,32 @@ func (app *Application) Routes() http.Handler {
 			fo.With(app.RequirePermission("read_merchant_future_offering")).
 				Get("/{futureOfferingID}/history", app.ListMerchantFutureOfferingHistoryHandler)
 
-			// POST /{futureOfferingID}/submit is intentionally not registered.
-			// Canonical M01 readiness is incomplete until assets, goals, initial
-			// milestones, and the M01 Service Term choice are composed.
+			fo.With(app.RequirePermission("read_merchant_future_offering")).Get("/{futureOfferingID}/publication", app.GetFutureOfferingPublicationHandler)
+            fo.With(app.RequirePermission("read_merchant_future_offering")).Get("/{futureOfferingID}/beta-capacity", app.FutureOfferingBetaCapacityHandler)
+            fo.With(app.RequirePermission("update_merchant_future_offering_draft")).Put("/{futureOfferingID}/beta-capacity", app.FutureOfferingBetaCapacityHandler)
+            fo.With(app.RequirePermission("update_merchant_future_offering_draft")).Post("/{futureOfferingID}/activate", app.ActivateFutureOfferingHandler)
+            fo.With(app.RequirePermission("read_merchant_future_offering")).Get("/{futureOfferingID}/preview", app.PreviewFutureOfferingHandler)
+            fo.With(app.RequirePermission("read_merchant_future_offering")).Get("/{futureOfferingID}/media", app.GetFutureOfferingMediaHandler)
+            fo.With(app.RequirePermission("update_merchant_future_offering_draft")).Post("/{futureOfferingID}/media", app.UploadFutureOfferingMediaHandler)
+            fo.With(app.RequirePermission("update_merchant_future_offering_draft")).Put("/{futureOfferingID}/media/{assetID}", app.EditFutureOfferingMediaHandler)
+            fo.With(app.RequirePermission("update_merchant_future_offering_draft")).Delete("/{futureOfferingID}/media/{assetID}", app.EditFutureOfferingMediaHandler)
+            fo.With(app.RequirePermission("read_merchant_future_offering")).Get("/{futureOfferingID}/media/{assetID}/{surface:merchant}", app.FutureOfferingMediaBytesHandler)
+            fo.With(app.RequirePermission("update_merchant_future_offering_draft")).Post("/{futureOfferingID}/{operation:close|brand-visibility}", app.ChangeFutureOfferingPublicationHandler)
 		})
 
-		// Category choices for What's New project creation.
+		// Public offering/media use explicit publication gates, never merchant permissions.
+        v1.Get("/public/brands/{merchantID}", app.ListPublicOfferingsHandler)
+        v1.Get("/public/future-offerings", app.ListPublicOfferingsHandler)
+        v1.Get("/public/future-offering-categories", app.ListPublicFutureOfferingCategoriesHandler)
+        v1.Get("/public/future-offerings/{futureOfferingID}", app.GetPublicFutureOfferingHandler)
+        v1.Get("/public/future-offerings/{futureOfferingID}/media/{assetID}", app.FutureOfferingMediaBytesHandler)
+        app.registerPublic("GET", "/api/v1/public/brands/{merchantID}")
+        app.registerPublic("GET", "/api/v1/public/future-offerings")
+        app.registerPublic("GET", "/api/v1/public/future-offering-categories")
+        app.registerPublic("GET", "/api/v1/public/future-offerings/{futureOfferingID}")
+        app.registerPublic("GET", "/api/v1/public/future-offerings/{futureOfferingID}/media/{assetID}")
+
+        // Category choices for project creation.
 		v1.With(
 			app.AuthMiddleware,
 			app.RequirePermission("list_categories"),

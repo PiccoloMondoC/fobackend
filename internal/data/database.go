@@ -1496,6 +1496,14 @@ func (m *DBConnectionParamsModel) CreateTables(db *pgxpool.Pool) error {
 	BEFORE INSERT OR UPDATE OF slug ON public.categories
 	FOR EACH ROW EXECUTE FUNCTION public.normalize_slug();
 
+    -- Installation facts only: a completed taxonomy replacement is never replayed
+    -- over subsequent administrative edits. Catalog rows retain their own history.
+    CREATE TABLE IF NOT EXISTS catalog_installations (
+        installation_key TEXT PRIMARY KEY,
+        installed_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        prior_active_categories JSONB NOT NULL
+    );
+
 	CREATE INDEX IF NOT EXISTS idx_departments_deleted_at
 		ON departments(deleted_at);
 
@@ -6054,6 +6062,104 @@ CREATE TRIGGER refuse_maintenance_setting BEFORE INSERT OR UPDATE ON public.plat
 `); err != nil {
 		return fmt.Errorf("initialize maintenance schema: %w", err)
 	}
+
+	if _, err := tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS future_offering_revisions (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ future_offering_id UUID NOT NULL REFERENCES merchant_future_offerings(id) ON DELETE RESTRICT,
+ version TIMESTAMPTZ NOT NULL,
+ operation TEXT NOT NULL CHECK(operation IN ('details','media','brand_visibility','beta_capacity','discard')),
+ actor_id UUID NOT NULL, -- immutable audit association survives physical actor deletion
+ before_facts JSONB NOT NULL,
+ after_facts JSONB NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(future_offering_id,version)
+);
+CREATE OR REPLACE FUNCTION protect_future_offering_revisions() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+ BEGIN RAISE EXCEPTION 'offering revision history is immutable'; END; $$;
+DROP TRIGGER IF EXISTS protect_future_offering_revisions ON future_offering_revisions;
+CREATE TRIGGER protect_future_offering_revisions BEFORE UPDATE OR DELETE ON future_offering_revisions FOR EACH ROW EXECUTE FUNCTION protect_future_offering_revisions();
+DROP TRIGGER IF EXISTS protect_future_offering_revisions_truncate ON future_offering_revisions;
+CREATE TRIGGER protect_future_offering_revisions_truncate BEFORE TRUNCATE ON future_offering_revisions FOR EACH STATEMENT EXECUTE FUNCTION protect_future_offering_revisions();
+-- Public category discovery retains the same keyset order as unfiltered pages.
+CREATE INDEX IF NOT EXISTS idx_future_offering_category_discovery
+ ON merchant_future_offerings(category_id,published_at DESC,id DESC)
+ WHERE status='published' AND deleted_at IS NULL;
+-- FO media references reuse the canonical private object registry and cleanup.
+CREATE TABLE IF NOT EXISTS future_offering_media (
+ id UUID PRIMARY KEY REFERENCES media_objects(id) ON DELETE RESTRICT,
+ future_offering_id UUID NOT NULL REFERENCES merchant_future_offerings(id) ON DELETE RESTRICT,
+ media_kind TEXT NOT NULL CHECK(media_kind IN ('image','video')),
+ alt_text TEXT NOT NULL CHECK(char_length(alt_text)<=300),
+ display_order INTEGER NOT NULL DEFAULT 0 CHECK(display_order>=0),
+ is_main BOOLEAN NOT NULL DEFAULT FALSE CHECK(NOT is_main OR media_kind='image'),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_future_offering_main_image ON future_offering_media(future_offering_id) WHERE is_main;
+CREATE INDEX IF NOT EXISTS ix_future_offering_media_order ON future_offering_media(future_offering_id,display_order,id);
+CREATE TABLE IF NOT EXISTS future_offering_publication (
+ future_offering_id UUID PRIMARY KEY REFERENCES merchant_future_offerings(id) ON DELETE RESTRICT,
+ brand_visible BOOLEAN NOT NULL DEFAULT TRUE,
+ activated_from_version TIMESTAMPTZ NOT NULL,
+ close_reason TEXT CHECK(close_reason IS NULL OR char_length(btrim(close_reason)) BETWEEN 1 AND 1000),
+ closed_at TIMESTAMPTZ,
+ CHECK((close_reason IS NULL)=(closed_at IS NULL))
+);
+`); err != nil { return fmt.Errorf("initialize offering publication schema: %w", err) }
+
+ if _, err := tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS future_offering_beta_capacity (
+ future_offering_id UUID PRIMARY KEY REFERENCES merchant_future_offerings(id) ON DELETE RESTRICT,
+ seats INTEGER CHECK(seats IS NULL OR seats BETWEEN 1 AND 1000000000)
+);
+-- All service writers take FO -> engagement -> selection locks. Parent triggers
+-- serialize direct writes too; a bypassing writer may be deadlock-aborted rather
+-- than invalidate capacity. No interest is silently removed to make room.
+CREATE OR REPLACE FUNCTION lock_offering_before_selection() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE fo UUID; engagement UUID;
+BEGIN
+ IF TG_OP='DELETE' THEN engagement:=OLD.engagement_id; ELSE engagement:=NEW.engagement_id; END IF;
+ SELECT future_offering_id INTO fo FROM user_future_offering_engagements WHERE id=engagement;
+ PERFORM 1 FROM merchant_future_offerings WHERE id=fo FOR UPDATE;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF; RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS aa_lock_offering_before_selection ON user_future_offering_engagement_action_selections;
+CREATE TRIGGER aa_lock_offering_before_selection BEFORE INSERT OR UPDATE OR DELETE ON user_future_offering_engagement_action_selections FOR EACH ROW EXECUTE FUNCTION lock_offering_before_selection();
+CREATE OR REPLACE FUNCTION lock_offering_before_engagement() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE fo UUID;
+BEGIN
+ IF TG_OP='DELETE' THEN fo:=OLD.future_offering_id; ELSE fo:=NEW.future_offering_id; END IF;
+ IF TG_OP='UPDATE' AND NEW.future_offering_id IS DISTINCT FROM OLD.future_offering_id THEN
+  RAISE EXCEPTION 'engagement offering identity is immutable' USING ERRCODE='23514';
+ END IF;
+ PERFORM 1 FROM merchant_future_offerings WHERE id=fo FOR UPDATE;
+ IF TG_OP='DELETE' THEN RETURN OLD; END IF; RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS aa_lock_offering_before_engagement ON user_future_offering_engagements;
+CREATE TRIGGER aa_lock_offering_before_engagement BEFORE INSERT OR UPDATE OR DELETE ON user_future_offering_engagements FOR EACH ROW EXECUTE FUNCTION lock_offering_before_engagement();
+CREATE OR REPLACE FUNCTION assert_offering_beta_capacity() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE fo UUID; cap INTEGER; taken BIGINT; engagement UUID;
+BEGIN
+ IF TG_TABLE_NAME='user_future_offering_engagements' THEN
+  IF TG_OP='DELETE' THEN fo:=OLD.future_offering_id; ELSE fo:=NEW.future_offering_id; END IF;
+ ELSE
+  IF TG_OP='DELETE' THEN engagement:=OLD.engagement_id; ELSE engagement:=NEW.engagement_id; END IF;
+  SELECT future_offering_id INTO fo FROM user_future_offering_engagements WHERE id=engagement;
+ END IF;
+ SELECT seats INTO cap FROM future_offering_beta_capacity WHERE future_offering_id=fo;
+ IF cap IS NULL THEN RETURN NULL; END IF;
+ SELECT COALESCE(sum(COALESCE(s.quantity,1)),0) INTO taken
+ FROM user_future_offering_engagement_action_selections s
+ JOIN user_future_offering_engagements e ON e.id=s.engagement_id
+ JOIN merchant_future_offering_engagement_options o ON o.id=s.engagement_option_id
+ JOIN engagement_actions a ON a.id=o.engagement_action_id
+ WHERE e.future_offering_id=fo AND e.deleted_at IS NULL AND e.engagement_status IN ('active','muted') AND a.code='beta';
+ IF taken>cap THEN RAISE EXCEPTION 'Beta seat declaration would be exceeded' USING ERRCODE='23514'; END IF;
+ RETURN NULL;
+END; $$;
+DROP TRIGGER IF EXISTS assert_offering_beta_selection ON user_future_offering_engagement_action_selections;
+CREATE CONSTRAINT TRIGGER assert_offering_beta_selection AFTER INSERT OR UPDATE OR DELETE ON user_future_offering_engagement_action_selections DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION assert_offering_beta_capacity();
+DROP TRIGGER IF EXISTS assert_offering_beta_engagement ON user_future_offering_engagements;
+CREATE CONSTRAINT TRIGGER assert_offering_beta_engagement AFTER INSERT OR UPDATE OR DELETE ON user_future_offering_engagements DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION assert_offering_beta_capacity();
+`); err != nil {return fmt.Errorf("initialize offering Beta capacity: %w",err)}
 
 	if err := tx.Commit(ctx); err != nil {
 		m.Logger.Error("Failed to commit schema initialization transaction", "error", err)

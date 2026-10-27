@@ -867,6 +867,7 @@ func (app *Application) UpdateMerchantFutureOfferingDraftHandler(
 	}
 
 	userID := app.getUserIDFromContext(ctx)
+ if userID==nil{app.respondWithErrorCode(w,401,"authentication_required","Sign in again.");return}
 
 	futureOfferingID, err :=
 		uuid.Parse(
@@ -908,15 +909,16 @@ func (app *Application) UpdateMerchantFutureOfferingDraftHandler(
 	}
 
 	updated, err :=
-		app.Models.MerchantFutureOffering.UpdateDraftFacts(
-			ctx,
-			merchantID,
+		app.InternalServices.UpdateFutureOfferingFacts(
+            ctx,
+            *userID,
+            merchantID,
 			futureOfferingID,
 			facts,
 			input.ExpectedUpdatedAt,
 		)
 	if err != nil {
-		app.respondMerchantFutureOfferingError(
+		app.respondMerchantFutureOfferingServiceError(
 			w,
 			r,
 			err,
@@ -984,6 +986,7 @@ func (app *Application) DiscardMerchantFutureOfferingDraftHandler(
 	}
 
 	userID := app.getUserIDFromContext(ctx)
+ if userID==nil{app.respondWithErrorCode(w,401,"authentication_required","Sign in again.");return}
 
 	futureOfferingID, err :=
 		uuid.Parse(
@@ -1031,14 +1034,15 @@ func (app *Application) DiscardMerchantFutureOfferingDraftHandler(
 	}
 
 	discarded, err :=
-		app.Models.MerchantFutureOffering.DiscardDraft(
+		app.InternalServices.DiscardFutureOfferingDraft(
 			ctx,
+            *userID,
 			merchantID,
 			futureOfferingID,
 			expectedUpdatedAt,
 		)
 	if err != nil {
-		app.respondMerchantFutureOfferingError(
+		app.respondMerchantFutureOfferingServiceError(
 			w,
 			r,
 			err,

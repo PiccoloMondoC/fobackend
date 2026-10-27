@@ -1093,6 +1093,7 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 	id uuid.UUID,
 	facts MerchantFutureOfferingDraftFacts,
 	expectedUpdatedAt time.Time,
+ allowPublished bool,
 ) (*MerchantFutureOffering, error) {
 	ctx, cancel := context.WithTimeout(ctx, dbTimeout)
 	defer cancel()
@@ -1156,7 +1157,7 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 			updated_at = ` + merchantFutureOfferingNextVersionSQL + `
 		WHERE id = $1
 		  AND merchant_id = $2
-		  AND status = 'draft'
+		  AND (status='draft' OR ($16::boolean AND status='published'))
 		  AND deleted_at IS NULL
 		  AND updated_at = $12
 		RETURNING ` + merchantFutureOfferingSelectColumns
@@ -1165,7 +1166,7 @@ func (m *MerchantFutureOfferingModel) updateDraftFacts(
 	if err := scanMerchantFutureOffering(querier.QueryRow(ctx, query,
 		id, merchantID, projectName, title, summary, description, categoryID,
 		offeringType, releaseStrategy, accessPolicy, timing.LaunchAt, expectedUpdatedAt.UTC(),
-		timing.LaunchWindowPrecision, timing.LaunchWindowStart, timing.LaunchDisplayText,
+		timing.LaunchWindowPrecision, timing.LaunchWindowStart, timing.LaunchDisplayText, allowPublished,
 	), &fo); err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
 			err = classifyMerchantFutureOfferingWriteError(err)
@@ -1185,7 +1186,7 @@ func (m *MerchantFutureOfferingModel) UpdateDraftFacts(ctx context.Context, merc
 	if err := m.validatePool(); err != nil {
 		return nil, err
 	}
-	return m.updateDraftFacts(ctx, m.DB, "UpdateMerchantFutureOfferingDraftFacts", merchantID, id, facts, expectedUpdatedAt)
+	return m.updateDraftFacts(ctx, m.DB, "UpdateMerchantFutureOfferingDraftFacts", merchantID, id, facts, expectedUpdatedAt, false)
 }
 
 // UpdateDraftFactsTx is the transaction-aware form of UpdateDraftFacts.
@@ -1196,7 +1197,7 @@ func (m *MerchantFutureOfferingModel) UpdateDraftFactsTx(ctx context.Context, tx
 	if tx == nil {
 		return nil, merchantFutureOfferingInvalidInput("transaction is required")
 	}
-	return m.updateDraftFacts(ctx, tx, "UpdateMerchantFutureOfferingDraftFactsTx", merchantID, id, facts, expectedUpdatedAt)
+	return m.updateDraftFacts(ctx, tx, "UpdateMerchantFutureOfferingDraftFactsTx", merchantID, id, facts, expectedUpdatedAt, false)
 }
 
 func (m *MerchantFutureOfferingModel) resolveSubmitNoMatch(ctx context.Context, querier merchantFutureOfferingQueryRower, merchantID, id uuid.UUID) error {
@@ -1316,4 +1317,13 @@ func (m *MerchantFutureOfferingModel) DiscardDraftTx(ctx context.Context, tx pgx
 		return nil, merchantFutureOfferingInvalidInput("transaction is required")
 	}
 	return m.discardDraft(ctx, tx, "DiscardMerchantFutureOfferingDraftTx", merchantID, id, expectedUpdatedAt)
+}
+
+// UpdateEditableFactsTx permits active corrections only inside the authoritative
+// service transaction, which validates readiness and records private history.
+// Legacy draft-only entry points remain draft-only.
+func (m *MerchantFutureOfferingModel) UpdateEditableFactsTx(ctx context.Context,tx pgx.Tx,merchantID,id uuid.UUID,facts MerchantFutureOfferingDraftFacts,expected time.Time)(*MerchantFutureOffering,error){
+ if err:=m.validateBase();err!=nil{return nil,err}
+ if tx==nil{return nil,merchantFutureOfferingInvalidInput("transaction is required")}
+ return m.updateDraftFacts(ctx,tx,"UpdateEditableFutureOfferingFacts",merchantID,id,facts,expected,true)
 }

@@ -1,7 +1,7 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "write merchant onboarding all layers"
+git commit -m "write FO core all layers"
 git push
 
 | data layer | handler layer | service layer |

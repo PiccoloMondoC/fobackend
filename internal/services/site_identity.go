@@ -14,7 +14,6 @@
 // Run tools/check_business_neutrality.py before source release. Existing
 // violations are not automatically grandfathered or approved.
 
-//
 // internal/services/site_identity.go
 // CE Site Identity boundary: validate -> lock active actor -> permission ->
 // presentation mutex -> singleton -> revision -> write -> history -> audit.
@@ -24,16 +23,17 @@
 package services
 
 import (
- "context"
- "fmt"
- "reflect"
- "regexp"
- "strings"
- "unicode"
- "unicode/utf8"
- "github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
- "github.com/google/uuid"
- "github.com/jackc/pgx/v5"
+	"context"
+	"fmt"
+	"reflect"
+	"regexp"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/PiccoloMondoC/focodebase/fobackend/internal/data"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 const (
  PermissionReadSiteIdentity="read_site_identity"
@@ -46,6 +46,8 @@ var siteTermKeyPattern=regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$
 func DefaultSitePresentation() data.SitePresentation {
  return data.SitePresentation{Identity:data.SiteIdentityText{SiteName:"Website"},Terms:map[string]string{
   "future_offerings.area":"What's New",
+  "anticipation_intelligence.label":"Signals",
+  "anticipation_intelligence.early_label":"Early Signals",
   "future_offerings.singular":"Future Offering",
   "future_offerings.plural":"Future Offerings",
   "merchant.project":"project",
@@ -83,7 +85,7 @@ func ValidateSitePresentation(in data.SitePresentation)(data.SitePresentation,er
  }
  // Required bindings must remain present. Arbitrary additional semantic keys
  // may be stored without a database catalogue of permissible business language.
- for key:=range DefaultSitePresentation().Terms {if _,ok:=out.Terms[key];!ok{return out,fmt.Errorf("%w: required term is missing",data.ErrSiteIdentityInvalidInput)}}
+ for key:=range DefaultSitePresentation().Terms {if key=="anticipation_intelligence.label" || key=="anticipation_intelligence.early_label" {continue};if _,ok:=out.Terms[key];!ok{return out,fmt.Errorf("%w: required term is missing",data.ErrSiteIdentityInvalidInput)}}
  return out,nil
 }
 func (s *Service) siteIdentityContext(ctx context.Context)(context.Context,context.CancelFunc,error){

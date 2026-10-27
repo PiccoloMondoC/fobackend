@@ -1,3 +1,5 @@
+// Package data owns canonical seed installation and restart-safe catalog replacement.
+// focodebase/fobackend/internal/data/dataseed.go
 // BUSINESS-NEUTRAL SOURCE RULE — BEG 3.17–3.18
 // CE and engineering own this naming rule. Use platform for neutral internal
 // identifiers; use the platform in general UI prose. Capitalize Platform only
@@ -908,211 +910,47 @@ const (
 		('in_app', 'Display a notification inside the application UI')
 	ON CONFLICT (channel) DO NOTHING;
 	`
-	insertDepartmentsQuery = `
-	-- Departments (top level)
-	INSERT INTO departments (name, slug, description, sort_order) VALUES
-		('Electronics', 'electronics', NULL, 10),
-		('Home, Kitchen & Garden', 'home-kitchen-garden', NULL, 20),
-		('Fashion','fashion',NULL,30),
-		('Beauty, Health & Personal Care', 'beauty-health-personal-care', NULL, 40),
-		('Sports, Fitness & Outdoors', 'sports-fitness-outdoors', NULL, 50),
-		('Toys, Kids & Baby', 'toys-kids-baby', NULL, 60),
-		('Automotive & Industrial', 'automotive-industrial', NULL, 70),
-		('Travel & Experiences', 'travel-experiences', NULL, 80),
-		('Grocery & Gourmet Food', 'grocery-gourmet-food', NULL, 90),
-		('Entertainment & Digital', 'entertainment-digital', NULL, 100)
-	ON CONFLICT (slug) DO NOTHING;
+	installFutureOfferingCatalogQuery = `
+DO $catalog$
+DECLARE catalog_department UUID;
+BEGIN
+ PERFORM pg_advisory_xact_lock(7301195001);
+ IF NOT EXISTS (SELECT 1 FROM catalog_installations WHERE installation_key='future-offering-categories-v1') THEN
+  -- Same order as catalog administration: department before category.
+  LOCK TABLE departments, categories IN SHARE ROW EXCLUSIVE MODE;
+  INSERT INTO catalog_installations(installation_key,prior_active_categories)
+  SELECT 'future-offering-categories-v1',COALESCE(jsonb_agg(jsonb_build_object('id',id,'name',name,'department_id',department_id)),'[]'::jsonb)
+  FROM categories WHERE deleted_at IS NULL;
+  UPDATE categories SET deleted_at=clock_timestamp(),updated_at=clock_timestamp() WHERE deleted_at IS NULL;
+  UPDATE departments SET deleted_at=clock_timestamp(),updated_at=clock_timestamp() WHERE deleted_at IS NULL;
+  INSERT INTO departments(name,slug,sort_order) VALUES('Discovery','future-offering-discovery',10)
+  ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name,deleted_at=NULL,updated_at=clock_timestamp()
+  RETURNING id INTO catalog_department;
+  INSERT INTO categories(name,slug,department_id,parent_id,sort_order) VALUES
+('AI & Smart Assistants','fo-ai-smart-assistants',catalog_department,NULL,10),
+('Gadgets & Connected Devices','fo-gadgets-connected-devices',catalog_department,NULL,20),
+('Home & Everyday Living','fo-home-everyday-living',catalog_department,NULL,30),
+('Health & Wellness','fo-health-wellness',catalog_department,NULL,40),
+('Food & Drink','fo-food-drink',catalog_department,NULL,50),
+('Learning & Education','fo-learning-education',catalog_department,NULL,60),
+('Work & Business','fo-work-business',catalog_department,NULL,70),
+('Travel & Experiences','fo-travel-experiences',catalog_department,NULL,80),
+('Entertainment & Creativity','fo-entertainment-creativity',catalog_department,NULL,90),
+('Style & Personal Care','fo-style-personal-care',catalog_department,NULL,100),
+('Family & Community','fo-family-community',catalog_department,NULL,110),
+('Nature & Outdoors','fo-nature-outdoors',catalog_department,NULL,120),
+('Energy & Environment','fo-energy-environment',catalog_department,NULL,130),
+('Robotics & Automation','fo-robotics-automation',catalog_department,NULL,140),
+('Automotive & Mobility','fo-automotive-mobility',catalog_department,NULL,150),
+('Aviation, Marine & Drones','fo-aviation-marine-drones',catalog_department,NULL,160),
+('Housing & Construction','fo-housing-construction',catalog_department,NULL,170),
+('Other & Emerging Ideas','fo-other-emerging-ideas',catalog_department,NULL,180)
+  ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name,department_id=EXCLUDED.department_id,parent_id=NULL,sort_order=EXCLUDED.sort_order,deleted_at=NULL,updated_at=clock_timestamp();
+ END IF;
+END;
+$catalog$;
 	`
-	insertCategoryLevel1Query = `
-	-- Level 1 Category under a Department
-	INSERT INTO categories (name, slug, department_id, parent_id, sort_order) VALUES
-	-- Electronics (Department)
-		('Computers & Accessories','computers-accessories',
-			(SELECT id FROM departments WHERE slug='electronics'), NULL, 100),
-		('TV, Video & Home Audio','tv-video-home-audio',
-			(SELECT id FROM departments WHERE slug='electronics'), NULL, 110),
-		('Cell Phones & Accessories','cell-phones-accessories',
-			(SELECT id FROM departments WHERE slug='electronics'), NULL, 120),
-		('Cameras & Photography','cameras-photography',
-			(SELECT id FROM departments WHERE slug='electronics'), NULL, 130),
-		('Video Games & Accessories','video-games-accessories',
-			(SELECT id FROM departments WHERE slug='electronics'), NULL, 140),
-	-- Home, Kitchen & Garden (Department)
-		('Furniture','furniture',(SELECT id FROM departments WHERE slug='home-kitchen-garden'),NULL,100),
-		('Kitchen & Dining','kitchen-dining',(SELECT id FROM departments WHERE slug='home-kitchen-garden'),NULL,110),
-		('Bedding & Bath','bedding-bath',(SELECT id FROM departments WHERE slug='home-kitchen-garden'),NULL,120),
-		('Home Décor','home-decor',(SELECT id FROM departments WHERE slug='home-kitchen-garden'),NULL,130),
-		('Garden & Outdoor','garden-outdoor',(SELECT id FROM departments WHERE slug='home-kitchen-garden'),NULL,140),
-	-- Fashion (Department)
-		('Women','women',(SELECT id FROM departments WHERE slug='fashion'),NULL,100),
-		('Men','men',(SELECT id FROM departments WHERE slug='fashion'),NULL,110),
-		('Kids & Baby','kids-baby',(SELECT id FROM departments WHERE slug='fashion'),NULL,120),
-		('Unisex','unisex',(SELECT id FROM departments WHERE slug='fashion'),NULL,130),
-	-- Beauty, Health & Personal Care (Department)
-		('Beauty','beauty',(SELECT id FROM departments WHERE slug='beauty-health-personal-care'),NULL,100),
-		('Health','health',(SELECT id FROM departments WHERE slug='beauty-health-personal-care'),NULL,110),
-		('Personal Care','personal-care',(SELECT id FROM departments WHERE slug='beauty-health-personal-care'),NULL,120),
-	-- Sports, Fitness & Outdoors (Department)
-		('Exercise & Fitness','exercise-fitness',(SELECT id FROM departments WHERE slug='sports-fitness-outdoors'),NULL,100),
-		('Outdoor Recreation','outdoor-recreation',(SELECT id FROM departments WHERE slug='sports-fitness-outdoors'),NULL,110),
-		('Team Sports','team-sports',(SELECT id FROM departments WHERE slug='sports-fitness-outdoors'),NULL,120),
-	-- Toys, Kids & Baby (Department)
-		('Toys','toys',(SELECT id FROM departments WHERE slug='toys-kids-baby'),NULL,100),
-		('Games & Puzzles','games-puzzles',(SELECT id FROM departments WHERE slug='toys-kids-baby'),NULL,110),
-		('Baby Gear','baby-gear',(SELECT id FROM departments WHERE slug='toys-kids-baby'),NULL,120),
-	-- Automotive & Industrial (Department)
-		('Automotive','automotive',(SELECT id FROM departments WHERE slug='automotive-industrial'),NULL,100),
-		('Industrial & Commercial','industrial-commercial',(SELECT id FROM departments WHERE slug='automotive-industrial'),NULL,110),
-	-- Travel & Experiences (Department)
-		('Flights','flights',(SELECT id FROM departments WHERE slug='travel-experiences'),NULL,100),
-		('Hotels & Accommodation','hotels-accommodation',(SELECT id FROM departments WHERE slug='travel-experiences'),NULL,110),
-		('Cruises','cruises',(SELECT id FROM departments WHERE slug='travel-experiences'),NULL,120),
-		('Tours & Activities','tours-activities',(SELECT id FROM departments WHERE slug='travel-experiences'),NULL,130),
-		('Car Rentals','car-rentals',(SELECT id FROM departments WHERE slug='travel-experiences'),NULL,140),
-	-- Grocery & Gourmet Food (Department)
-		('Pantry Staples','pantry-staples',(SELECT id FROM departments WHERE slug='grocery-gourmet-food'),NULL,100),
-		('Snacks','snacks',(SELECT id FROM departments WHERE slug='grocery-gourmet-food'),NULL,110),
-		('Beverages','beverages',(SELECT id FROM departments WHERE slug='grocery-gourmet-food'),NULL,120),
-		('Specialty Foods','specialty-foods',(SELECT id FROM departments WHERE slug='grocery-gourmet-food'),NULL,130),
-	-- Entertainment & Digital (Department)
-		('Books','books',(SELECT id FROM departments WHERE slug='entertainment-digital'),NULL,100),
-		('Movies & TV','movies-tv',(SELECT id FROM departments WHERE slug='entertainment-digital'),NULL,110),
-		('Music','music',(SELECT id FROM departments WHERE slug='entertainment-digital'),NULL,120),
-		('Video Games','video-games',(SELECT id FROM departments WHERE slug='entertainment-digital'),NULL,130),
-		('Streaming Subscriptions','streaming-subscriptions',(SELECT id FROM departments WHERE slug='entertainment-digital'),NULL,140)
-	ON CONFLICT (slug) DO NOTHING;
-	`
-	insertCategoryLevel2Query = `
-	-- Level 2: nested under a Level 1 Category
-	INSERT INTO categories (name, slug, department_id, parent_id, sort_order) VALUES
-	-- Electronics ▸ Computers & Accessories
-		('Laptops','laptops',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='computers-accessories'),100),
-		('Desktops','desktops',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='computers-accessories'),110),
-		('Monitors','monitors',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='computers-accessories'),120),
-		('Computer Components','computer-components',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='computers-accessories'),130),
-		('Storage Devices','storage-devices',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='computers-accessories'),140),
-		('Networking','networking',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='computers-accessories'),150),
-	-- Electronics ▸ TV, Video & Home Audio
-		('Televisions','televisions',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='tv-video-home-audio'),100),
-		('Projectors','projectors',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='tv-video-home-audio'),110),
-		('Streaming Devices','streaming-devices',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='tv-video-home-audio'),120),
-		('Soundbars & Speakers','soundbars-speakers',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='tv-video-home-audio'),130),
-	-- Fashion ▸ Women
-		('Clothing','women-clothing',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women'),100),
-		('Shoes','women-shoes',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women'),110),
-		('Accessories','women-accessories',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women'),120),
-		('Jewelry','women-jewelry',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women'),130),
-	-- Fashion ▸ Men
-		('Clothing','men-clothing',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='men'),100),
-		('Shoes','men-shoes',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='men'),110),
-		('Accessories','men-accessories',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='men'),120),
-		('Watches','men-watches',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='men'),130),
-	-- Fashion ▸ Kids & Baby
-		('Clothing','kids-clothing',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='kids-baby'),100),
-		('Shoes','kids-shoes',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='kids-baby'),110),
-		('Accessories','kids-accessories',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='kids-baby'),120),
-	-- Travel & Experiences ▸ Flights
-		('Domestic','flights-domestic',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='flights'),100),
-		('International','flights-international',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='flights'),110),
-	-- Travel & Experiences ▸ Hotels & Accommodation
-		('Budget Hotels','budget-hotels',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='hotels-accommodation'),100),
-		('Luxury Hotels','luxury-hotels',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='hotels-accommodation'),110),
-		('Vacation Rentals','vacation-rentals',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='hotels-accommodation'),120),
-		('Boutique Hotels','boutique-hotels',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='hotels-accommodation'),130)
-	ON CONFLICT (slug) DO NOTHING;
-	`
-	insertCategoryLevel3Query = `
-	-- Level 3 seed blocks nested under a Level 2 Category
-	INSERT INTO categories (name, slug, department_id, parent_id, sort_order) VALUES
-	-- Laptops -> Level 2
-		('Gaming Laptops','gaming-laptops',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='laptops'),100),
-		('Business Laptops','business-laptops',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='laptops'),110),
-		('Student Laptops','student-laptops',
-			(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='laptops'),120),
-	-- Televisions -> Level 2
-		('4K TVs','4k-tvs',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='televisions'),100),
-		('8K TVs','8k-tvs',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='televisions'),110),
-		('OLED TVs','oled-tvs',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='televisions'),120),
-		('QLED TVs','qled-tvs',(SELECT id FROM departments WHERE slug='electronics'),
-			(SELECT id FROM categories WHERE slug='televisions'),130),
-	-- Men -> Shoes -> Level 2
-		('Sneakers','men-shoes-sneakers',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='men-shoes'),100),
-		('Dress Shoes','men-shoes-dress',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='men-shoes'),110),
-		('Boots','men-shoes-boots',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='men-shoes'),120),
-	-- Women -> Clothing -> Level 2
-		('Dresses','women-clothing-dresses',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women-clothing'),100),
-		('Tops','women-clothing-tops',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women-clothing'),110),
-		('Activewear','women-clothing-activewear',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women-clothing'),120),
-	-- Women ▸ Shoes -> Level 2
-		('Sneakers','women-shoes-sneakers',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women-shoes'),100),
-		('Boots','women-shoes-boots',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women-shoes'),110),
-		('Heels','women-shoes-heels',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='women-shoes'),120),
-	-- Kids ▸ Clothing -> Level 2
-		('Girls Clothing','kids-girls-clothing',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='kids-clothing'),100),
-		('Boys Clothing','kids-boys-clothing',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='kids-clothing'),110),
-		('Baby Clothing','baby-clothing',(SELECT id FROM departments WHERE slug='fashion'),
-			(SELECT id FROM categories WHERE slug='kids-clothing'),120),
-	-- Flights -> International -> Level 2
-		('Europe','flights-international-europe',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='flights-international'),100),
-		('Africa','flights-international-africa',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='flights-international'),110),
-		('Asia','flights-international-asia',(SELECT id FROM departments WHERE slug='travel-experiences'),
-			(SELECT id FROM categories WHERE slug='flights-international'),120)
-	ON CONFLICT (slug) DO NOTHING;
-	`
+
 
 	insertPlatformSettingsQuery = `
 	INSERT INTO platform_settings (
@@ -1301,10 +1139,7 @@ func (m *DBConnectionParamsModel) SeedAllData(
 		{name: "merchant_billable_event_fee_types", query: insertMerchantBillableEventFeeTypesQuery},
 
 		// Category hierarchy
-		{name: "departments", query: insertDepartmentsQuery},
-		{name: "categories_level_1", query: insertCategoryLevel1Query},
-		{name: "categories_level_2", query: insertCategoryLevel2Query},
-		{name: "categories_level_3", query: insertCategoryLevel3Query},
+		{name: "future_offering_catalog_v1", query: installFutureOfferingCatalogQuery},
 
 		{name: "platform_settings", query: insertPlatformSettingsQuery},
 		{name: "fo_administrative_settings_reconciliation", query: reconcileFOAdministrativeSettingsQuery},

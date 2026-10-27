@@ -116,3 +116,22 @@ Part	Scope
 3. Angular & SSR	Announcement bar, maintenance page, Root workspace, routing, SSR 503 responses
 
 4. Integration & Acceptance	Cross-layer review, regression tests, operational continuity, authoritative release
+
+
+
+
+### Yes. I recommend three independently complete deliveries:
+
+1. Categories and browsing: install the agreed taxonomy, preserve the existing offering, and provide header navigation with working filtered results.
+2. Home and greetings: improve Home’s proportions and cards, retain Admin-configured wording, and implement contextual greetings across Home, Merchant Center, and Profiles.
+3. WebP: retain originals privately, generate appropriately sized images, and integrate storage, authorization, failure handling, and cleanup.
+Each delivery should contain complete replacement files, relevant tests, and an honest verification report.
+
+Start with categories and browsing. That gives Home a working discovery foundation.
+
+
+Still testing:
+
+- Search works once and get's stuck on a stale search term on the Search Results page.
+- "Search, browse, and refinement structure is established here before result data is connected" language on the Search results page says nothing about the search result itself. 
+For example, 1-16 of over 1,000 results for "ai assistant"
