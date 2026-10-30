@@ -8,9 +8,22 @@ import (
 	"time"
 
 	"github.com/PiccoloMondoC/focodebase/fobackend/internal/mediastore"
+ "github.com/PiccoloMondoC/focodebase/fobackend/internal/mediaimage"
 )
 
 func newMediaStorage(ctx context.Context) (mediastore.Store, error) {
+	return newMediaStorageWithCodec(ctx,mediaimage.Check)
+}
+
+// Internal injection keeps storage policy tests independent of an installed
+// executable. Production always passes the real encoder health check above.
+func newMediaStorageWithCodec(ctx context.Context,check func(context.Context)error) (mediastore.Store, error) {
+	if ctx==nil||check==nil{return nil,mediaimage.ErrUnavailable}
+ checkCodec,cancelCodec:=context.WithTimeout(ctx,20*time.Second)
+ err:=check(checkCodec)
+ cancelCodec()
+ if err!=nil{return nil,mediaimage.ErrUnavailable}
+
 	driver := os.Getenv("MEDIA_STORAGE_DRIVER")
 	cloudRun := os.Getenv("K_SERVICE") != ""
 	if driver == "" && !cloudRun {

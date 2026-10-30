@@ -38,7 +38,7 @@ func(app *Application) offeringScope(w http.ResponseWriter,r *http.Request)(uuid
 func(app *Application) offeringFailure(w http.ResponseWriter,r *http.Request,err error){
  var large *http.MaxBytesError
  if errors.As(err,&large){app.respondWithErrorCode(w,413,"media_too_large","The media file exceeds the upload limit.");return}
- if errors.Is(err,mediastore.ErrUnavailable){app.respondWithErrorCode(w,503,"media_unavailable","Media service is temporarily unavailable. Please try again.");return}
+ if errors.Is(err,mediastore.ErrUnavailable)||errors.Is(err,context.DeadlineExceeded){app.respondWithErrorCode(w,503,"media_unavailable","Media service is temporarily unavailable. Please try again.");return}
  app.respondMerchantFutureOfferingServiceError(w,r,err)
 }
 // GetFutureOfferingMediaHandler returns the merchant's ordered gallery.
@@ -53,6 +53,10 @@ func(app *Application) UploadFutureOfferingMediaHandler(w http.ResponseWriter,r 
  merchant,id,ok:=app.offeringScope(w,r);if !ok{return}
  expected,err:=time.Parse(time.RFC3339Nano,r.URL.Query().Get("expected_updated_at"));if err!=nil{app.respondWithErrorCode(w,400,"invalid_version","Reload the project before uploading.");return}
  actor:=app.getUserIDFromContext(r.Context());if actor==nil{app.respondWithErrorCode(w,401,"authentication_required","Sign in again.");return}
+ // Keep the longer codec/storage budget local to this upload route. The
+ // server's ordinary 15-second write deadline must not expire mid-transaction.
+ if err=offeringUploadDeadlines(w);err!=nil{app.respondWithErrorCode(w,503,"media_unavailable","Media upload is temporarily unavailable.");return}
+ upload,cancel:=context.WithTimeout(r.Context(),2*time.Minute);defer cancel();r=r.WithContext(upload)
  r.Body=http.MaxBytesReader(w,r.Body,offeringUploadBodyLimit)
  result,err:=app.InternalServices.UploadFutureOfferingMedia(r.Context(),*actor,merchant,id,expected,r.URL.Query().Get("alt_text"),r.Body);if err!=nil{app.offeringFailure(w,r,err);return}
  app.respondWithJSON(w,201,jsonResponse{Data:result,Message:"Media saved"})
@@ -110,8 +114,12 @@ func(app *Application) FutureOfferingMediaBytesHandler(w http.ResponseWriter,r *
  var merchant *uuid.UUID
  if chi.URLParam(r,"surface")=="merchant"{m,err:=app.requireAuthorizedMerchantFutureOfferingMerchant(r.Context());if err!=nil{app.respondMerchantFutureOfferingAuthorizationError(w,r,err);return};merchant=&m}
  ctx,cancel:=context.WithTimeout(r.Context(),2*time.Minute);defer cancel()
- source,meta,err:=app.InternalServices.OpenFutureOfferingMedia(ctx,merchant,id,asset);if err!=nil{app.offeringFailure(w,r,err);return};defer source.Close()
+ role:=r.URL.Query().Get("variant")
+ if values:=r.URL.Query()["variant"];len(values)>1{app.respondWithErrorCode(w,400,"invalid_media_variant","Select one media size.");return}
+ if role=="original"&&merchant==nil{app.respondWithErrorCode(w,404,"not_found","Media unavailable.");return}
+ source,meta,err:=app.InternalServices.OpenFutureOfferingMediaVariant(ctx,merchant,id,asset,role);if err!=nil{app.offeringFailure(w,r,err);return};defer source.Close()
  w.Header().Set("Cache-Control","no-store");w.Header().Set("X-Content-Type-Options","nosniff");w.Header().Set("Content-Type",meta.ContentType);w.Header().Set("Content-Length",strconv.FormatInt(meta.ByteSize,10));w.Header().Set("Content-Security-Policy","default-src 'none'; sandbox")
+ if role=="original"{extension:=".jpg";if meta.ContentType=="image/png"{extension=".png"};w.Header().Set("Content-Disposition",fmt.Sprintf(`attachment; filename="original-image%s"`,extension))}
  w.Header().Set("Accept-Ranges","bytes")
  start,end,partial,rangeErr:=offeringMediaRange(r.Header.Get("Range"),meta.ByteSize)
  if rangeErr!=nil{w.Header().Set("Content-Range",fmt.Sprintf("bytes */%d",meta.ByteSize));w.Header().Del("Content-Length");w.WriteHeader(http.StatusRequestedRangeNotSatisfiable);return}

@@ -947,6 +947,22 @@ BEGIN
 ('Other & Emerging Ideas','fo-other-emerging-ideas',catalog_department,NULL,180)
   ON CONFLICT(slug) DO UPDATE SET name=EXCLUDED.name,department_id=EXCLUDED.department_id,parent_id=NULL,sort_order=EXCLUDED.sort_order,deleted_at=NULL,updated_at=clock_timestamp();
  END IF;
+ -- Additive installation: never replay the original catalog replacement.
+ IF NOT EXISTS (SELECT 1 FROM catalog_installations WHERE installation_key='future-offering-technology-category-v1') THEN
+  LOCK TABLE departments, categories IN SHARE ROW EXCLUSIVE MODE;
+  SELECT id INTO catalog_department FROM departments
+  WHERE slug='future-offering-discovery' AND deleted_at IS NULL;
+  IF catalog_department IS NULL THEN
+   RAISE EXCEPTION 'Active discovery department required for technology category installation';
+  END IF;
+  INSERT INTO catalog_installations(installation_key,prior_active_categories)
+  SELECT 'future-offering-technology-category-v1',COALESCE(jsonb_agg(jsonb_build_object('id',id,'name',name,'department_id',department_id)),'[]'::jsonb)
+  FROM categories WHERE deleted_at IS NULL;
+  INSERT INTO categories(name,slug,department_id,parent_id,sort_order,description)
+  VALUES('Technology / Digital Platforms','fo-technology-digital-platforms',catalog_department,NULL,15,
+         'Software platforms, digital services, and online infrastructure.')
+  ON CONFLICT(slug) DO NOTHING;
+ END IF;
 END;
 $catalog$;
 	`

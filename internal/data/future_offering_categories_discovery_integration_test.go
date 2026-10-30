@@ -3,13 +3,14 @@
 package data
 
 import (
- "context"
- "os"
- "strings"
- "testing"
- "time"
- "github.com/google/uuid"
- "github.com/jackc/pgx/v5/pgxpool"
+	"context"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestCategoryReplacementAndPublicDiscovery(t *testing.T) {
@@ -23,7 +24,7 @@ func TestCategoryReplacementAndPublicDiscovery(t *testing.T) {
  tx,err:=pool.Begin(ctx);if err!=nil{t.Fatal(err)};defer tx.Rollback(context.Background())
  exec:=func(sql string,args ...any){t.Helper();if _,err:=tx.Exec(ctx,sql,args...);err!=nil{t.Fatal(err)}}
  // Exercise the one-time install even when the canonical test DB was seeded.
- exec(`DELETE FROM catalog_installations WHERE installation_key='future-offering-categories-v1'`)
+ exec(`DELETE FROM catalog_installations WHERE installation_key IN ('future-offering-categories-v1','future-offering-technology-category-v1')`)
  dept,legacy:=uuid.New(),uuid.New()
  exec(`INSERT INTO departments(id,name,slug) VALUES($1,'Legacy test department',$2)`,dept,"legacy-"+dept.String())
  exec(`INSERT INTO categories(id,name,slug,department_id) VALUES($1,'Temporary category',$2,$3)`,legacy,"legacy-"+legacy.String(),dept)
@@ -35,7 +36,20 @@ func TestCategoryReplacementAndPublicDiscovery(t *testing.T) {
  if err=tx.QueryRow(ctx,`INSERT INTO merchant_future_offerings(id,merchant_id,project_name,title,summary,category_id) VALUES($1,$2,'Private fixture','Public fixture','Summary',$3) RETURNING updated_at`,fo,merchant,legacy).Scan(&version);err!=nil{t.Fatal(err)}
  exec(installFutureOfferingCatalogQuery)
  var active int
- if err=tx.QueryRow(ctx,`SELECT count(*) FROM categories WHERE deleted_at IS NULL`).Scan(&active);err!=nil||active!=18{t.Fatalf("active catalog count=%d error=%v",active,err)}
+ if err=tx.QueryRow(ctx,`SELECT count(*) FROM categories WHERE deleted_at IS NULL`).Scan(&active);err!=nil||active!=19{t.Fatalf("active catalog count=%d error=%v",active,err)}
+ // Reapply the additive install on an already installed catalog; preserve identity,
+ // unrelated labels and later administrator edits, including explicit retirement.
+ var technology uuid.UUID
+ if err=tx.QueryRow(ctx,`SELECT id FROM categories WHERE slug='fo-technology-digital-platforms' AND name='Technology / Digital Platforms' AND deleted_at IS NULL`).Scan(&technology);err!=nil{t.Fatal(err)}
+ exec(`UPDATE categories SET name='Admin technology label' WHERE id=$1`,technology)
+ exec(`DELETE FROM catalog_installations WHERE installation_key='future-offering-technology-category-v1'`)
+ exec(installFutureOfferingCatalogQuery)
+ var technologyLabel string
+ if err=tx.QueryRow(ctx,`SELECT name FROM categories WHERE id=$1`,technology).Scan(&technologyLabel);err!=nil||technologyLabel!="Admin technology label"{t.Fatal("additive installation overwrote existing category")}
+ exec(`UPDATE categories SET deleted_at=clock_timestamp() WHERE id=$1`,technology)
+ exec(installFutureOfferingCatalogQuery)
+ var retired bool
+ if err=tx.QueryRow(ctx,`SELECT deleted_at IS NOT NULL FROM categories WHERE id=$1`,technology).Scan(&retired);err!=nil||!retired{t.Fatal("restart reactivated administrator-retired technology category")}
  var retained bool
  if err=tx.QueryRow(ctx,`SELECT EXISTS(SELECT 1 FROM merchant_future_offerings f JOIN categories c ON c.id=f.category_id WHERE f.id=$1 AND c.id=$2 AND c.deleted_at IS NOT NULL)`,fo,legacy).Scan(&retained);err!=nil||!retained{t.Fatal("legacy reference was not preserved")}
  var ai,other uuid.UUID

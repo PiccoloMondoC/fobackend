@@ -1325,11 +1325,13 @@ func (app *Application) Routes() http.Handler {
 		// Public offering/media use explicit publication gates, never merchant permissions.
         v1.Get("/public/brands/{merchantID}", app.ListPublicOfferingsHandler)
         v1.Get("/public/future-offerings", app.ListPublicOfferingsHandler)
+        v1.Get("/public/future-offering-search", app.SearchPublicOfferingsHandler)
         v1.Get("/public/future-offering-categories", app.ListPublicFutureOfferingCategoriesHandler)
         v1.Get("/public/future-offerings/{futureOfferingID}", app.GetPublicFutureOfferingHandler)
         v1.Get("/public/future-offerings/{futureOfferingID}/media/{assetID}", app.FutureOfferingMediaBytesHandler)
         app.registerPublic("GET", "/api/v1/public/brands/{merchantID}")
         app.registerPublic("GET", "/api/v1/public/future-offerings")
+        app.registerPublic("GET", "/api/v1/public/future-offering-search")
         app.registerPublic("GET", "/api/v1/public/future-offering-categories")
         app.registerPublic("GET", "/api/v1/public/future-offerings/{futureOfferingID}")
         app.registerPublic("GET", "/api/v1/public/future-offerings/{futureOfferingID}/media/{assetID}")

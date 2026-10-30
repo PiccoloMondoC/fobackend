@@ -6094,6 +6094,16 @@ CREATE TABLE IF NOT EXISTS future_offering_media (
  is_main BOOLEAN NOT NULL DEFAULT FALSE CHECK(NOT is_main OR media_kind='image'),
  created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 );
+-- One gallery identity has a public detail object and private companions.
+-- Every object retains its own reconciliation row. Deleting a retired object
+-- cannot be blocked by a stale mapping; active sets are never cleanup-eligible.
+CREATE TABLE IF NOT EXISTS future_offering_media_variants (
+ asset_id UUID NOT NULL REFERENCES future_offering_media(id) ON DELETE CASCADE,
+ role TEXT NOT NULL CHECK(role IN ('card','thumbnail','original')),
+ object_id UUID NOT NULL UNIQUE REFERENCES media_objects(id) ON DELETE CASCADE,
+ PRIMARY KEY(asset_id,role),
+ CHECK(asset_id<>object_id)
+);
 CREATE UNIQUE INDEX IF NOT EXISTS ux_future_offering_main_image ON future_offering_media(future_offering_id) WHERE is_main;
 CREATE INDEX IF NOT EXISTS ix_future_offering_media_order ON future_offering_media(future_offering_id,display_order,id);
 CREATE TABLE IF NOT EXISTS future_offering_publication (

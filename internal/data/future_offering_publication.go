@@ -22,6 +22,7 @@ type FutureOfferingMedia struct {
  Main bool `json:"is_main"`
  ContentType string `json:"content_type"`
  ByteSize int64 `json:"byte_size"`
+ Digest string `json:"-"` // Storage integrity evidence, never a public field.
 }
 // FutureOfferingMediaStage is the durable immutable-object staging contract.
 type FutureOfferingMediaStage struct {
@@ -41,9 +42,9 @@ func (m *MerchantFutureOfferingModel) StageMediaTx(ctx context.Context, tx pgx.T
 }
 // ListMediaTx reads an ordered gallery inside the caller's coherent transaction.
 func (m *MerchantFutureOfferingModel) ListMediaTx(ctx context.Context,tx pgx.Tx,fo uuid.UUID)([]FutureOfferingMedia,error){
- rows,err:=tx.Query(ctx,`SELECT a.id,a.media_kind,a.alt_text,a.display_order,a.is_main,o.content_type,o.byte_size FROM future_offering_media a JOIN media_objects o ON o.id=a.id AND o.state='active' WHERE a.future_offering_id=$1 ORDER BY a.display_order,a.id`,fo)
+ rows,err:=tx.Query(ctx,`SELECT a.id,a.media_kind,a.alt_text,a.display_order,a.is_main,o.content_type,o.byte_size,o.sha256 FROM future_offering_media a JOIN media_objects o ON o.id=a.id AND o.state='active' WHERE a.future_offering_id=$1 ORDER BY a.display_order,a.id`,fo)
  if err!=nil{return nil,err};defer rows.Close();out:=[]FutureOfferingMedia{}
- for rows.Next(){var v FutureOfferingMedia;if err=rows.Scan(&v.ID,&v.Kind,&v.AltText,&v.Order,&v.Main,&v.ContentType,&v.ByteSize);err!=nil{return nil,err};out=append(out,v)};return out,rows.Err()
+ for rows.Next(){var v FutureOfferingMedia;if err=rows.Scan(&v.ID,&v.Kind,&v.AltText,&v.Order,&v.Main,&v.ContentType,&v.ByteSize,&v.Digest);err!=nil{return nil,err};out=append(out,v)};return out,rows.Err()
 }
 // AttachMediaTx activates a still-staged object and adds its FO-owned reference.
 func (m *MerchantFutureOfferingModel) AttachMediaTx(ctx context.Context,tx pgx.Tx,fo uuid.UUID,v FutureOfferingMedia)error{
@@ -59,8 +60,8 @@ func(m *MerchantFutureOfferingModel) EditMediaTx(ctx context.Context,tx pgx.Tx,f
  var id uuid.UUID
  if err:=tx.QueryRow(ctx,`SELECT id FROM future_offering_media WHERE id=$1 AND future_offering_id=$2 FOR UPDATE`,v.ID,fo).Scan(&id);err!=nil{if errors.Is(err,pgx.ErrNoRows){return ErrMerchantFutureOfferingNotFound};return err}
  if remove {
-  if _,err:=tx.Exec(ctx,`DELETE FROM future_offering_media WHERE id=$1`,id);err!=nil{return err}
-  _,err:=tx.Exec(ctx,`UPDATE media_objects SET state='retired',cleanup_after=clock_timestamp()+INTERVAL '15 minutes' WHERE id=$1`,id);return err
+  if err:=m.RetireMediaBundleTx(ctx,tx,id);err!=nil{return err}
+  _,err:=tx.Exec(ctx,`DELETE FROM future_offering_media WHERE id=$1`,id);return err
  }
  if v.Main {if _,err:=tx.Exec(ctx,`UPDATE future_offering_media SET is_main=FALSE WHERE future_offering_id=$1 AND is_main AND id<>$2`,fo,id);err!=nil{return err}}
  if _,err:=tx.Exec(ctx,`UPDATE future_offering_media SET display_order=display_order+1 WHERE future_offering_id=$1 AND id<>$2 AND display_order>=$3`,fo,id,v.Order);err!=nil{return err}

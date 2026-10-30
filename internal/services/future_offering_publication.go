@@ -13,12 +13,7 @@ import (
  "encoding/hex"
  "encoding/json"
  "errors"
- "image"
- "image/draw"
- "image/jpeg"
- _ "image/png"
  "io"
- "net/http"
  "strings"
  "time"
  "unicode/utf8"
@@ -47,24 +42,6 @@ func offeringEditable(fo *data.MerchantFutureOffering,expected time.Time)error{
 func offeringAlt(value string)(string,error){
  value=strings.TrimSpace(value)
  if !utf8.ValidString(value)||utf8.RuneCountInString(value)>300||strings.IndexFunc(value,unicode.IsControl)>=0{return "",data.ErrMerchantFutureOfferingInvalidInput};return value,nil
-}
-func normalizeOfferingMedia(raw []byte)([]byte,string,string,error){
- invalid:=data.ErrMerchantFutureOfferingInvalidInput
- if len(raw)==0||len(raw)>offeringMediaTransportLimit{return nil,"","",invalid}
- mime:=http.DetectContentType(raw)
- if mime=="image/jpeg"||mime=="image/png" {
-  if len(raw)>20<<20{return nil,"","",invalid}
-  cfg,_,err:=image.DecodeConfig(bytes.NewReader(raw));if err!=nil||cfg.Width<1||cfg.Height<1||cfg.Width>8000||cfg.Height>8000||int64(cfg.Width)*int64(cfg.Height)>16000000{return nil,"","",invalid}
-  decoded,_,err:=image.Decode(bytes.NewReader(raw));if err!=nil{return nil,"","",invalid}
-  canvas:=image.NewRGBA(decoded.Bounds());draw.Draw(canvas,canvas.Bounds(),image.White,image.Point{},draw.Src);draw.Draw(canvas,canvas.Bounds(),decoded,decoded.Bounds().Min,draw.Over)
-  var out bytes.Buffer
-  if err=jpeg.Encode(&out,orientProfilePhoto(canvas,profilePhotoOrientation(raw)),&jpeg.Options{Quality:90});err!=nil{return nil,"","",invalid}
-  return out.Bytes(),"image/jpeg","image",nil
- }
- // MP4/WebM bytes are never rendered as markup. Codec support is the browser's
- // responsibility; content-type sniffing is not content moderation or transcoding.
- if mime=="video/mp4"||mime=="video/webm"{return raw,mime,"video",nil}
- return nil,"","",invalid
 }
 func offeringPreviousStatus(kind data.MerchantFutureOfferingEventType)*data.MerchantFutureOfferingStatus{
  status:=data.MerchantFutureOfferingStatusDraft
@@ -103,25 +80,44 @@ func(s *Service) GetFutureOfferingGallery(ctx context.Context,merchant,fo uuid.U
 // calls occur while an FO lock is held; a stale attachment fails without linking.
 func(s *Service) UploadFutureOfferingMedia(ctx context.Context,actor,merchant,fo uuid.UUID,expected time.Time,alt string,body io.Reader)(FutureOfferingGallery,error){
  result:=FutureOfferingGallery{}
- if err:=s.validate();err!=nil{return result,err};if actor==uuid.Nil||ctx==nil{return result,data.ErrMerchantFutureOfferingInvalidInput};if s.media==nil{return result,ErrInvalidServiceConfiguration}
+ if err:=s.validate();err!=nil{return result,err}
+ if actor==uuid.Nil||ctx==nil||body==nil{return result,data.ErrMerchantFutureOfferingInvalidInput}
+ if s.media==nil{return result,ErrInvalidServiceConfiguration}
  select{case s.photoSlots<-struct{}{}:defer func(){<-s.photoSlots}();default:return result,mediastore.ErrUnavailable}
- if body==nil{return result,data.ErrMerchantFutureOfferingInvalidInput}
- raw,err:=io.ReadAll(io.LimitReader(body,offeringMediaTransportLimit+1));if err!=nil{return result,err}
+ var err error
  alt,err=offeringAlt(alt);if err!=nil{return result,err}
- normalized,mime,kind,err:=normalizeOfferingMedia(raw);if err!=nil{return result,err}
- id:=uuid.New();driver,location:=s.media.Location();sum:=sha256.Sum256(normalized)
+ // Reject invalid scope/version and recheck live authority before spending
+ // decoder/codec resources. Attachment repeats this check after storage I/O.
+ err=s.runOfferingMutationTx(ctx,"AuthorizeFutureOfferingMedia",actor,merchant,func(ctx context.Context,tx pgx.Tx)error{
+  v,err:=s.Models.MerchantFutureOffering.GetByIDForUpdateTx(ctx,tx,merchant,fo);if err!=nil{return err}
+  return offeringEditable(v,expected)
+ });if err!=nil{return result,err}
+ raw,err:=io.ReadAll(io.LimitReader(body,offeringMediaTransportLimit+1));if err!=nil{return result,err}
+ prepared,err:=prepareOfferingMedia(ctx,raw);if err!=nil{return result,err}
+ id:=uuid.New();driver,location:=s.media.Location()
+ parts:=make([]data.FutureOfferingMediaObject,0,len(prepared.parts))
+ for _,part:=range prepared.parts{
+  object:=uuid.New();if part.role=="detail"{object=id}
+  sum:=sha256.Sum256(part.bytes)
+  parts=append(parts,data.FutureOfferingMediaObject{FutureOfferingMediaStage:data.FutureOfferingMediaStage{ID:object,Owner:actor,Driver:driver,Location:location,ContentType:part.contentType,Digest:hex.EncodeToString(sum[:]),Size:int64(len(part.bytes))},Role:part.role})
+ }
+ // Register reconciliation even if the staging commit acknowledgment is lost.
+ // This helper retires still-staged rows only; active rows always survive.
+ defer func(){for _,part:=range parts{s.retireStagedMedia(part.ID)}}()
  err=s.runOfferingMutationTx(ctx,"StageFutureOfferingMedia",actor,merchant,func(ctx context.Context,tx pgx.Tx)error{
   v,err:=s.Models.MerchantFutureOffering.GetByIDForUpdateTx(ctx,tx,merchant,fo);if err!=nil{return err};if err=offeringEditable(v,expected);err!=nil{return err}
-  return s.Models.MerchantFutureOffering.StageMediaTx(ctx,tx,data.FutureOfferingMediaStage{ID:id,Owner:actor,Driver:driver,Location:location,ContentType:mime,Digest:hex.EncodeToString(sum[:]),Size:int64(len(normalized))})
- });if err!=nil{return result,err};defer s.retireStagedMedia(id)
- upload,cancel:=context.WithTimeout(ctx,30*time.Second);defer cancel()
- if err=s.media.Put(upload,id.String(),mime,bytes.NewReader(normalized));err!=nil{return result,err}
+  return s.Models.MerchantFutureOffering.StageMediaBundleTx(ctx,tx,id,parts)
+ });if err!=nil{if errors.Is(err,data.ErrFutureOfferingMediaStagingBusy){return result,mediastore.ErrUnavailable};return result,err}
+ upload,cancel:=context.WithTimeout(ctx,60*time.Second);defer cancel()
+ for i,part:=range prepared.parts{
+  if err=s.media.Put(upload,parts[i].ID.String(),part.contentType,bytes.NewReader(part.bytes));err!=nil{return result,err}
+ }
  err=s.runOfferingMutationTx(ctx,"AttachFutureOfferingMedia",actor,merchant,func(ctx context.Context,tx pgx.Tx)error{
   v,err:=s.Models.MerchantFutureOffering.GetByIDForUpdateTx(ctx,tx,merchant,fo);if err!=nil{return err};if err=offeringEditable(v,expected);err!=nil{return err}
   gallery,err:=s.Models.MerchantFutureOffering.ListMediaTx(ctx,tx,fo);if err!=nil{return err}
-  main:=kind=="image";order:=0;for _,a:=range gallery{if a.Main{main=false};if a.Order>=order{order=a.Order+1}}
+  main:=prepared.kind=="image";order:=0;for _,a:=range gallery{if a.Main{main=false};if a.Order>=order{order=a.Order+1}}
   if len(gallery)>=100{return data.ErrMerchantFutureOfferingInvalidInput}
-  if err=s.Models.MerchantFutureOffering.AttachMediaTx(ctx,tx,fo,data.FutureOfferingMedia{ID:id,Kind:kind,AltText:alt,Order:order,Main:main});err!=nil{return err}
+  if err=s.Models.MerchantFutureOffering.AttachMediaBundleTx(ctx,tx,fo,data.FutureOfferingMedia{ID:id,Kind:prepared.kind,AltText:alt,Order:order,Main:main},parts);err!=nil{return err}
   v,err=s.Models.MerchantFutureOffering.AdvanceEditableVersionTx(ctx,tx,merchant,fo,expected);if err!=nil{return err}
   result.UpdatedAt=v.UpdatedAt;result.Media,err=s.Models.MerchantFutureOffering.ListMediaTx(ctx,tx,fo);if err!=nil{return err};return s.offeringRevisionTx(ctx,tx,v,actor,"media",gallery,result.Media)
  });return result,err
@@ -165,11 +161,32 @@ func(s *Service) PublicFutureOffering(ctx context.Context,fo uuid.UUID)(FutureOf
 // OpenFutureOfferingMedia checks public eligibility or explicit merchant scope
 // before opening private immutable bytes. Callers must close the returned reader.
 func(s *Service) OpenFutureOfferingMedia(ctx context.Context,merchant *uuid.UUID,fo,id uuid.UUID)(io.ReadCloser,data.FutureOfferingMedia,error){
- var found data.FutureOfferingMedia
- err:=s.runMerchantFutureOfferingTx(ctx,"OpenFutureOfferingMedia",false,func(ctx context.Context,tx pgx.Tx)error{
+ return s.OpenFutureOfferingMediaVariant(ctx,merchant,fo,id,"detail")
+}
+// OpenFutureOfferingMediaVariant resolves a role only through an authorized
+// gallery asset. Originals have no public route, object URL or UUID projection.
+func(s *Service) OpenFutureOfferingMediaVariant(ctx context.Context,merchant *uuid.UUID,fo,id uuid.UUID,role string)(io.ReadCloser,data.FutureOfferingMedia,error){
+ var found data.FutureOfferingMedia;var object uuid.UUID
+ if !offeringMediaVariantAllowed(role,merchant!=nil){return nil,found,data.ErrMerchantFutureOfferingNotFound}
+ err:=s.runMerchantFutureOfferingTx(ctx,"OpenFutureOfferingMediaVariant",false,func(ctx context.Context,tx pgx.Tx)error{
   if merchant==nil{if _,_,err:=s.Models.MerchantFutureOffering.PublicOfferingTx(ctx,tx,fo);err!=nil{return err}}else{if _,err:=s.Models.MerchantFutureOffering.GetByIDForMerchantTx(ctx,tx,*merchant,fo);err!=nil{return err}}
-  gallery,err:=s.Models.MerchantFutureOffering.ListMediaTx(ctx,tx,fo);if err!=nil{return err};for _,a:=range gallery{if a.ID==id{found=a;return nil}};return data.ErrMerchantFutureOfferingNotFound
- });if err!=nil{return nil,found,err};if s.media==nil{return nil,found,ErrInvalidServiceConfiguration};r,err:=s.media.Open(ctx,id.String());return r,found,err
+  gallery,err:=s.Models.MerchantFutureOffering.ListMediaTx(ctx,tx,fo);if err!=nil{return err}
+  for _,a:=range gallery{if a.ID==id{object,found,err=s.Models.MerchantFutureOffering.ResolveMediaVariantTx(ctx,tx,a,role);return err}}
+  return data.ErrMerchantFutureOfferingNotFound
+ });if err!=nil{return nil,found,err};if s.media==nil{return nil,found,ErrInvalidServiceConfiguration}
+ var release func()
+ if found.Kind=="image"{release,err=acquireOfferingImageRead(ctx);if err!=nil{return nil,found,err}}
+ reader,err:=s.media.Open(ctx,object.String());if errors.Is(err,mediastore.ErrNotFound){err=mediastore.ErrUnavailable}
+ if err!=nil{if reader!=nil{_ = reader.Close()};if release!=nil{release()};return nil,found,err}
+ if found.Kind=="image"{
+  reader,err=verifiedOfferingImage(reader,found)
+  if err!=nil{release();return nil,found,err}
+  reader=&offeringImageReader{ReadCloser:reader,release:release}
+ }
+ return reader,found,err
+}
+func offeringMediaVariantAllowed(role string,merchant bool)bool{
+ switch role{case "","detail","card","thumbnail":return true;case "original":return merchant;default:return false}
 }
 // SetFutureOfferingBrandVisibility changes only membership, keeping the FO public.
 func(s *Service) SetFutureOfferingBrandVisibility(ctx context.Context,actor,merchant,fo uuid.UUID,expected time.Time,visible bool)(*data.MerchantFutureOffering,error){

@@ -132,6 +132,7 @@ Start with categories and browsing. That gives Home a working discovery foundati
 
 Still testing:
 
-- Search works once and get's stuck on a stale search term on the Search Results page.
+- Search works once and get's stuck on a stale search term on the Search Results page. Nothing to show that new search terms are actually searched.
 - "Search, browse, and refinement structure is established here before result data is connected" language on the Search results page says nothing about the search result itself. 
-For example, 1-16 of over 1,000 results for "ai assistant"
+For example, it doesn't say: 1-16 of over 1,000 results for "ai assistant"
+- Search results page shows mock results. No actual search results

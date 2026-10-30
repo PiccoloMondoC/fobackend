@@ -1,10 +1,16 @@
 ## To update code on Github:
 cd ../fobackend
 git add -A
-git commit -m "write FO core all layers"
+git commit -m "rewrite FO Home, Categories, WebP, and Search all layers"
 git push
 
 | data layer | handler layer | service layer |
+
+
+To set up root Lord of the Codebase:
+Bash:
+docker compose exec go-backend /platform-install issue-root-claim
+
 
 ### To Test
 
@@ -30,7 +36,7 @@ go test ./...
 
 
 
-docker compose down -v
+cd ../fobackend
 docker compose up -d --build
 
 // To reinstall Lord of the Rings Admin Root
@@ -39,10 +45,13 @@ cd ../
 docker compose up -d --build go-backend
 docker compose exec go-backend /sagrenti-install status
 
+Avoid
+docker compose down -v
 
 
-cd ../downloads/input_021
-zip -r ./input_021_supplemental/input_021_supplemental.zip ./input_021_supplemental
+
+cd ../downloads
+zip -r ./input_0022/input_0022.zip ./input_0022
 
 
 
